@@ -26,7 +26,7 @@
 		</ExperimentalAcrylicBorder>
 		<Border IsVisible="{Binding !AcrylicEnabled}" Background="#3a3a3a" IsHitTestVisible="False" Grid.ColumnSpan="2" Grid.RowSpan="3"/>
 		
-		<StackPanel IsVisible="{Binding IsExtendedIntoWindowDecorations, ElementName=Window}}" Height="30" Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="{Binding TitleHorizontalAlignment}">
+		<StackPanel IsVisible="{Binding IsExtendedIntoWindowDecorations, ElementName=Window}" Height="30" Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="{Binding TitleHorizontalAlignment}">
 			<Image Source="/Assets/icon.ico" Height="22" HorizontalAlignment="Left" Margin="4"/>
 			<TextBlock Text="Update Checker" VerticalAlignment="Center"/>
 		</StackPanel>
@@ -40,7 +40,7 @@
 
 			<TextBlock IsVisible="{Binding NotAvailableOrError}" Text="No Update Available"/>
  
-			<TextBlock IsVisible="{Binding !!LatestVersion }" Text="{Binding LatestVersion, StringFormat=Latest Version: {0}}"/>
+			<TextBlock IsVisible="{Binding HasLatestVersion}" Text="{Binding LatestVersion, StringFormat=Latest Version: {0}}"/>
 		</StackPanel>
 
 		<StackPanel Orientation="Horizontal" Grid.Row="2" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="5" Spacing="5">
