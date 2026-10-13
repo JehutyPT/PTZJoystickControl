@@ -1,25 +1,36 @@
 name: Build release packages
 
+# Releases (version bump, tag, GitHub Release) only happen on push to main.
+# Pushes to ci/** branches, pull requests and manual runs build and upload
+# the packages as workflow artifacts without touching versions or tags.
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "ci/**" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
 
   bump-version:
     runs-on: ubuntu-latest
-    
-    outputs: 
+
+    outputs:
       VERSION: ${{ steps.version-select.outputs.VERSION }}
-      
+      SHA: ${{ steps.version-select.outputs.SHA }}
+
+    env:
+      IS_RELEASE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
-        
+        uses: actions/checkout@v7
+
       - name: Bump version
-        if: ${{ github.event_name == 'push' && github.run_attempt == 1 }}
+        if: ${{ env.IS_RELEASE == 'true' && github.run_attempt == 1 }}
         # Increments the third version part, sets the fourth to the run number,
         # and commits the change back as the user who pushed.
         run: |
@@ -33,33 +44,58 @@ jobs:
           git commit -am "Bump version to $next"
           git push origin HEAD:${{ github.ref_name }}
 
-      - name: Tag version in git and set as output
+      - name: Tag version in git
+        if: ${{ env.IS_RELEASE == 'true' }}
+        run: |
+          version=$(grep -oP '<Version>\K(.*)(?=\.\d+</Version>)' Gui/Gui.csproj)
+          git tag "v$version"
+          git push origin "v$version"
+
+      # The build jobs check out this commit, so on main they build the bumped
+      # version rather than the commit that triggered the run.
+      - name: Set version output
         id: version-select
         run: |
           version=$(grep -oP '<Version>\K(.*)(?=\.\d+</Version>)' Gui/Gui.csproj)
           echo "Version: ${version}"
-          git tag v$version
-          git push --tags
-          echo "VERSION=$version" >> $GITHUB_OUTPUT
+          echo "VERSION=$version" >> "$GITHUB_OUTPUT"
+          # Only on release runs; elsewhere checkout uses the event's default ref.
+          if [ "$IS_RELEASE" = "true" ]; then
+            echo "SHA=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fi
 
   build-windows-packeges:
     needs: bump-version
     runs-on: windows-latest
     strategy:
+       fail-fast: false
        matrix:
           arch: [x86, x64]
 
-    steps:    
+    steps:
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ needs.bump-version.outputs.SHA }}
 
-    - name: Install .NET Core
-      uses: actions/setup-dotnet@v3
+    - name: Install .NET 6 SDK
+      id: setup-dotnet
+      uses: actions/setup-dotnet@v6
       with:
         dotnet-version: 6.0.x
 
+    # Runners ship newer SDKs that reject the win7-* RIDs used below and in
+    # Packaging/Windows/MainProgram.wxs. Pin this run to the SDK just installed.
+    # CI only: the repo has no global.json so local builds use any SDK.
+    - name: Pin .NET SDK for this run
+      shell: bash
+      run: printf '{"sdk":{"version":"%s"}}\n' "${{ steps.setup-dotnet.outputs.dotnet-version }}" > global.json
+
     - name: Setup MSBuild.exe
-      uses: microsoft/setup-msbuild@v1.0.2
+      uses: microsoft/setup-msbuild@v3
+
+    - name: Show .NET SDK
+      run: dotnet --version
 
     ## Execute all unit tests in the solution
     #- name: Execute unit tests
@@ -88,16 +124,16 @@ jobs:
     #- name: Remove the pfx
     #  run: Remove-Item -path $env:Wap_Project_Directory\GitHubActionsWorkflow.pfx
 
-    - name: Upload build artifacts (msi packages)
-      if: ${{ github.event_name == 'push' }}
-      uses: actions/upload-artifact@v3
+    - name: Upload build artifacts (msi package)
+      uses: actions/upload-artifact@v7
       with:
-        name: MSI Packages
+        name: ${{ format('msi-win-{0}', matrix.arch) }}
         path: Packaging/Windows/Packages/**/*.msi
+        if-no-files-found: error
 
     - name: GH Release
-      if: ${{ github.event_name == 'push' }}
-      uses: softprops/action-gh-release@v0.1.15
+      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      uses: softprops/action-gh-release@v3
       with:
         prerelease: true
         tag_name: v${{ needs.bump-version.outputs.VERSION }}
@@ -105,16 +141,31 @@ jobs:
 
   build-macos-packeges:
     needs: bump-version
+    # macos-latest is arm64; the x64 app is cross-published and runs under Rosetta.
     runs-on: macos-latest
 
-    steps:    
-    - name: Checkout
-      uses: actions/checkout@v3
+    env:
+      OutputName: ${{ format('PTZJoystickControl_v{0}_osx_x64', needs.bump-version.outputs.VERSION) }}
 
-    - name: Setup .NET Core
-      uses: actions/setup-dotnet@v1
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        ref: ${{ needs.bump-version.outputs.SHA }}
+
+    - name: Setup .NET 6 SDK
+      id: setup-dotnet
+      uses: actions/setup-dotnet@v6
       with:
         dotnet-version: 6.0.x
+
+    # CI only, see the Windows job.
+    - name: Pin .NET SDK for this run
+      shell: bash
+      run: printf '{"sdk":{"version":"%s"}}\n' "${{ steps.setup-dotnet.outputs.dotnet-version }}" > global.json
+
+    - name: Show .NET SDK
+      run: dotnet --version
 
     - name: Build
       run: dotnet publish Gui/Gui.csproj -c PublishRelease -r osx-x64 --self-contained #/p:PublishSingleFile=true /p:PublishTrimmed=true
@@ -132,7 +183,12 @@ jobs:
         cp Packaging/Mac/Info.plist dist/PTZJoystickControl.app/Contents/
 
     - name: Update Info.plist version
-      run: sed -i '' -e ':a' -e 'N' -e '$!ba' -e "s/<key>CFBundleVersion<\/key>\n\s*<string>[^<]*<\/string>/<key>CFBundleVersion<\/key>\n        <string>{{ needs.bump-version.outputs.VERSION }}<\/string>/g" dist/PTZJoystickControl.app/Contents/Info.plist
+      run: |
+        plist=dist/PTZJoystickControl.app/Contents/Info.plist
+        /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $VERSION" "$plist"
+        /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$plist"
+      env:
+        VERSION: ${{ needs.bump-version.outputs.VERSION }}
 
     - name: Create Installer
       run: |
@@ -145,21 +201,19 @@ jobs:
           --icon "dist/PTZJoystickControl.app/Contents/Resources/icon.icns" 200 190 \
           --hide-extension "PTZJoystickControl.app" \
           --app-drop-link 600 185 \
-          ${{ env.OutputName }}.dmg \
+          "$OutputName.dmg" \
           dist/PTZJoystickControl.app
-      env:
-          OutputName: ${{ format('PTZJoystickControl_v{0}_osx_x64', needs.bump-version.outputs.VERSION) }}
 
     - name: Upload build artifacts (dmg package)
-      if: ${{ github.event_name == 'push' }}
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v7
       with:
-          name: DMG Package
+          name: dmg-osx-x64
           path: "*.dmg"
+          if-no-files-found: error
 
     - name: GH Release
-      if: ${{ github.event_name == 'push' }}
-      uses: softprops/action-gh-release@v0.1.15
+      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      uses: softprops/action-gh-release@v3
       with:
           prerelease: true
           tag_name: v${{ needs.bump-version.outputs.VERSION }}
