@@ -152,4 +152,10 @@ public abstract class ViscaDeviceBase : INotifyPropertyChanged
     public abstract void FocusLock(FocusLock focusMode);
     public abstract void Preset(Preset preset, byte presetNumber);
     public abstract void PresetRecallSpeed(byte value);
+
+    /// <summary>
+    /// Stops pan, tilt, zoom and focus, sending each stop repeatedly, even when the camera is
+    /// already believed to be stopped (its real state may differ if packets were lost).
+    /// </summary>
+    public abstract void Stop();
 }

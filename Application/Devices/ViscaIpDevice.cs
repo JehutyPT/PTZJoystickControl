@@ -17,6 +17,15 @@ public class ViscaIpDevice : ViscaIPDeviceBase
     ushort tmpBuffIndex = 0;
     private uint packetId = 0;
 
+    // VISCA over UDP has no delivery guarantee and commands are only sent on change, so a single
+    // lost stop would leave the camera drifting. Each stop is sent once immediately and then
+    // StopRepeatCount more times, StopRepeatInterval after the previous send of it went out
+    // (3 sends over ~100 ms for a single axis).
+    internal const int StopRepeatCount = 2;
+    internal static readonly TimeSpan StopRepeatInterval = TimeSpan.FromMilliseconds(50);
+    private static readonly TimeSpan PendingPollInterval = TimeSpan.FromMilliseconds(5);
+    private static readonly TimeSpan MaxPendingWait = TimeSpan.FromSeconds(1);
+
     public ViscaIpDevice(string name) : this(name, null) { }
 
     public ViscaIpDevice(string name, IPEndPoint? viscaEndpint) : base(name, viscaEndpint) { }
@@ -139,6 +148,8 @@ public class ViscaIpDevice : ViscaIPDeviceBase
 
     public override void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir)
     {
+        bool enteredStop = (this.panDir != PanDir.Stop && panDir == PanDir.Stop)
+            || (this.tiltDir != TiltDir.Stop && tiltDir == TiltDir.Stop);
         bool panTiltChanged = false;
         if (this.panDir != panDir || this.tiltDir != tiltDir)
         {
@@ -157,6 +168,8 @@ public class ViscaIpDevice : ViscaIPDeviceBase
         if (panTiltChanged)
         {
             AddCommand(AddPanTiltCommand);
+            if (enteredStop)
+                RepeatCommand(AddPanTiltCommand);
         }
     }
 
@@ -178,6 +191,8 @@ public class ViscaIpDevice : ViscaIPDeviceBase
         if (zoomChanged)
         {
             AddCommand(AddZoomCommand);
+            if (zoomDir == ZoomDir.Stop)
+                RepeatCommand(AddZoomCommand);
         }
     }
 
@@ -198,6 +213,8 @@ public class ViscaIpDevice : ViscaIPDeviceBase
         if (focusChanged)
         {
             AddCommand(AddFocusCommand);
+            if (focusDir == FocusDir.Stop)
+                RepeatCommand(AddFocusCommand);
         }
     }
 
@@ -224,6 +241,63 @@ public class ViscaIpDevice : ViscaIPDeviceBase
     {
         presetRecallSpeed = value;
         AddCommand(AddPresetRecallSpeedCommand);
+    }
+
+    public override void Stop()
+    {
+        // Bypass change detection: the camera may still be moving even if the last command
+        // we sent was a stop (it may have been lost).
+        panDir = PanDir.Stop;
+        tiltDir = TiltDir.Stop;
+        zoomCmd = (byte)ZoomDir.Stop;
+        focusCmd = (byte)FocusDir.Stop;
+
+        AddCommand(AddPanTiltCommand);
+        AddCommand(AddZoomCommand);
+        AddCommand(AddFocusCommand);
+        RepeatCommand(AddPanTiltCommand);
+        RepeatCommand(AddZoomCommand);
+        RepeatCommand(AddFocusCommand);
+    }
+
+    /// <summary>
+    /// Re-sends a command StopRepeatCount more times, StopRepeatInterval apart. Each repeat waits
+    /// until the previous send of the same command has left the queue: pending commands are a
+    /// set, so adding one that is still queued would merge into a single packet. The packet is
+    /// built from the device's state at send time, so if the operator moves the camera again
+    /// within the window the repeat carries the new motion rather than a stale stop.
+    /// </summary>
+    private void RepeatCommand(Func<ViscaIPHeaderType> commandFunction)
+    {
+        _ = RepeatCommandAsync(commandFunction);
+    }
+
+    private async Task RepeatCommandAsync(Func<ViscaIPHeaderType> commandFunction)
+    {
+        try
+        {
+            for (int i = 0; i < StopRepeatCount; i++)
+            {
+                var waitUntil = DateTime.UtcNow + MaxPendingWait;
+                while (IsPending(commandFunction) && DateTime.UtcNow < waitUntil)
+                    await Task.Delay(PendingPollInterval).ConfigureAwait(false);
+
+                await Task.Delay(StopRepeatInterval).ConfigureAwait(false);
+                AddCommand(commandFunction);
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.WriteLine($"Repeat command {name}: {e}");
+        }
+    }
+
+    private bool IsPending(Func<ViscaIPHeaderType> commandFunction)
+    {
+        lock (commandsToSend)
+        {
+            return commandsToSend.Contains(commandFunction);
+        }
     }
 
     public ViscaIPHeaderType AddPowerCommand()

@@ -22,3 +22,10 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 - [ ] Send a Companion HTTP request with a misspelled parameter: Companion gets a 400 and the app stays up.
 - [ ] Trigger a valid `SetCameraPreview` from Companion: the app's camera selection follows it.
+
+### #4: Stop commands are repeated
+
+- [ ] On each camera, pan, tilt, zoom and focus fully and release: the camera stops promptly every time, with no lurch or late stop.
+- [ ] Release the stick and immediately push it the other way: the camera follows the new direction and does not stop.
+- [ ] Pan and tilt together, release only pan: tilt keeps moving at the same speed until released, then stops.
+- [ ] Optional, with Wireshark on the vMix PC filtered to the camera's VISCA port (normally `udp.port == 52381`): releasing an axis shows 3 identical stop packets about 50 ms apart.
