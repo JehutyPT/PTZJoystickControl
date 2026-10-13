@@ -209,9 +209,18 @@ public sealed class SkaarhojGamepadsService : IGamepadsService, IDisposable
                 _info.IsConnected = available;
             if (available && _gamepad == null && _info.IsActivated)
             {
-                Connect();
-                // Raised after the gamepad is in ActiveGamepads, so the controller page picks it up.
-                _info.IsActivated = true;
+                // Saved as active: only if no other controller is (one at a time).
+                if (_inputQueue.MayActivate(_info))
+                {
+                    Connect();
+                    // Raised after the gamepad is in ActiveGamepads, so the controller page picks it up.
+                    _info.IsActivated = true;
+                }
+                else
+                {
+                    SaveActivated(false);
+                    _info.IsActivated = false;
+                }
             }
         }
     }

@@ -405,6 +405,29 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
     }
 
     [Fact]
+    public void SavedActive_ComingUpWhileAnotherControllerIsActive_StaysOff_AndSavesIt()
+    {
+        var saved = NewService();
+        saved.ActivateGamepad(Info(saved));
+        var usb = new CompositeGamepadsServiceTests.FakeGamepadsService("usb", _queue);
+        var joystick = usb.AddInfo("joystick");
+        var panel = NewService();
+        var composite = new CompositeGamepadsService(_queue, usb, panel);
+        // The USB source activates a joystick on its own, as it does when one saved as active is plugged in.
+        usb.ActivateGamepad(joystick);
+
+        panel.OnLinkUp();
+        _queue.RunPending();
+
+        Assert.Empty(panel.ActiveGamepads);
+        Assert.False(Info(panel).IsActivated);
+        Assert.True(Info(panel).IsConnected);
+        Assert.Equal("joystick", Assert.Single(composite.ActiveGamepads).Id);
+        Assert.False(Info(NewService()).IsActivated);
+        Assert.Contains(_trace.Events, e => e.Type == System.Diagnostics.TraceEventType.Warning && e.Message.Contains(Address));
+    }
+
+    [Fact]
     public void ForeignGamepadInfo_IsIgnored()
     {
         var service = NewService();

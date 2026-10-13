@@ -257,7 +257,16 @@ public class SdlGamepadsService : IGamepadsService
         gamepadInfo.InstanceId = SDL.SDL_JoystickGetDeviceInstanceID(deviceIndex);
         gamepadInfo.IsConnected = true;
         if (gamepadInfo.IsActivated)
-            ActivateGamepad(gamepadInfo);
+        {
+            // Plugged in saved as active: only if no other controller is (one at a time).
+            if (_inputQueue.MayActivate(gamepadInfo))
+                ActivateGamepad(gamepadInfo);
+            else
+            {
+                gamepadInfo.IsActivated = false;
+                PersistDeactivated(gamepadInfo.Id);
+            }
+        }
     }
 
     private void OnJoystickRemoved(SDL.SDL_JoyDeviceEvent jdevice)

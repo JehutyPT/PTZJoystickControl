@@ -14,7 +14,9 @@ namespace PtzJoystickControl.Application.Services;
 /// controller.
 /// <para>
 /// One controller at a time: activating one first deactivates any other that is activated, and if
-/// several start activated (from saved settings) only the first is kept.
+/// several start activated (from saved settings) only the first is kept. A source activating a
+/// controller on its own (one saved as active plugged in or coming back) asks first through
+/// <see cref="InputQueue.MayActivate"/>: if another controller is activated, that one keeps control.
 /// </para>
 /// </summary>
 public sealed class CompositeGamepadsService : IGamepadsService
@@ -31,6 +33,7 @@ public sealed class CompositeGamepadsService : IGamepadsService
         _services = services;
         lock (_sync)
         {
+            inputQueue.ActivationRule = MayActivate;
             foreach (var service in _services)
             {
                 service.Gamepads.CollectionChanged += OnSourceGamepadsChanged;
@@ -75,6 +78,18 @@ public sealed class CompositeGamepadsService : IGamepadsService
     {
         lock (_sync)
             OwnerOf(gamepad)?.DeactivateGamepad(gamepad);
+    }
+
+    private bool MayActivate(IGamepadInfo gamepad)
+    {
+        lock (_sync)
+        {
+            var active = Gamepads.FirstOrDefault(g => g.IsActivated && !ReferenceEquals(g, gamepad));
+            if (active == null)
+                return true;
+            Trace.TraceWarning($"Controller {gamepad.Name} was saved as active but {active.Name} is active; keeping {active.Name} only");
+            return false;
+        }
     }
 
     // Under _sync.

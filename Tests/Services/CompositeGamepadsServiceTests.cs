@@ -98,6 +98,35 @@ public class CompositeGamepadsServiceTests
     }
 
     [Fact]
+    public void ASavedActiveController_PluggedInWhileAnotherIsActive_StaysOff()
+    {
+        var panel = _panel.AddInfo("skaarhoj:1");
+        var composite = new CompositeGamepadsService(_queue, _usb, _panel);
+        composite.ActivateGamepad(panel);
+        var joystick = _usb.AddInfo("joystick", activated: true);
+
+        _usb.PlugInSavedActive(joystick);
+
+        Assert.False(joystick.IsActivated);
+        Assert.Empty(_usb.Log);
+        Assert.True(panel.IsActivated);
+        Assert.Equal("skaarhoj:1", Assert.Single(composite.ActiveGamepads).Id);
+    }
+
+    [Fact]
+    public void ASavedActiveController_PluggedInWhileNoOtherIsActive_IsActivated()
+    {
+        _panel.AddInfo("skaarhoj:1");
+        var composite = new CompositeGamepadsService(_queue, _usb, _panel);
+        var joystick = _usb.AddInfo("joystick", activated: true);
+
+        _usb.PlugInSavedActive(joystick);
+
+        Assert.True(joystick.IsActivated);
+        Assert.Equal("joystick", Assert.Single(composite.ActiveGamepads).Id);
+    }
+
+    [Fact]
     public void AnUnknownController_IsIgnored()
     {
         _usb.AddInfo("joystick");
@@ -116,11 +145,13 @@ public class CompositeGamepadsServiceTests
     internal sealed class FakeGamepadsService : IGamepadsService
     {
         private readonly string _name;
+        private readonly InputQueue _inputQueue;
         private readonly object _sync;
 
         public FakeGamepadsService(string name, InputQueue inputQueue)
         {
             _name = name;
+            _inputQueue = inputQueue;
             _sync = inputQueue.ControllersLock;
         }
 
@@ -134,6 +165,18 @@ public class CompositeGamepadsServiceTests
             lock (_sync)
                 Gamepads.Add(info);
             return info;
+        }
+
+        // As the real sources do when a controller saved as active is plugged in or comes back.
+        public void PlugInSavedActive(Info info)
+        {
+            lock (_sync)
+            {
+                if (_inputQueue.MayActivate(info))
+                    ActivateGamepad(info);
+                else
+                    info.IsActivated = false;
+            }
         }
 
         public void RemoveInfo(IGamepadInfo info)
