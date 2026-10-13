@@ -173,6 +173,28 @@ public class ViscaIpDeviceStopRepeatTests
     }
 
     [Fact]
+    public async Task ControllerGoingAway_SendsRepeatedStopsToTheCameraItWasDriving()
+    {
+        using var camera = new LoopbackCamera();
+        var gamepad = new TestGamepad { SelectedCamera = camera.Device };
+        var driven = new DrivenCameras(gamepad);
+        var pan = new PanCommand(gamepad, new NullCompanionService());
+        var axis = new Input("axis-0", "X", InputType.Axis, new ICommand[] { pan });
+        axis.SelectedCommand = pan;
+        axis.InputValue = 0.8f;
+        await camera.WaitForPacketsAsync(1);
+        await camera.CollectAsync();
+
+        // The stick is still deflected: only the disconnect can stop the camera.
+        driven.StopAll();
+        var packets = await camera.CollectAsync();
+
+        AssertStopsWithin(packets, IsPanTiltStop, ForceStopSpread);
+        AssertStopsWithin(packets, IsZoomStop, ForceStopSpread);
+        AssertStopsWithin(packets, IsFocusStop, ForceStopSpread);
+    }
+
+    [Fact]
     public async Task AxisReturningToDeadzone_SendsRepeatedPanStops()
     {
         using var camera = new LoopbackCamera();

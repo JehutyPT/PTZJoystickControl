@@ -35,3 +35,11 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Release the stick and immediately push it the other way: the camera follows the new direction and does not stop.
 - [ ] Pan and tilt together, release only pan: tilt keeps moving at the same speed until released, then stops.
 - [ ] Optional, with Wireshark on the vMix PC filtered to the camera's VISCA port (normally `udp.port == 52381`): releasing an axis shows 3 identical stop packets roughly 50–65 ms apart.
+
+### #3: Cameras stop when a controller disconnects
+
+- [ ] Pan a camera with the joystick and, while still holding the stick, unplug the joystick's USB cable: the camera stops within a fraction of a second.
+- [ ] Repeat while zooming, and while focusing manually: the camera stops.
+- [ ] Select camera 1 and start it panning, select camera 2 and start it panning, then unplug while holding the stick: both cameras stop.
+- [ ] Hold the stick deflected and deactivate the joystick in the app: the camera stops, and the app stays up.
+- [ ] Replug and reactivate the joystick: it drives the cameras normally again.
