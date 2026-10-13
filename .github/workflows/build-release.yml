@@ -24,11 +24,11 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v7
 
-    - name: Setup .NET 6 SDK
+    - name: Setup .NET 10 SDK
       id: setup-dotnet
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: 6.0.x
+        dotnet-version: 10.0.x
 
     # CI only, see the Windows job.
     - name: Pin .NET SDK for this run
@@ -38,9 +38,9 @@ jobs:
     - name: Show .NET SDK
       run: dotnet --version
 
-    # The solution filter skips the WiX packaging project, which only builds on Windows.
+    # The WiX packaging project in the solution skips itself off Windows.
     - name: Run tests
-      run: dotnet test PTZJoystickControl.App.slnf
+      run: dotnet test PTZJoystickControl.sln
 
   bump-version:
     needs: test
@@ -141,15 +141,17 @@ jobs:
       with:
         ref: ${{ needs.bump-version.outputs.SHA }}
 
-    - name: Install .NET 6 SDK
+    - name: Install .NET 10 SDK
       id: setup-dotnet
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: 6.0.x
+        dotnet-version: 10.0.x
 
-    # Runners ship newer SDKs that reject the win7-* RIDs used below and in
-    # Packaging/Windows/MainProgram.wxs. Pin this run to the SDK just installed.
-    # CI only: the repo has no global.json so local builds use any SDK.
+    # Runners may ship newer SDKs than the LTS. Pin this run to the SDK just
+    # installed so packages are built with the .NET 10 SDK. CI only: the repo
+    # has no global.json so local builds use any SDK that supports net10.0.
+    # The win7-* RIDs below and in Packaging/Windows/MainProgram.wxs need the
+    # legacy RID graph, which Directory.Build.props turns on (UseRidGraph).
     - name: Pin .NET SDK for this run
       shell: bash
       run: printf '{"sdk":{"version":"%s"}}\n' "${{ steps.setup-dotnet.outputs.dotnet-version }}" > global.json
@@ -204,11 +206,11 @@ jobs:
       with:
         ref: ${{ needs.bump-version.outputs.SHA }}
 
-    - name: Setup .NET 6 SDK
+    - name: Setup .NET 10 SDK
       id: setup-dotnet
       uses: actions/setup-dotnet@v6
       with:
-        dotnet-version: 6.0.x
+        dotnet-version: 10.0.x
 
     # CI only, see the Windows job.
     - name: Pin .NET SDK for this run
@@ -229,7 +231,7 @@ jobs:
       run: |
         mkdir -p dist/PTZJoystickControl.app/Contents/MacOS
         mkdir -p dist/PTZJoystickControl.app/Contents/Resources
-        cp Gui/bin/PublishRelease/net6.0/osx-x64/publish/* dist/PTZJoystickControl.app/Contents/MacOS
+        cp Gui/bin/PublishRelease/net10.0/osx-x64/publish/* dist/PTZJoystickControl.app/Contents/MacOS
         cp Packaging/Mac/icon.icns dist/PTZJoystickControl.app/Contents/Resources/
         cp Packaging/Mac/Info.plist dist/PTZJoystickControl.app/Contents/
 

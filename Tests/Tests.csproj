@@ -1,16 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>PtzJoystickControl.Tests</RootNamespace>
     <Platforms>AnyCPU;x64</Platforms>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
-    <!-- Lets the test host run on a newer installed runtime (e.g. .NET 10) when
-         the .NET 6 runtime is absent. CI pins the .NET 6 SDK, so it runs on 6. -->
-    <RollForward>Major</RollForward>
   </PropertyGroup>
 
   <ItemGroup>

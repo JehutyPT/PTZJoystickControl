@@ -91,3 +91,14 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Alternate several times: select a camera from Companion, then pan and zoom it with the joystick and release. Each time the joystick drives the camera Companion selected, it stops on release, and the app stays up. (Don't switch while an axis is held: stop on camera switch is tracked separately, #25.)
 - [ ] Press Companion's camera-select buttons rapidly in alternation: the app ends on the last one pressed, and the main window and tray icon show that camera.
 - [ ] With the main window open, select a camera from Companion: the highlighted camera in the window updates without delay or error in the Log window.
+
+### #11: .NET 10 and WiX 5 installer
+
+The app now runs on .NET 10 (bundled in the MSI) and the MSI is built with WiX 5. The installer should behave as before: same install folder, shortcuts and settings, and it replaces the old version in place. The installed files change (the old `api-ms-win-*.dll`, `ucrtbase.dll` and `dbgshim.dll` are gone, a few new .NET 10 files are added). .NET 10 does not run on Windows 7 or 8.1.
+
+- [ ] Note the installed version in Settings → Apps, then run the new MSI over it without uninstalling first: it installs without errors, and Settings → Apps lists PTZ Joystick Control once, with the new version.
+- [ ] The Start menu and desktop shortcuts start the app. `%APPDATA%\PTZJoystickControl\Cameras.json` and `Gamepads.json` are kept: both cameras and the joystick settings are as before the upgrade.
+- [ ] The main window, tray icon and Log window draw normally (no blank or black window). `PTZJoystickControl.log` shows the new version started and no `ERROR` or `CRITICAL` lines, including from the startup update check.
+- [ ] The joystick is detected, and pan, tilt, zoom, focus and presets drive both cameras; each camera stops on release.
+- [ ] Companion selects cameras and gets selection feedback as before.
+- [ ] Quit from the tray: the log ends with `PTZJoystickControl stopped`. Start it again: it starts normally.

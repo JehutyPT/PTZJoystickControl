@@ -1,137 +1,11 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 	<Fragment>
 		<?if $(sys.BUILDARCH) = "x64"?>
-		<?define BasePath="../../Gui/bin/PublishRelease/net6.0/win7-x64/publish/"?>
+		<?define BasePath="../../Gui/bin/PublishRelease/net10.0/win7-x64/publish/"?>
 		<?elseif $(sys.BUILDARCH) = "x86"?>
-		<?define BasePath="../../Gui/bin/PublishRelease/net6.0/win7-x86/publish/"?>
+		<?define BasePath="../../Gui/bin/PublishRelease/net10.0/win7-x86/publish/"?>
 		<?endif?>
 		<ComponentGroup Id="MainProgram" Directory="INSTALLFOLDER" Source="$(BasePath)">
-			<Component>
-				<File Name="api-ms-win-core-console-l1-1-0.dll" />
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-console-l1-2-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-datetime-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-debug-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-errorhandling-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-fibers-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-file-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-file-l1-2-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-file-l2-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-handle-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-heap-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-interlocked-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-libraryloader-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-localization-l1-2-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-memory-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-namedpipe-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-processenvironment-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-processthreads-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-processthreads-l1-1-1.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-profile-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-rtlsupport-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-string-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-synch-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-synch-l1-2-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-sysinfo-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-timezone-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-core-util-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-conio-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-convert-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-environment-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-filesystem-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-heap-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-locale-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-math-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-multibyte-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-private-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-process-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-runtime-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-stdio-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-string-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-time-l1-1-0.dll"/>
-			</Component>
-			<Component>
-				<File Name="api-ms-win-crt-utility-l1-1-0.dll"/>
-			</Component>
 			<Component>
 				<File Name="Application.dll"/>
 			</Component>
@@ -223,6 +97,14 @@
 				<File Name="clretwrc.dll"/>
 			</Component>
 			<Component>
+				<File Name="clrgc.dll"/>
+			</Component>
+			<?if $(sys.BUILDARCH) = "x64"?>
+			<Component>
+				<File Name="clrgcexp.dll"/>
+			</Component>
+			<?endif?>
+			<Component>
 				<File Name="clrjit.dll"/>
 			</Component>
 			<Component>
@@ -236,9 +118,6 @@
 			</Component>
 			<Component>
 				<File Name="createdump.exe"/>
-			</Component>
-			<Component>
-				<File Name="dbgshim.dll"/>
 			</Component>
 			<Component>
 				<File Name="DynamicData.dll"/>
@@ -455,6 +334,9 @@
 				<File Name="System.Formats.Asn1.dll"/>
 			</Component>
 			<Component>
+				<File Name="System.Formats.Tar.dll"/>
+			</Component>
+			<Component>
 				<File Name="System.Globalization.Calendars.dll"/>
 			</Component>
 			<Component>
@@ -503,6 +385,9 @@
 				<File Name="System.IO.MemoryMappedFiles.dll"/>
 			</Component>
 			<Component>
+				<File Name="System.IO.Pipelines.dll"/>
+			</Component>
+			<Component>
 				<File Name="System.IO.Pipes.AccessControl.dll"/>
 			</Component>
 			<Component>
@@ -510,6 +395,9 @@
 			</Component>
 			<Component>
 				<File Name="System.IO.UnmanagedMemoryStream.dll"/>
+			</Component>
+			<Component>
+				<File Name="System.Linq.AsyncEnumerable.dll"/>
 			</Component>
 			<Component>
 				<File Name="System.Linq.dll"/>
@@ -561,6 +449,9 @@
 			</Component>
 			<Component>
 				<File Name="System.Net.Security.dll"/>
+			</Component>
+			<Component>
+				<File Name="System.Net.ServerSentEvents.dll"/>
 			</Component>
 			<Component>
 				<File Name="System.Net.ServicePoint.dll"/>
@@ -665,6 +556,9 @@
 				<File Name="System.Runtime.InteropServices.dll"/>
 			</Component>
 			<Component>
+				<File Name="System.Runtime.InteropServices.JavaScript.dll"/>
+			</Component>
+			<Component>
 				<File Name="System.Runtime.InteropServices.RuntimeInformation.dll"/>
 			</Component>
 			<Component>
@@ -705,6 +599,9 @@
 			</Component>
 			<Component>
 				<File Name="System.Security.Cryptography.Csp.dll"/>
+			</Component>
+			<Component>
+				<File Name="System.Security.Cryptography.dll"/>
 			</Component>
 			<Component>
 				<File Name="System.Security.Cryptography.Encoding.dll"/>
@@ -753,6 +650,9 @@
 			</Component>
 			<Component>
 				<File Name="System.Text.RegularExpressions.dll"/>
+			</Component>
+			<Component>
+				<File Name="System.Threading.AccessControl.dll"/>
 			</Component>
 			<Component>
 				<File Name="System.Threading.Channels.dll"/>
@@ -831,9 +731,6 @@
 			</Component>
 			<Component>
 				<File Name="Tmds.DBus.dll"/>
-			</Component>
-			<Component>
-				<File Name="ucrtbase.dll"/>
 			</Component>
 			<Component>
 				<File Name="WindowsBase.dll"/>
