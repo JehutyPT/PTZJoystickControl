@@ -1,9 +1,13 @@
 using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Application.Services;
+using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
+using PtzJoystickControl.Core.Services;
 using Xunit;
 
 namespace PtzJoystickControl.Tests.Companion;
@@ -15,11 +19,14 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
     // A short timeout makes a response that is never closed fail the test instead of hanging it.
     private readonly HttpClient _client;
     private readonly RecordingTraceListener _trace = new();
+    private static readonly ViscaDeviceBase Cam1 = new ViscaIpDevice("Cam 1") { CompanionNumber = 1 };
+    private static readonly ViscaDeviceBase Cam2 = new ViscaIpDevice("Cam 2") { CompanionNumber = 2 };
+    private readonly FakeCameras _cameras = new(Cam1, Cam2);
 
     public BitfocusCompanionListenerTests()
     {
         Trace.Listeners.Add(_trace);
-        _service = new BitfocusCompanionService(GetFreePort(), _port);
+        _service = new BitfocusCompanionService(GetFreePort(), _port, _cameras);
         _client = new HttpClient
         {
             BaseAddress = new Uri($"http://localhost:{_port}/"),
@@ -57,11 +64,29 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
 
         _service.ReceivedBitfocusCommand += recording;
         Assert.Equal(HttpStatusCode.OK, await StatusOf("?SetCameraPreview=2"));
-        var companionEvent = Assert.Single(raised);
-        Assert.Same(BitfocusCompanionEvent.SupportedEvents[1], companionEvent);
+        Assert.Equal(HttpStatusCode.OK, await StatusOf("?SelectCamera=1"));
+        Assert.Equal(new[] { Cam2, Cam1 }, raised.Select(e => e.Camera));
 
         Assert.Contains(_trace.Messages, m => m.Contains("foo=1") && m.Contains("Unknown command 'foo'"));
         Assert.Contains(_trace.Messages, m => m.Contains("subscriber failed"));
+    }
+
+    [Fact]
+    public async Task UnknownOrSharedCompanionNumber_Gets400AndAWarning_AndRaisesNothing()
+    {
+        var raised = new List<BitfocusCompanionEvent>();
+        _service.ReceivedBitfocusCommand += (_, e) => raised.Add(e);
+
+        Assert.Equal(HttpStatusCode.BadRequest, await StatusOf("?SelectCamera=3"));
+        Assert.Equal(HttpStatusCode.BadRequest, await StatusOf("?SelectCamera=abc"));
+
+        // A camera added later with a number another camera has: an arbitrary pick is never made.
+        _cameras.Cameras.Add(new ViscaIpDevice("Cam 2 copy") { CompanionNumber = 2 });
+        Assert.Equal(HttpStatusCode.BadRequest, await StatusOf("?SetCameraPreview=2"));
+
+        Assert.Empty(raised);
+        Assert.Contains(_trace.Messages, m => m.Contains("SelectCamera=3") && m.Contains("No camera has Companion number 3"));
+        Assert.Contains(_trace.Messages, m => m.Contains("SetCameraPreview=2") && m.Contains("Cam 2, Cam 2 copy"));
     }
 
     [Fact]
@@ -92,7 +117,7 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
         try
         {
             BitfocusCompanionService? service = null;
-            var constructing = Record.Exception(() => service = new BitfocusCompanionService(GetFreePort(), blockedPort));
+            var constructing = Record.Exception(() => service = new BitfocusCompanionService(GetFreePort(), blockedPort, _cameras));
 
             Assert.Null(constructing);
             Assert.NotNull(service!.InboundListenerError);
@@ -139,7 +164,7 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
     {
         var blockedPort = GetFreePort();
         var (blocker, blockerV6) = HoldPort(blockedPort);
-        var service = new BitfocusCompanionService(GetFreePort(), blockedPort, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(200));
+        var service = new BitfocusCompanionService(GetFreePort(), blockedPort, _cameras, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(200));
         var changes = 0;
         service.InboundListenerErrorChanged += (_, _) => Interlocked.Increment(ref changes);
         try
@@ -177,7 +202,7 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
     {
         var blockedPort = GetFreePort();
         var (blocker, blockerV6) = HoldPort(blockedPort);
-        var service = new BitfocusCompanionService(GetFreePort(), blockedPort, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(100));
+        var service = new BitfocusCompanionService(GetFreePort(), blockedPort, _cameras, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(100));
         try
         {
             Assert.Null(Record.Exception(service.StopListening));
@@ -219,6 +244,17 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
+    }
+
+    private sealed class FakeCameras : ICamerasService
+    {
+        public FakeCameras(params ViscaDeviceBase[] cameras) => Cameras = new ObservableCollection<ViscaDeviceBase>(cameras);
+
+        public ObservableCollection<ViscaDeviceBase> Cameras { get; }
+
+        public void AddCamera(ViscaDeviceBase camera) => Cameras.Add(camera);
+
+        public void RemoveCamera(ViscaDeviceBase camera) => Cameras.Remove(camera);
     }
 
     private sealed class RecordingTraceListener : TraceListener

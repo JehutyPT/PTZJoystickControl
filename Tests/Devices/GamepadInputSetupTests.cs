@@ -10,31 +10,20 @@ namespace PtzJoystickControl.Tests.Devices;
 
 public class GamepadInputSetupTests
 {
-    private const string ButtonIdFormat = "Button {0}";
-
     [Fact]
-    public void WithoutSavedSettings_AddsOneVirtualButtonPerCompanionEvent()
+    public void WithoutSavedSettings_AddsNoInputs()
     {
         var gamepad = new TestGamepad(physicalButtons: 3);
 
-        GamepadInputSetup.Configure(gamepad, gamepad.AddInput, ButtonIdFormat, BitfocusCompanionEvent.SupportedEvents, settings: null);
+        GamepadInputSetup.Configure(gamepad, settings: null);
 
-        var virtualButtons = gamepad.Inputs.Skip(3).ToList();
-        Assert.Equal(new[] { "Vmix Cam 1 Preview", "Vmix Cam 2 Preview" }, virtualButtons.Select(i => i.Name));
-        Assert.All(virtualButtons, i => Assert.Equal(InputType.Button, i.InputType));
-        // Numbered after the 3 physical buttons, and the same number a Companion press sends.
-        Assert.Equal(new[] { "Button 4", "Button 5" }, virtualButtons.Select(i => i.Id));
-        Assert.Equal(new[] { 4, 5 }, BitfocusCompanionEvent.SupportedEvents.Select(e => e.Button));
+        // No Companion virtual buttons any more: Companion selects cameras directly.
+        Assert.Equal(new[] { "Button 1", "Button 2", "Button 3" }, gamepad.Inputs.Select(i => i.Id));
     }
 
     [Fact]
-    public void WithSavedSettings_AddsVirtualButtonsAndAppliesStoredMappingsToThem()
+    public void StoredMappingsOfTheOldCompanionVirtualButtons_AreIgnored_AndPhysicalMappingsStillApply()
     {
-        var discovery = new TestGamepad(physicalButtons: 2);
-        GamepadInputSetup.Configure(discovery, discovery.AddInput, ButtonIdFormat, BitfocusCompanionEvent.SupportedEvents, settings: null);
-        var virtualId = discovery.Inputs.Single(i => i.Name == "Vmix Cam 2 Preview").Id;
-        var physicalId = discovery.Inputs.First().Id;
-
         var gamepad = new TestGamepad(physicalButtons: 2);
         var settings = new GamepadSettings
         {
@@ -42,19 +31,21 @@ public class GamepadInputSetupTests
             Name = gamepad.Name,
             Inputs = new List<InputSettings>
             {
-                new() { Id = virtualId, CommandType = typeof(SelectCommand).ToString(), Inverted = true },
-                new() { Id = physicalId, CommandType = typeof(OtherCommand).ToString() },
+                // The ids the virtual buttons had on a 2-button gamepad: numbered after the physical buttons.
+                new() { Id = "Button 3", CommandType = typeof(SelectCommand).ToString(), CommandValue = new CommandValueOption("Cam 1", 0) },
+                new() { Id = "Button 4", CommandType = typeof(SelectCommand).ToString(), CommandValue = new CommandValueOption("Cam 2", 1) },
+                new() { Id = "Button 1", CommandType = typeof(OtherCommand).ToString() },
             },
         };
 
-        GamepadInputSetup.Configure(gamepad, gamepad.AddInput, ButtonIdFormat, BitfocusCompanionEvent.SupportedEvents, settings);
+        var thrown = Record.Exception(() => GamepadInputSetup.Configure(gamepad, settings));
 
-        var virtualButton = gamepad.Inputs.Single(i => i.Id == virtualId);
-        Assert.Equal("Vmix Cam 2 Preview", virtualButton.Name);
-        Assert.IsType<SelectCommand>(virtualButton.SelectedCommand);
-        Assert.True(virtualButton.Inverted);
-        Assert.IsType<OtherCommand>(gamepad.Inputs.Single(i => i.Id == physicalId).SelectedCommand);
-        Assert.Null(gamepad.Inputs.Single(i => i.Name == "Vmix Cam 1 Preview").SelectedCommand);
+        Assert.Null(thrown);
+        Assert.Equal(new[] { "Button 1", "Button 2" }, gamepad.Inputs.Select(i => i.Id));
+        Assert.IsType<OtherCommand>(gamepad.Inputs.Single(i => i.Id == "Button 1").SelectedCommand);
+        Assert.Null(gamepad.Inputs.Single(i => i.Id == "Button 2").SelectedCommand);
+        // The next save only holds the inputs the gamepad has.
+        Assert.Equal(new[] { "Button 1", "Button 2" }, new GamepadSettings(gamepad).Inputs!.Select(i => i.Id));
     }
 
     [Fact]
@@ -68,7 +59,7 @@ public class GamepadInputSetupTests
             Inputs = new List<InputSettings> { new() { Id = gamepad.Inputs.First().Id, CommandType = "No.Such.Command" } },
         };
 
-        GamepadInputSetup.Configure(gamepad, gamepad.AddInput, ButtonIdFormat, BitfocusCompanionEvent.SupportedEvents, settings);
+        GamepadInputSetup.Configure(gamepad, settings);
 
         Assert.Null(gamepad.Inputs.First().SelectedCommand);
     }
@@ -97,8 +88,6 @@ public class GamepadInputSetupTests
             for (var i = 0; i < physicalButtons; i++)
                 _inputs.Add(new Input($"Button {i + 1}", $"Button {i}", InputType.Button, _commands));
         }
-
-        public void AddInput(string id, IInput input) => _inputs.Add(input);
 
         public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
         public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }

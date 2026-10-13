@@ -18,19 +18,22 @@ namespace PtzJoystickControl.Application.Services
         public event EventHandler<BitfocusCompanionEvent>? ReceivedBitfocusCommand;
 
         private readonly BitfocusCompanionClient _outbound;
-        
+        private readonly ICamerasService _cameras;
+
         /// <summary>
         /// Initializes http clients to communicate to and from a bitfocus companion instance
         /// </summary>
         /// <param name="outboundPort">The port that the target bitfocus companion is set to listen to for HTTP requests</param>
         /// <param name="inboundPort">The port that the HTTP connection module in companion is pointed to for sending HTTP requests into the PTZ Joystick app</param>
-        public BitfocusCompanionService(int outboundPort, int inboundPort)
-            : this(outboundPort, inboundPort, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30))
+        /// <param name="cameras">The cameras an inbound request selects by Companion number</param>
+        public BitfocusCompanionService(int outboundPort, int inboundPort, ICamerasService cameras)
+            : this(outboundPort, inboundPort, cameras, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30))
         {
         }
 
-        internal BitfocusCompanionService(int outboundPort, int inboundPort, TimeSpan retryInitialDelay, TimeSpan retryMaxDelay)
+        internal BitfocusCompanionService(int outboundPort, int inboundPort, ICamerasService cameras, TimeSpan retryInitialDelay, TimeSpan retryMaxDelay)
         {
+            _cameras = cameras;
             _outbound = new BitfocusCompanionClient(new Uri($"http://localhost:{outboundPort}/"));
             _prefix = $"http://localhost:{inboundPort}/";
             _retryInitialDelay = retryInitialDelay;
@@ -53,8 +56,6 @@ namespace PtzJoystickControl.Application.Services
 
         public void SetCustomVariable(string variableName, string value) =>
             _outbound.SetCustomVariable(variableName, value);
-
-        public List<BitfocusCompanionEvent> SupportedEvents => BitfocusCompanionEvent.SupportedEvents;
 
         #endregion
 
@@ -269,7 +270,10 @@ namespace PtzJoystickControl.Application.Services
                 var parameters = query.AllKeys
                     .Select(name => new KeyValuePair<string?, string?>(name, query[name]))
                     .ToList();
-                var parsed = BitfocusCompanionEvent.ParseRequest(parameters);
+                // A snapshot: the camera list is changed on the UI thread. If a copy races such a
+                // change and throws, the request gets 500 and Companion can simply press again.
+                var cameras = _cameras.Cameras.ToArray();
+                var parsed = BitfocusCompanionEvent.ParseRequest(parameters, cameras);
 
                 if (!parsed.IsAccepted)
                 {

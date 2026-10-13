@@ -8,7 +8,6 @@ All phase 1 items are done.
 
 ## Phase 2: Companion integration cleanup
 
-- Select cameras directly from Companion on all active controllers (replace virtual buttons; remove the hardcoded two-camera list).
 - Move outbound calls to Companion's current HTTP API; prefer a custom variable for selection feedback.
 - Ports and hosts in settings; remove unused `BitfocusCompanionSettingsStore`.
 

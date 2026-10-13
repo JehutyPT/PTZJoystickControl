@@ -100,16 +100,18 @@ internal class Program
             "PTZJoystickControl",
             Assembly.GetExecutingAssembly().GetName().Version!));
 
-        var companion = new BitfocusCompanionService(8000, 12345);
-        services.RegisterConstant<IBitfocusCompanionService>(companion);
         services.RegisterConstant<ICameraSettingsStore>(new CameraSettingsStore());
         services.RegisterConstant<IGamepadSettingsStore>(new GamepadSettingsStore());
-        
-        services.RegisterConstant<ICommandsService>(new CommandsService(
-            resolver.GetServiceOrThrow<IBitfocusCompanionService>()));
 
+        // Before the Companion service: an inbound request selects a camera by its Companion number.
         services.RegisterConstant<ICamerasService>(new CamerasService(
             resolver.GetServiceOrThrow<ICameraSettingsStore>()));
+
+        var companion = new BitfocusCompanionService(8000, 12345, resolver.GetServiceOrThrow<ICamerasService>());
+        services.RegisterConstant<IBitfocusCompanionService>(companion);
+
+        services.RegisterConstant<ICommandsService>(new CommandsService(
+            resolver.GetServiceOrThrow<IBitfocusCompanionService>()));
 
         services.RegisterConstant<IGamepadsService>(new SdlGamepadsService(
             resolver.GetServiceOrThrow<IGamepadSettingsStore>(),

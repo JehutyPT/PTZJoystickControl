@@ -8,11 +8,12 @@
 
 - `BitfocusCompanionService` starts an `HttpListener` on `http://localhost:12345/` (port hardcoded in `Gui/Program.cs`).
 - If the listener cannot start (port taken, URL ACL denied), the app still starts: the failure is logged as a warning, `InboundListenerError` holds the reason, and the main window shows a red notice. The service retries in the background (1 s, doubling, capped at 30 s; failed retries are logged only at attempts 1, 2, 4, 8, …). Once the port is free and a retry starts the listener, `InboundListenerError` clears, `InboundListenerErrorChanged` fires, the notice disappears and Companion → app requests work, with no restart. Joystick control and outbound feedback are unaffected throughout. Quitting the app (`StopListening`) cancels the retry.
-- Companion (via its generic HTTP module) calls e.g. `http://localhost:12345/?SetCameraPreview=1`.
-- `BitfocusCompanionEvent.ParseRequest` maps the query parameters to events. `SupportedEvents` is hardcoded to two cameras ("Vmix Cam 1/2 Preview").
-- When an SDL gamepad is loaded, `GamepadInputSetup.Configure` adds one **virtual button input** per event, numbered after the physical buttons, whether or not the gamepad has saved settings, then applies any saved settings. The user maps each virtual button to the *Select Camera* command in the UI; the mapping is saved like a physical button's.
-- When an event arrives, `onReceivedBitfocusCommand` queues it for the input loop (`UpdateLoop`, within ~15 ms), never running gamepad input on the listener thread. There it simulates a press and release of that virtual button on every active SDL gamepad, addressed by reference rather than SDL instance id, so it keeps working after a USB replug. Gamepads without the virtual button ignore it.
-- Every request is validated in full before anything runs (`BitfocusCompanionEvent.ParseRequest`): parameter names must match a defined command exactly (case-sensitive) and values must be a supported camera. Anything else, including an empty query or a request mixing valid and invalid parameters, gets `400` and runs nothing. A failure while accepting a valid request gets `500`; the `200` for a valid request is sent once it is queued, and a failure while it runs later on the input loop is only logged. Every response is closed, every rejection or failure is logged through `Trace`, and the listener keeps serving.
+- Each camera has a **Companion number** (`ViscaDeviceBase.CompanionNumber`, the *Companion #* field in the camera row, saved in `Cameras.json`). Cameras saved before numbers existed get their 1-based list position on first load (or the lowest unused number if another camera already has that one); a camera added later gets its list position if free, otherwise the lowest unused number. The camera row rejects a number below 1 or one another camera already has. Duplicates in a hand-edited `Cameras.json` are kept and logged as a `WARN` at startup.
+- Companion (via its generic HTTP module) calls `http://localhost:12345/?SelectCamera=N` to select the camera whose Companion number is N. `?SetCameraPreview=N` is a legacy alias, kept so existing Companion buttons keep working.
+- `BitfocusCompanionEvent.ParseRequest` validates the request against a snapshot of the camera list, taken on the listener thread.
+- When a request is accepted, `onReceivedBitfocusCommand` queues it for the input loop (`UpdateLoop`, within ~15 ms), never running gamepad input on the listener thread. There `CompanionCameraSelection.SelectOnEveryController` sets the camera as `SelectedCamera` on every active controller, addressed by reference rather than SDL instance id, so it keeps working after a USB replug. No input mapping is needed. Each controller is handled in its own try/catch, and a controller whose camera list no longer has the camera is skipped with a `WARN`. Stop on camera switch applies as for any selection change (see [live-safety.md](live-safety.md)).
+- Every request is validated in full before anything runs. Parameter names must match a defined command (`SelectCamera`, `SetCameraPreview`) exactly (case-sensitive). Each value must be a plain positive decimal number that exactly one camera has as its Companion number. Anything else gets `400` and runs nothing. That includes an unknown number, a number shared by two cameras (never an arbitrary pick), an empty query, and a request mixing valid and invalid parameters. A failure while accepting a valid request gets `500`. The `200` for a valid request is sent once it is queued, and a failure while it runs later on the input loop is only logged. Every response is closed, every rejection or failure is logged through `Trace` (rejections as `WARN`), and the listener keeps serving.
+- Until #14, Companion selection worked through per-gamepad "Vmix Cam N Preview" virtual buttons mapped to *Select Camera*. Those inputs are gone. Their saved mappings in `Gamepads.json` are ignored and dropped the next time the gamepad's settings are saved.
 
 ### App → Companion: selection feedback
 
@@ -29,12 +30,9 @@ See [roadmap.md](roadmap.md) for the tracked list. In short: the outbound call u
 
 ### Camera selection
 
-Replace the virtual-button mechanism with a direct path: an inbound command identifies a camera (by stable id or name, not list position), and the service sets `SelectedCamera` on **every active controller**, including the SKAARHOJ. No fake input events, no dependency on SDL instance ids.
+Done (#14): an inbound command identifies a camera by its Companion number and selects it on every active controller (`IGamepad`), so a SKAARHOJ controller gets it too.
 
-Inbound transport stays HTTP on localhost (simple to trigger from Companion's HTTP module), with:
-- port from settings, not hardcoded;
-- every request answered and closed, unknown commands returning 400 without throwing;
-- handling marshalled onto the input thread.
+Inbound transport stays HTTP on localhost (simple to trigger from Companion's HTTP module). Remaining: the port comes from settings, not hardcoded.
 
 ### Feedback
 

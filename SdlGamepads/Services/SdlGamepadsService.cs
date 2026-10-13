@@ -49,35 +49,11 @@ public class SdlGamepadsService : IGamepadsService
 
     private void onReceivedBitfocusCommand(object? sender, BitfocusCompanionEvent e)
     {
-        switch (e.EventType)
-        {
-            case InboundBitfocusCompanionEventEnum.SetCameraPreview:
-                if (Int32.TryParse(e.Value, out int camNum))
-                {
-                    SDL.SDL_JoyButtonEvent buttonEvent = new SDL.SDL_JoyButtonEvent()
-                    {
-                        button = (byte) e.Button,
-                    };
-
-                    // Press the Companion virtual button on every active gamepad by reference.
-                    // SDL instance ids change on every replug, so they cannot address a gamepad here.
-                    // Queued, not run here: this is an HTTP listener thread, and commands must never
-                    // run concurrently with SDL input (live-safety).
-                    _inputQueue.Enqueue(() =>
-                    {
-                        foreach (var gamepad in ActiveGamepads.Cast<SdlGamepad>().ToArray())
-                        {
-                            buttonEvent.state = 1;
-                            gamepad.OnButtonEvent(buttonEvent);
-
-                            buttonEvent.state = 0;
-                            gamepad.OnButtonEvent(buttonEvent);
-                        }
-                    });
-                }
-
-                break;
-        }
+        // Queued, not run here: this is an HTTP listener thread, and commands must never run
+        // concurrently with SDL input (live-safety). Controllers are addressed by reference.
+        var camera = e.Camera;
+        _inputQueue.Enqueue(() =>
+            CompanionCameraSelection.SelectOnEveryController(ActiveGamepads.ToArray(), camera));
     }
 
     public void ActivateGamepad(IGamepadInfo gamepadInfo)
@@ -127,8 +103,7 @@ public class SdlGamepadsService : IGamepadsService
         var gamepad = new SdlGamepad(gamepadInfo, _commandsService, _camerasService.Cameras);
 
         GamepadSettings? gamepadSettings = _gamppadSettingsDb.GetGamepadSettingsById(gamepadInfo.Id);
-        GamepadInputSetup.Configure(gamepad, gamepad.AddInput, SdlGamepad.ButtonNameFormatString,
-            _bitfocusCompanionService.SupportedEvents, gamepadSettings);
+        GamepadInputSetup.Configure(gamepad, gamepadSettings);
 
         return gamepad;
     }

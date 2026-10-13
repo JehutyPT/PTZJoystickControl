@@ -13,6 +13,21 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Unplug and replug the joystick: it is detected again and still drives the cameras.
 - [ ] On Apple Silicon (osx-arm64), if used: the app starts and detects the joystick.
 
+### #14: Companion selects cameras by Companion number on every controller
+
+The "Vmix Cam 1/2 Preview" virtual buttons are gone. `?SetCameraPreview=N` (the existing Companion buttons) and the new `?SelectCamera=N` select the camera whose **Companion #** (new field in each camera row) is N, on every active controller, with no mapping. Existing cameras get their list position as their number: the first camera in the list is 1, the second is 2.
+
+- [ ] **Before upgrading**, with the old build still running: open the joystick's inputs and note which camera "Vmix Cam 1 Preview" and "Vmix Cam 2 Preview" are mapped to (*Select camera* → camera name). They must be the first and second camera in the camera list, in that order. Back up `%APPDATA%\PTZJoystickControl\Cameras.json` and `Gamepads.json`. If the mapping is different (swapped, or not *Select camera*), the existing Companion buttons would select a different camera after upgrading. In the new build, set each camera's **Companion #** to the number of the button that should select it (swap via a spare number, e.g. 1 → 9, 2 → 1, 9 → 2) before going on.
+- [ ] Start the new build. Each camera row shows **Companion #**: the first camera 1 and the second 2 (unless you changed them in the previous step). The joystick's input list no longer shows "Vmix Cam N Preview".
+- [ ] Press the operator's existing Companion camera buttons (`SetCameraPreview=1` and `=2`) in turn: the app's selection follows the camera noted in the first step, the joystick drives it, and Companion's feedback updates.
+- [ ] In a browser on the vMix PC, open `http://localhost:12345/?SelectCamera=2`, then `?SelectCamera=1`: the selection follows each time.
+- [ ] Open `http://localhost:12345/?SelectCamera=9`: the selection does not change, and the Log window shows a `WARN` "No camera has Companion number 9".
+- [ ] In the camera row, type the other camera's number into **Companion #**: the field shows "Used by <other camera>" and the number is not taken. Type `0`: it is rejected too. Put the original number back.
+- [ ] Pan camera 1 with the joystick and, while holding the stick, press Companion's button for camera 2: camera 1 stops, and the joystick now drives camera 2.
+- [ ] Unplug and replug the joystick (no restart), then press Companion's camera buttons: the selection still follows.
+- [ ] Quit the app, rename `Gamepads.json` to `Gamepads.json.bak`, start the app and activate the joystick (now with no mappings): Companion's camera buttons still change the selection. Quit, restore `Gamepads.json`, and start again: the joystick's usual mappings are back.
+- [ ] Add a camera in the app: it gets Companion # 3. Remove it again. Quit and restart: both cameras keep their numbers.
+
 ### #34: App restarts after the previous instance was killed
 
 - [ ] Start `Gui.exe`, then double-click `Gui.exe` again and leave its "PTZ Joystick Control is already running." window open.
@@ -87,13 +102,6 @@ The mutex name changed so the macOS build starts. A build from before this fix a
 - [ ] Unplug the joystick and plug it back in (no app restart). Trigger `SetCameraPreview` for each camera from Companion again: the selection still follows, and the joystick drives the newly selected camera.
 - [ ] Deactivate the joystick in the app, activate it again, and repeat the Companion selection: it still follows.
 - [ ] Rename a camera and add or remove a camera in the app after a replug: the joystick's camera-select options update and the app stays up.
-
-### #8: Companion virtual buttons on a controller with no saved settings
-
-- [ ] Quit the app. Make the joystick unknown to the app: rename `%APPDATA%\PTZJoystickControl\Gamepads.json` to `Gamepads.json.bak` (keep it to restore later). Start the app and activate the joystick: its input list shows "Vmix Cam 1 Preview" and "Vmix Cam 2 Preview" straight away, after the physical buttons.
-- [ ] Map each of them to *Select Camera* with the matching camera. Trigger `SetCameraPreview` for each camera from Companion: the app's camera selection follows, and the joystick drives the selected camera.
-- [ ] Quit and restart the app: both virtual buttons keep their mapping, and `SetCameraPreview` from Companion still selects the cameras.
-- [ ] Quit the app and restore the original `Gamepads.json` (delete the new one, rename `Gamepads.json.bak` back). Start the app: the joystick's usual mappings, including its virtual buttons, are back and drive the cameras.
 
 ### #24: log lines appear for camera connect/disconnect
 
