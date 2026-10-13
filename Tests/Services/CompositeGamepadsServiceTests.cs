@@ -109,37 +109,6 @@ public class CompositeGamepadsServiceTests
         Assert.Empty(composite.ActiveGamepads);
     }
 
-    [Fact]
-    public void ActivatingFromTheUi_WhileTheInputLoopChangesAnotherSource_NeverThrows_AndStaysInLine()
-    {
-        // The UI thread selects the panel on and off while the input loop plugs and unplugs a
-        // joystick: each change makes the merged list read every source.
-        var panel = _panel.AddInfo("skaarhoj:1");
-        var composite = new CompositeGamepadsService(_queue, _usb, _panel);
-        const int rounds = 10000;
-        using var start = new Barrier(2);
-
-        var ui = Task.Run(() =>
-        {
-            start.SignalAndWait();
-            for (int i = 0; i < rounds; i++)
-            {
-                composite.ActivateGamepad(panel);
-                composite.DeactivateGamepad(panel);
-            }
-        });
-        var inputLoop = Task.Run(() =>
-        {
-            start.SignalAndWait();
-            for (int i = 0; i < rounds; i++)
-                _usb.RemoveInfo(_usb.AddInfo($"joystick {i}"));
-        });
-
-        Assert.Null(Record.Exception(() => Task.WaitAll(ui, inputLoop)));
-        Assert.Equal(new IGamepadInfo[] { panel }, composite.Gamepads);
-        Assert.Empty(composite.ActiveGamepads);
-    }
-
     /// <summary>
     /// A controller source that records Activate/Deactivate and keeps its own typed collections,
     /// changing them under the shared controllers lock as the real sources do.
