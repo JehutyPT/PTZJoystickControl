@@ -41,11 +41,14 @@ jobs:
             const { owner, repo } = context.repo;
             const removals = [];
 
-            // Treat task-list checkbox toggles and line-ending differences as no change.
+            // Treat task-list checkbox toggles, line endings and trailing whitespace
+            // (e.g. the final newline `gh issue edit` appends) as no change.
             function normalizeBody(body) {
               return (body || '')
                 .replace(/\r\n?/g, '\n')
-                .replace(/^(\s*(?:[-*+]|\d+[.)])\s+)\[[ xX]\]/gm, '$1[ ]');
+                .replace(/^(\s*(?:[-*+]|\d+[.)])\s+)\[[ xX]\]/gm, '$1[ ]')
+                .replace(/[ \t]+$/gm, '')
+                .trim();
             }
 
             const hasLabel = (issue) =>
