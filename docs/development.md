@@ -59,4 +59,8 @@ New behavior and fixes land test-first. Priority coverage, each added with its o
 
 ## CI
 
-`.github/workflows/build-release.yml` runs the tests, then builds and packages releases (currently pinned to .NET 6). Packaging and releasing only start once the `test` job passes. `.github/workflows/issue-readiness-audit.yml` keeps the `ready-for-agent` label honest; see [agents/issue-tracker.md](agents/issue-tracker.md).
+`.github/workflows/build-release.yml` runs the tests, then builds and packages releases (currently pinned to .NET 6). Packaging and releasing only start once the `test` job passes.
+
+A failed release run on `main` can be retried with "Re-run failed jobs" or "Re-run all jobs". The re-run reuses the bump commit and tag the first attempt pushed (same run number, same version), so it builds and releases that version again rather than bumping twice. If the tag already exists on a different commit, the run stops instead of overwriting another release.
+
+`.github/workflows/issue-readiness-audit.yml` keeps the `ready-for-agent` label honest; see [agents/issue-tracker.md](agents/issue-tracker.md).

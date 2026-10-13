@@ -56,28 +56,63 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # Full history, so a re-run can find the bump commit an earlier
+          # attempt pushed to main.
+          fetch-depth: 0
 
+      # Safe to re-run ("Re-run failed jobs" / "Re-run all jobs"). A re-run
+      # keeps the same triggering commit and run number, so the bumped version
+      # is known up front. If an earlier attempt already pushed that bump
+      # commit, check it out and reuse it; otherwise bump and push now.
       - name: Bump version
-        if: ${{ env.IS_RELEASE == 'true' && github.run_attempt == 1 }}
+        if: ${{ env.IS_RELEASE == 'true' }}
         # Increments the third version part, sets the fourth to the run number,
         # and commits the change back as the user who pushed.
         run: |
           current=$(grep -oP '<Version>\K[^<]+' Gui/Gui.csproj)
           IFS=. read -r major minor patch _ <<< "$current"
           next="$major.$minor.$((patch + 1)).${{ github.run_number }}"
+          subject="Bump version to $next"
           echo "Version: $current -> $next"
-          sed -i "s|<Version>$current</Version>|<Version>$next</Version>|" Gui/Gui.csproj
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
-          git commit -am "Bump version to $next"
-          git push origin HEAD:${{ github.ref_name }}
 
+          git fetch origin "${{ github.ref_name }}"
+          # The bump commit for this run: a child of the triggering commit
+          # with exactly this subject.
+          existing=$(git log --format='%H %P %s' "$GITHUB_SHA..FETCH_HEAD" \
+            | awk -v parent="$GITHUB_SHA" -v subject="$subject" \
+                '$2 == parent && substr($0, length($1) + length($2) + 3) == subject { print $1 }')
+
+          if [ -n "$existing" ]; then
+            echo "Reusing bump commit $existing from an earlier attempt"
+            git checkout --detach "$existing"
+          else
+            sed -i "s|<Version>$current</Version>|<Version>$next</Version>|" Gui/Gui.csproj
+            git config user.name "${{ github.actor }}"
+            git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+            git commit -am "$subject"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
+
+      # Idempotent: creates the tag on the bump commit, accepts a tag an
+      # earlier attempt already put there, and stops if the tag points
+      # anywhere else (that would publish over another release).
       - name: Tag version in git
         if: ${{ env.IS_RELEASE == 'true' }}
         run: |
           version=$(grep -oP '<Version>\K(.*)(?=\.\d+</Version>)' Gui/Gui.csproj)
-          git tag "v$version"
-          git push origin "v$version"
+          tag="v$version"
+          head=$(git rev-parse HEAD)
+          tagged=$(git ls-remote origin "refs/tags/$tag" | cut -f1)
+          if [ -z "$tagged" ]; then
+            git tag "$tag" "$head"
+            git push origin "$tag"
+          elif [ "$tagged" = "$head" ]; then
+            echo "Tag $tag already points at $head (earlier attempt); not pushing"
+          else
+            echo "::error::Tag $tag already exists on $tagged, not on this run's bump commit $head"
+            exit 1
+          fi
 
       # The build jobs check out this commit, so on main they build the bumped
       # version rather than the commit that triggered the run.
