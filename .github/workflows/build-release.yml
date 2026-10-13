@@ -20,12 +20,18 @@ jobs:
         
       - name: Bump version
         if: ${{ github.event_name == 'push' && github.run_attempt == 1 }}
-        uses: SiqiLu/dotnet-bump-version@2.0.0
-        with:
-          version_files: "Gui/Gui.csproj"
-          version_mask: 0.0.1.0
-          version_overwrite: "*.*.*.${{ github.run_number }}"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+        # Increments the third version part, sets the fourth to the run number,
+        # and commits the change back as the user who pushed.
+        run: |
+          current=$(grep -oP '<Version>\K[^<]+' Gui/Gui.csproj)
+          IFS=. read -r major minor patch _ <<< "$current"
+          next="$major.$minor.$((patch + 1)).${{ github.run_number }}"
+          echo "Version: $current -> $next"
+          sed -i "s|<Version>$current</Version>|<Version>$next</Version>|" Gui/Gui.csproj
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
+          git commit -am "Bump version to $next"
+          git push origin HEAD:${{ github.ref_name }}
 
       - name: Tag version in git and set as output
         id: version-select

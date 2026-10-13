@@ -37,7 +37,7 @@ There is no test project yet, and `dotnet test` is commented out in CI. Adding `
 
 ## Branches
 
-- `main` is the working line. It is not kept in sync with upstream.
+- `main` is the working line.
 - New work branches off `main`: `fix/<issue#>-short-description` or `feature/<issue#>-short-description`, one roadmap item per branch where practical.
 
 ## CI

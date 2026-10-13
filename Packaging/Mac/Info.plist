@@ -5,7 +5,7 @@
 		<key>CFBundleDisplayName</key>
 		<string>PTZ Joystick Control</string>
 		<key>CFBundleIdentifier</key>
-		<string>com.github.AronHetLam.PTZJoystickControl</string>
+		<string>com.github.JehutyPT.PTZJoystickControl</string>
 		<key>CFBundleVersion</key>
         <string>0.0.0</string>
 		<key>LSMinimumSystemVersion</key>

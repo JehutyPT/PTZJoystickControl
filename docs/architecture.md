@@ -28,7 +28,7 @@ Commands are **event-driven**: a packet is only sent when the shaped input value
 | `IGamepad` | A controller: its inputs, available commands, camera list, and `SelectedCamera`. Any new controller type (e.g. SKAARHOJ) implements this. |
 | `IInput` | One axis or button, with its mapped command and shaping settings. |
 | `ICommand` | An action on the selected camera. Created per gamepad by `CommandsService`. |
-| `ViscaDeviceBase` | A camera: VISCA command builders, connection settings, and (in this fork) the Companion page/button to press when it is selected. |
+| `ViscaDeviceBase` | A camera: VISCA command builders, connection settings, and the Companion page/button to press when it is selected. |
 | `IGamepadsService` | Discovers controllers, activates/deactivates them, owns the polling loop. |
 
 ## Settings

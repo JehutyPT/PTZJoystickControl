@@ -76,7 +76,7 @@ internal class Program
         services.Register<IGitHubClient>(() => new GitHubClient(new ProductHeaderValue("PTZJoystickControl-UpdateChecker")));
         services.Register<IUpdateService>(() => new UpdateService(
             resolver.GetServiceOrThrow<IGitHubClient>(),
-            "AronHetLam",
+            "JehutyPT",
             "PTZJoystickControl",
             Assembly.GetExecutingAssembly().GetName().Version!));
 

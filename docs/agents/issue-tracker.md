@@ -1,6 +1,6 @@
 # Issue tracker: GitHub
 
-Issues and specs (PRDs) for this repo live as GitHub issues on `JehutyPT/PTZJoystickControl`. Use the `gh` CLI for all operations. This repo is developed independently of the upstream project it was forked from; never open issues or PRs against upstream.
+Issues and specs (PRDs) for this repo live as GitHub issues on `JehutyPT/PTZJoystickControl`. Use the `gh` CLI for all operations.
 
 ## Conventions
 
