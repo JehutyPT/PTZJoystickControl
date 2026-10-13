@@ -6,6 +6,22 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #30: Avalonia 12 UI framework
+
+The UI framework moved from Avalonia 0.10 to 12, so every window, the tray icon and the tray menu are drawn by new code. The look should be unchanged (dark Fluent theme, compact). The Windows zip is now published for the `win-x64`/`win-x86` RIDs and still has the same four native DLLs beside `Gui.exe`. Back up `%APPDATA%\PTZJoystickControl\Cameras.json` and `Gamepads.json` before starting the new build.
+
+- [ ] Unzip `PTZJoystickControl_v<version>_win_x64.zip` (and `_win_x86.zip` on a 32-bit PC) into a fresh folder: it holds `Gui.exe`, `av_libglesv2.dll`, `SDL2.dll`, `libSkiaSharp.dll`, `libHarfBuzzSharp.dll`, `SdlGamepads.dll.config` and a few small `.pdb` files (no `libSkiaSharp.pdb` or `libHarfBuzzSharp.pdb`). Double-click `Gui.exe`: the app starts.
+- [ ] The main window draws normally on the vMix PC (no blank, black or white window): dark theme, blurred (acrylic) or plain dark grey background, title on the left, minimise/close buttons work, text is sharp and readable (the font may differ slightly from the previous build). The Companion warning banner appears only if the Companion listener could not start.
+- [ ] Camera list: both CR-N500 rows show name, IP, port and the connected icon as before. Type an invalid IP or port in a row: the field shows a red border and validation message as the previous build did, and no `ERROR` appears in the log. Undo it. **Add** adds a row and the row's remove button removes it again.
+- [ ] Controller list: the joystick is listed, its inputs show the same mappings, and the axis bars move when the stick moves. Turn on **Advanced**: dead zone, saturation and **Expo** fields and the sliders look as before (the slider overlay over the progress bar lines up).
+- [ ] Move every axis and press buttons for a minute while watching the Log window (tray menu → **Show log**): no `ERROR`, `CRITICAL`, `invalid thread` or `Binding` lines appear. Pan, tilt, zoom, focus and presets drive both cameras; each camera stops on release.
+- [ ] Tray icon: shows the selected camera's number and changes when Companion or a button selects another camera. Right-click: the menu shows **PTZ Joystick Control**, **Check for updates**, **Show log** and **Quit**, and each item works.
+- [ ] **Check for updates** opens the Update Checker window, which shows a result and closes with its OK button.
+- [ ] Log window: lines are readable and can be selected and copied; **Clear Log** empties it; closing it hides it and **Show log** brings it back.
+- [ ] With the app running, double-click `Gui.exe` again: the borderless "already running" window appears and its OK button closes it; the first instance keeps running.
+- [ ] Close the main window: the app keeps running in the tray, and clicking the tray icon shows it again. Quit from the tray: the process ends (no `Gui.exe` left in Task Manager) and the log ends with `PTZJoystickControl stopped`.
+- [ ] `Cameras.json` and `Gamepads.json` are unchanged after the run, apart from settings you changed on purpose.
+
 ### #20: Expo response curve per axis
 
 Each axis has a new **Expo** setting next to **Dead zone** (0 % = linear, as before; up to 100 %). It only bends pan, tilt, zoom and focus speeds between the dead zone and the saturation zone. Existing settings load with Expo 0 %. Back up `%APPDATA%\PTZJoystickControl\Gamepads.json` before starting the new build.
