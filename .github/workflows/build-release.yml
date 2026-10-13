@@ -198,7 +198,7 @@ jobs:
           --window-pos 200 120 \
           --window-size 800 400 \
           --icon-size 100 \
-          --icon "dist/PTZJoystickControl.app/Contents/Resources/icon.icns" 200 190 \
+          --icon "PTZJoystickControl.app" 200 190 \
           --hide-extension "PTZJoystickControl.app" \
           --app-drop-link 600 185 \
           "$OutputName.dmg" \
