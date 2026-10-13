@@ -361,6 +361,25 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
     }
 
     [Fact]
+    public void Expo_SavesAndReloads_InTheirOwnFile()
+    {
+        var first = NewService();
+        first.ActivateGamepad(Info(first));
+        first.OnLinkUp();
+        _queue.RunPending();
+        MapLrToPan(Active(first));
+        Active(first).Inputs.Single(i => i.Name == "LR").Expo = 0.6f;
+
+        var saved = Assert.Single(new GamepadSettingsStore(SettingsPath).GetAllGamepadSettings());
+        Assert.Equal(0.6f, Assert.Single(saved.Inputs!, i => i.Id == "HWC60").Expo);
+
+        var second = NewService();
+        second.OnLinkUp();
+        _queue.RunPending();
+        Assert.Equal(0.6f, Active(second).Inputs.Single(i => i.Name == "LR").Expo);
+    }
+
+    [Fact]
     public void ActivationChosenWhileDisconnected_IsSaved()
     {
         var first = NewService();
