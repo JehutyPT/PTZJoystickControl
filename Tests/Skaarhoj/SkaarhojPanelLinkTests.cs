@@ -169,7 +169,8 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
 
         Assert.True(await WaitUntil(() => Count("down") == 1, TimeSpan.FromSeconds(2)));
 
-        Assert.InRange(Stopwatch.GetElapsedTime(upAt, FirstAt("down")), Grace + Timeout, Grace + Timeout + Ping + Slack);
+        // The link takes its connect time just before raising LinkUp, so allow a few ms below.
+        Assert.InRange(Stopwatch.GetElapsedTime(upAt, FirstAt("down")), Grace + Timeout - TimeSpan.FromMilliseconds(10), Grace + Timeout + Ping + Slack);
     }
 
     [Fact]
@@ -180,7 +181,9 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
 
         _panel.Dispose();
 
-        Assert.True(await WaitUntil(() => Count("down") == 1, Timeout));
+        // Well before the dead-man could fire (grace + timeout after connect).
+        Assert.True(await WaitUntil(() => Count("down") == 1, Grace));
+        Assert.DoesNotContain("ack", _events.First(e => e.Kind == "down").Detail);
     }
 
     [Fact]

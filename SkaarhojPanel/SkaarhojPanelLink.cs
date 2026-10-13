@@ -218,6 +218,11 @@ public sealed class SkaarhojPanelLink : IDisposable
             {
                 break;
             }
+            catch (Exception) when (stopping.IsCancellationRequested)
+            {
+                // Dispose closed the socket mid-connect or mid-session: a clean stop, not an error.
+                break;
+            }
             catch (Exception e)
             {
                 // Should not happen; keep the link alive rather than lose the panel for the rest of the show.

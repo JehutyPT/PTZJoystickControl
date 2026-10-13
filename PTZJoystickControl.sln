@@ -13,7 +13,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SdlGamepads", "SdlGamepads\
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tests", "Tests\Tests.csproj", "{1B71DE59-5BE6-4755-80BB-1456817141DD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SkaarhojPanel", "SkaarhojPanel\SkaarhojPanel.csproj", "{8F142AC5-B7F4-4001-8F8E-6907DB709CFE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SkaarhojPanel", "SkaarhojPanel\SkaarhojPanel.csproj", "{8F142AC5-B7F4-4001-8F8E-6907DB709CFE}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
