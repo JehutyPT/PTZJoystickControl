@@ -12,6 +12,13 @@ namespace PtzJoystickControl.Application.Db;
 /// </summary>
 public class CompanionSettingsStore
 {
+    // The file is edited by hand, often in Notepad: tolerate comments and a trailing comma.
+    private static readonly JsonDocumentOptions ParseOptions = new()
+    {
+        CommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+    };
+
     private readonly string _filePath;
 
     public CompanionSettingsStore()
@@ -40,7 +47,7 @@ public class CompanionSettingsStore
             if (!File.Exists(_filePath))
                 return settings;
 
-            using var document = JsonDocument.Parse(File.ReadAllText(_filePath));
+            using var document = JsonDocument.Parse(File.ReadAllText(_filePath), ParseOptions);
             if (document.RootElement.ValueKind != JsonValueKind.Object)
             {
                 Trace.TraceWarning($"Companion settings in {_filePath} are not a JSON object; using the defaults");
@@ -71,6 +78,11 @@ public class CompanionSettingsStore
                         settings.ListenerPort = port;
                     else
                         WarnInvalid(property, CompanionSettings.DefaultListenerPort);
+                }
+                else
+                {
+                    // Most likely a typo, which would otherwise silently leave a default in place.
+                    Trace.TraceWarning($"Companion settings in {_filePath}: ignoring unknown key {property.Name}");
                 }
             }
             return settings;

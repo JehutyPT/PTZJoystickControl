@@ -93,6 +93,29 @@ public sealed class CompanionSettingsStoreTests : IDisposable
         Assert.Empty(Warnings);
     }
 
+    [Fact]
+    public void Load_CommentsAndTrailingCommas_AreAccepted()
+    {
+        var settings = Load("""
+            {
+              // Production Companion
+              "Host": "192.168.68.110",
+            }
+            """);
+
+        Assert.Equal("192.168.68.110", settings.Host);
+        Assert.Empty(Warnings);
+    }
+
+    [Fact]
+    public void Load_UnknownKey_IsIgnoredWithAWarning()
+    {
+        var settings = Load("""{ "ListnerPort": 12346 }""");
+
+        AssertDefaults(settings);
+        Assert.Contains(Warnings, m => m.Contains(_path) && m.Contains("ListnerPort"));
+    }
+
     [Theory]
     [InlineData("{ not json")]
     [InlineData("")]

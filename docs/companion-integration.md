@@ -18,7 +18,7 @@ Optional, hand-edited, next to `Cameras.json` (see [architecture.md](architectur
 | `Port` | Companion's HTTP port: app → Companion | `8000` |
 | `ListenerPort` | The app's listener port on localhost: Companion → app | `12345` |
 
-Keys are case-insensitive and each one is optional. With no file, the app uses the defaults (the values it always used). If the file is not valid JSON or not an object, every value uses its default; a value of the wrong type, a port outside 1–65535 or an invalid host uses that value's default. Either way the app starts and logs a `WARN` naming the file. At startup it logs an `INFO` line with the address it sends to and the one it listens on.
+Keys are case-insensitive and each one is optional; `//` comments and a trailing comma are allowed, and an unknown key (e.g. a typo) is ignored with a `WARN`. With no file, the app uses the defaults (the values it always used). If the file is not valid JSON or not an object, every value uses its default; a value of the wrong type, a port outside 1–65535 or an invalid host uses that value's default. Either way the app starts and logs a `WARN` naming the file. At startup it logs an `INFO` line with the address it sends to and the one it listens on.
 
 ### Companion → app: camera selection
 
