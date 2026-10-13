@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-	<Version>0.0.12.25</Version>
+	<Version>0.0.13.27</Version>
     <OutputType>WinExe</OutputType>
 	<Title>PTZ Joystick Control</Title>
 	<AssemblyTitle>PTZ Joystick Control</AssemblyTitle>
