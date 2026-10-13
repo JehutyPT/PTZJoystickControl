@@ -13,6 +13,14 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Unplug and replug the joystick: it is detected again and still drives the cameras.
 - [ ] On Apple Silicon (osx-arm64), if used: the app starts and detects the joystick.
 
+### #29: Single-instance check uses a new mutex name
+
+The mutex name changed so the macOS build starts. A build from before this fix and one from after it do not detect each other, so two copies could run on the same joystick and cameras.
+
+- [ ] Before starting the new build, quit any older copy from the tray and check Task Manager shows no other `Gui.exe`.
+- [ ] Start the new `Gui.exe`, then double-click `Gui.exe` again: the second launch only shows a window saying "PTZ Joystick Control is already running.", Task Manager shows one `Gui.exe` after you click OK, and the joystick still drives both cameras.
+- [ ] `PTZJoystickControl.log` has exactly one `started` line for these two launches.
+
 ### #1: Companion unreachable no longer crashes the app
 
 - [ ] Stop Companion. Select each camera from the joystick, then pan, tilt and zoom it and release: the app stays up, and each camera moves and stops.

@@ -16,7 +16,7 @@ dotnet run --project Gui
 
 The solution builds on Windows, macOS and Linux.
 
-Only one instance can run at a time (named mutex in `Gui/Program.cs`).
+Only one instance can run at a time (named mutex, `Application/SingleInstance.cs`); a second launch shows an "already running" window instead. The name must not contain `/` (.NET on macOS and Linux throws) or `\`.
 
 ## Windows package
 
