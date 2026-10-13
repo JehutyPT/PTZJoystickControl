@@ -9,7 +9,7 @@ Gui ──► SdlGamepads ──► Application ──► Core
   └──────────────────────► Application
 ```
 
-`Core` holds interfaces and models only. `Application` implements commands, devices, and services. `SdlGamepads` is one implementation of controller input. `Gui` wires everything together in `Program.cs` using Splat's service locator (`services.RegisterConstant(...)`).
+`Core` holds interfaces and models only. `Application` implements commands, devices, and services. `SdlGamepads` is one implementation of controller input. `Gui` wires everything together in `Program.cs` using Splat's service locator (`services.RegisterConstant(...)`). `Packaging/` holds the Windows MSI (WiX) and macOS app packaging; it is not part of the dependency graph.
 
 ## From stick movement to camera movement
 
