@@ -18,6 +18,8 @@ public class SdlGamepadsService : IGamepadsService
     private readonly ICamerasService _camerasService;
     private readonly ICommandsService _commandsService;
     private readonly IBitfocusCompanionService _bitfocusCompanionService;
+    // Companion input arrives on HTTP listener threads; UpdateLoop runs it alongside SDL input.
+    private readonly InputQueue _inputQueue = new();
     public ObservableCollection<IGamepadInfo> Gamepads { get; private set; } = new();
     public ObservableCollection<IGamepad> ActiveGamepads { get; private set; } = new();
 
@@ -59,14 +61,19 @@ public class SdlGamepadsService : IGamepadsService
 
                     // Press the Companion virtual button on every active gamepad by reference.
                     // SDL instance ids change on every replug, so they cannot address a gamepad here.
-                    foreach (var gamepad in ActiveGamepads.Cast<SdlGamepad>().ToArray())
+                    // Queued, not run here: this is an HTTP listener thread, and commands must never
+                    // run concurrently with SDL input (live-safety).
+                    _inputQueue.Enqueue(() =>
                     {
-                        buttonEvent.state = 1;
-                        gamepad.OnButtonEvent(buttonEvent);
+                        foreach (var gamepad in ActiveGamepads.Cast<SdlGamepad>().ToArray())
+                        {
+                            buttonEvent.state = 1;
+                            gamepad.OnButtonEvent(buttonEvent);
 
-                        buttonEvent.state = 0;
-                        gamepad.OnButtonEvent(buttonEvent);
-                    }
+                            buttonEvent.state = 0;
+                            gamepad.OnButtonEvent(buttonEvent);
+                        }
+                    });
                 }
 
                 break;
@@ -140,6 +147,9 @@ public class SdlGamepadsService : IGamepadsService
 
             try
             {
+                // Companion input queued since the last tick; a failing input is logged and skipped.
+                _inputQueue.RunPending();
+
                 while (SDL.SDL_PollEvent(out var sdlEvent) > 0)
                 {
                     switch (sdlEvent.type)

@@ -64,3 +64,9 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Map each of them to *Select Camera* with the matching camera. Trigger `SetCameraPreview` for each camera from Companion: the app's camera selection follows, and the joystick drives the selected camera.
 - [ ] Quit and restart the app: both virtual buttons keep their mapping, and `SetCameraPreview` from Companion still selects the cameras.
 - [ ] Quit the app and restore the original `Gamepads.json` (delete the new one, rename `Gamepads.json.bak` back). Start the app: the joystick's usual mappings, including its virtual buttons, are back and drive the cameras.
+
+### #6: Companion input runs on the joystick input loop
+
+- [ ] Alternate several times: select a camera from Companion, then pan and zoom it with the joystick and release. Each time the joystick drives the camera Companion selected, it stops on release, and the app stays up. (Don't switch while an axis is held: stop on camera switch is tracked separately, #25.)
+- [ ] Press Companion's camera-select buttons rapidly in alternation: the app ends on the last one pressed, and the main window and tray icon show that camera.
+- [ ] With the main window open, select a camera from Companion: the highlighted camera in the window updates without delay or error in the Log window.

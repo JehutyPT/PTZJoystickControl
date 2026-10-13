@@ -37,6 +37,7 @@ JSON files in `%APPDATA%\PTZJoystickControl\` on Windows (`~/.PTZJoystickControl
 
 ## Threading
 
-- SDL polling and command execution run on the `UpdateLoop` background task.
-- The Companion HTTP listener runs its callbacks on thread-pool threads and currently calls into gamepad input from there (see [companion-integration.md](companion-integration.md) and the roadmap).
-- Avalonia UI updates must happen on the UI thread; `PropertyChanged` raised from background threads can reach UI bindings.
+- SDL polling and command execution run on the `UpdateLoop` background task. It is the input loop: no other thread runs gamepad input.
+- The Companion HTTP listener runs its callbacks on thread-pool threads. It only queues each event on `InputQueue`; `UpdateLoop` runs the queued input at the start of every tick, before polling SDL. A queued input that throws is logged and skipped (see [companion-integration.md](companion-integration.md)).
+- Avalonia UI updates must happen on the UI thread. `SelectedCamera` changes are raised synchronously on the input loop, so `DrivenCameras` and `SelectCameraCommand` see them at once; `CamerasViewModel` re-raises them on the UI thread for bindings.
+- Selecting a camera or activating/deactivating a controller from the main window still runs on the UI thread and is not serialized with the input loop. The app is not operated from its window during live use.
