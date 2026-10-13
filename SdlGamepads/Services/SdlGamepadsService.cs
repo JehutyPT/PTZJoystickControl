@@ -188,7 +188,7 @@ public class SdlGamepadsService : IGamepadsService
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e);
+                Trace.TraceError($"SDL event loop: {e}");
             }
         }
     }

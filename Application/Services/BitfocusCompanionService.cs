@@ -41,7 +41,7 @@ namespace PtzJoystickControl.Application.Services
             catch (Exception e)
             {
                 InboundListenerError = $"Could not listen on {prefix}: {e.Message}";
-                Trace.WriteLine($"Companion listener: failed to start on {prefix}, Companion → app control is disabled: {e}");
+                Trace.TraceError($"Companion listener: failed to start on {prefix}, Companion → app control is disabled: {e}");
                 StopListening();
             }
         }
@@ -73,7 +73,7 @@ namespace PtzJoystickControl.Application.Services
             }
             catch (Exception e)
             {
-                Trace.WriteLine($"Companion listener: failed to stop: {e}");
+                Trace.TraceWarning($"Companion listener: failed to stop: {e}");
             }
         }
 
@@ -91,7 +91,7 @@ namespace PtzJoystickControl.Application.Services
                 }
                 catch (Exception e)
                 {
-                    Trace.WriteLine($"Companion listener: failed to accept request: {e.Message}");
+                    Trace.TraceWarning($"Companion listener: failed to accept request: {e.Message}");
                     return;
                 }
 
@@ -99,7 +99,7 @@ namespace PtzJoystickControl.Application.Services
             }
             catch (Exception e)
             {
-                Trace.WriteLine($"Companion listener: unexpected failure: {e}");
+                Trace.TraceError($"Companion listener: unexpected failure: {e}");
             }
             finally
             {
@@ -116,7 +116,7 @@ namespace PtzJoystickControl.Application.Services
             }
             catch (Exception e)
             {
-                Trace.WriteLine($"Companion listener: failed to listen for the next request: {e.Message}");
+                Trace.TraceError($"Companion listener: failed to listen for the next request: {e.Message}");
             }
         }
 
@@ -138,7 +138,7 @@ namespace PtzJoystickControl.Application.Services
 
                 if (!parsed.IsAccepted)
                 {
-                    Trace.WriteLine($"Companion listener: rejected request '{rawQuery}': {parsed.RejectionReason}");
+                    Trace.TraceWarning($"Companion listener: rejected request '{rawQuery}': {parsed.RejectionReason}");
                     response.StatusCode = (int)HttpStatusCode.BadRequest;
                     return;
                 }
@@ -150,7 +150,7 @@ namespace PtzJoystickControl.Application.Services
             }
             catch (Exception e)
             {
-                Trace.WriteLine($"Companion listener: failed to handle request '{rawQuery}': {e}");
+                Trace.TraceError($"Companion listener: failed to handle request '{rawQuery}': {e}");
                 TrySetStatus(response, HttpStatusCode.InternalServerError);
             }
             finally
@@ -161,7 +161,7 @@ namespace PtzJoystickControl.Application.Services
                 }
                 catch (Exception e)
                 {
-                    Trace.WriteLine($"Companion listener: failed to close response for '{rawQuery}': {e.Message}");
+                    Trace.TraceWarning($"Companion listener: failed to close response for '{rawQuery}': {e.Message}");
                 }
             }
         }
@@ -174,7 +174,7 @@ namespace PtzJoystickControl.Application.Services
             }
             catch (Exception e)
             {
-                Trace.WriteLine($"Companion listener: failed to set response status {(int)status}: {e.Message}");
+                Trace.TraceWarning($"Companion listener: failed to set response status {(int)status}: {e.Message}");
             }
         }
 

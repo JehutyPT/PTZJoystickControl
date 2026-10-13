@@ -39,7 +39,7 @@ public class UdpSocket
             }
             catch (Exception e)
             {
-                Debug.WriteLine($"UDP GetInstance: {e.Message}");
+                Trace.TraceError($"UDP GetInstance: failed to bind the VISCA UDP socket: {e.Message}");
             }
         }
         return socket;
@@ -61,13 +61,13 @@ public class UdpSocket
         }
         catch (SocketException e)
         {
-            Debug.WriteLine($"UDP OnReceive: {e.Message}");
+            Trace.TraceWarning($"UDP OnReceive: socket closed: {e.Message}");
             socket?.Dispose();
             socket = null;
         }
         catch (Exception e)
         {
-            Debug.WriteLine($"UDP OnReceive: {e.Message}");
+            Trace.TraceError($"UDP OnReceive: {e.Message}");
         }
     }
 

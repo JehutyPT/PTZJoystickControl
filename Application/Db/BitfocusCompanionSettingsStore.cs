@@ -44,7 +44,7 @@ public class BitfocusCompanionSettingsStore : IGamepadSettingsStore
         }
         catch (Exception e)
         {
-            Debug.WriteLine(e);
+            Trace.TraceError($"Failed to load gamepad settings from {_camerasFilePath}, starting with none: {e}");
             StoredGamepadSettings = new List<GamepadSettings>();
         }
 
@@ -72,7 +72,7 @@ public class BitfocusCompanionSettingsStore : IGamepadSettingsStore
         }
         catch (Exception e)
         {
-            Debug.WriteLine(e);
+            Trace.TraceError($"Failed to save gamepad settings to {_camerasFilePath}: {e}");
             return false;
         }
     }

@@ -51,7 +51,7 @@ findstr /C:" ERROR " /C:" CRITICAL " "%APPDATA%\PTZJoystickControl\PTZJoystickCo
 
 or `grep -hE ' (ERROR|CRITICAL) ' ~/.config/PTZJoystickControl/PTZJoystickControl*.log` on macOS.
 
-New logging code uses `Trace.TraceError` / `TraceWarning` / `TraceInformation` so the level is right. `Debug.WriteLine` is compiled out of Release builds and `Console.WriteLine` goes nowhere in the packaged app; some older call sites still use them.
+Log with `Trace.TraceError` / `TraceWarning` / `TraceInformation` so the level is right. `Debug.WriteLine` is compiled out of Release builds and `Console.WriteLine` goes nowhere in the packaged app, so neither is used for anything that must reach the log; `Debug.WriteLine` is kept only for per-packet VISCA reply dumps, which would flood the log. Log writes are synchronous: don't log per tick or per packet.
 
 ## Tests
 
