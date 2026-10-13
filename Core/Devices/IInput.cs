@@ -25,5 +25,11 @@ public interface IInput : INotifyPropertyChanged
     string Id { get; }
     IEnumerable<CommandValueOption>? Values { get; }
 
+    /// <summary>
+    /// Feeds a relative input (<see cref="InputType.Relative"/>) a signed step count: positive is
+    /// clockwise. Ignored by other input types. Never throws for any count.
+    /// </summary>
+    void Step(int steps);
+
     event PropertyChangedEventHandler PersistentPropertyChanged;
 }

@@ -5,11 +5,18 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using PtzJoystickControl.Core.Model;
 using System.Collections.Specialized;
+using System.Diagnostics;
 
 namespace PtzJoystickControl.Application.Devices;
 
 public class Input : IInput
 {
+    /// <summary>
+    /// Most steps a relative input runs for one event. An encoder sends ±1 per step, so this is
+    /// only reached by a faulty device; it keeps one event from tying up the input loop.
+    /// </summary>
+    public const int MaxStepsPerEvent = 100;
+
     public string Name { get; private set; }
     public InputType InputType { get; private set; }
     public string Id { get; private set; }
@@ -21,6 +28,8 @@ public class Input : IInput
     private CommandDirectionOption? commandDirection;
     private Direction currentDirection;
     private readonly IInput? secondInput;
+    private readonly bool isSecondInput;
+    private readonly string logName;
     private int currentValue;
     private bool buttonPressed { get; set; }
     private float deadZone { get; set; } = 0.05F;
@@ -28,13 +37,18 @@ public class Input : IInput
     private bool inverted { get; set; }
     private bool defaultCenter { get; set; } = true;
 
-    private Input(string id, string name, InputType inputType, IEnumerable<ICommand> commands, bool isSecondInput)
+    private Input(string id, string name, InputType inputType, IEnumerable<ICommand> commands, bool isSecondInput, string? parentId = null)
     {
         Id = id;
         Name = name;
         InputType = inputType;
-        Commands = commands;
-        SecondInput = InputType == InputType.Axis && !isSecondInput ? new Input(string.Empty, string.Empty, InputType.Axis, commands, true) : null;
+        this.isSecondInput = isSecondInput;
+        logName = isSecondInput ? $"{parentId} (second command)" : id;
+        // Relative inputs run static commands only: no smooth moves from encoder steps.
+        Commands = inputType == InputType.Relative ? commands.Where(c => c is not IDynamicCommand) : commands;
+        SecondInput = (InputType == InputType.Axis || InputType == InputType.Relative) && !isSecondInput
+            ? new Input(string.Empty, string.Empty, InputType, commands, true, id)
+            : null;
     }
 
     public Input(string id, string name, InputType inputType, IEnumerable<ICommand> commands) : this(id, name, inputType, commands, false)
@@ -172,6 +186,12 @@ public class Input : IInput
         get => command;
         set
         {
+            if (InputType == InputType.Relative && value is IDynamicCommand)
+            {
+                Trace.TraceWarning($"Input {logName}: {value.CommandName} cannot be mapped to a relative input (dynamic commands are not supported); the input is left unmapped");
+                value = null;
+            }
+
             //Hack: Detect change of options for SelectCameraCommand
             if (command != null && command is SelectCameraCommand oldCommand)
             {
@@ -185,7 +205,8 @@ public class Input : IInput
                 newCommand.PropertyChanged += OnSelectCameraCommandPropertyChanged;
             }
 
-            if(!(InputType == InputType.Axis && secondInput == null))
+            // A second input's direction is always the opposite of its parent's.
+            if (!isSecondInput)
                 CommandDirection = Directions?.FirstOrDefault();
 
             CommandValue = command is IStaticCommand ? Values?.FirstOrDefault() : Values?.LastOrDefault();
@@ -223,6 +244,30 @@ public class Input : IInput
                 secondInput.PersistentPropertyChanged += PersistentPropertyChanged;
             }
         }
+    }
+
+    public void Step(int steps)
+    {
+        if (InputType != InputType.Relative || steps == 0) return;
+
+        // long: Math.Abs(int.MinValue) overflows.
+        long count = Math.Abs((long)steps);
+        if (count > MaxStepsPerEvent)
+        {
+            Trace.TraceWarning($"Input {logName}: {steps} steps in one event, running only {MaxStepsPerEvent}");
+            count = MaxStepsPerEvent;
+            steps = steps > 0 ? MaxStepsPerEvent : -MaxStepsPerEvent;
+        }
+
+        var direction = steps > 0 ? Direction.High : Direction.Low;
+
+        // Like an axis with a static command: each step is one press, released at once, so nothing
+        // stays pressed or moving. The second input has the opposite direction.
+        if (command is IStaticCommand statCommand && CommandDirection?.Direction == direction)
+            for (long i = 0; i < count; i++)
+                statCommand.Execute(commandValue!);
+
+        secondInput?.Step(steps);
     }
 
     private void ExecuteCommand()
