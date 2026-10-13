@@ -7,12 +7,10 @@ Work is ordered so the app is safe for live use before new features land. Each i
 | Severity | Item |
 |---|---|
 | Critical | `PressButton` is `async void` without error handling; selecting a camera while Companion is unreachable crashes the app. |
-| Critical | Companion listener rethrows exceptions in its callback (e.g. `Enum.Parse` on an unknown query parameter), crashing the app. |
 | High | No stop command is sent to cameras when a controller disconnects. |
 | High | Stop commands are sent once over UDP and never repeated; a lost packet leaves the camera moving. |
 | High | Companion camera selection hardcodes SDL instance id `0`; it stops working after a USB replug. |
 | High | Companion events call into gamepad input from the HTTP thread, concurrently with the SDL loop. |
-| Medium | Companion HTTP responses are never closed; Companion's requests hang until timeout. |
 | Medium | Companion virtual buttons are only added when the gamepad already has saved settings. |
 | Medium | Settings files are written non-atomically and can be corrupted by a crash mid-save. |
 | Medium | Unused ASP.NET Core 2.2 package references (out of support, known vulnerabilities). |

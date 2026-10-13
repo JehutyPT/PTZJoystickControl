@@ -71,10 +71,10 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
 
         // The pending accept completes with an error once the listener stops; it must be logged, not thrown.
         var deadline = DateTime.UtcNow.AddSeconds(3);
-        while (DateTime.UtcNow < deadline && !_trace.Messages.Any(m => m.Contains("Companion listener")))
+        while (DateTime.UtcNow < deadline && !_trace.Messages.Any(m => m.Contains("Companion listener: failed to accept request")))
             await Task.Delay(20);
 
-        Assert.Contains(_trace.Messages, m => m.Contains("Companion listener"));
+        Assert.Contains(_trace.Messages, m => m.Contains("Companion listener: failed to accept request"));
         await Assert.ThrowsAnyAsync<HttpRequestException>(() => StatusOf("?SetCameraPreview=1"));
     }
 
