@@ -7,10 +7,6 @@ namespace PtzJoystickControl.Gui.Views
         public MainWindow()
         {
             InitializeComponent();
-
-            //var logWin = new LogWindow();
-            //logWin.DataContext = new LogWindowViewModel();
-            //logWin.Show();
         }
     }
 }

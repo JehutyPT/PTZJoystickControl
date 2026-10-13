@@ -17,6 +17,42 @@ On macOS/Linux the solution build fails in `Packaging/Windows` (WiX is Windows-o
 
 Only one instance can run at a time (named mutex in `Gui/Program.cs`).
 
+## Logs
+
+Everything the app writes through `System.Diagnostics.Trace` (and `Debug`, in Debug builds only), plus any unhandled exception, goes through one listener (`Application/Logging/AppLogListener.cs`) to a log file and to the in-app Log window (tray menu → **Show log**, which shows the last 1000 entries since startup or since **Clear Log**; clearing never touches the file).
+
+The file sits next to the settings files (`Cameras.json`, `Gamepads.json`):
+
+| OS | Log file |
+|---|---|
+| Windows | `%APPDATA%\PTZJoystickControl\PTZJoystickControl.log` |
+| macOS | `~/.config/PTZJoystickControl/PTZJoystickControl.log` |
+| Linux | `~/.PTZJoystickControl/PTZJoystickControl.log` |
+
+One entry per line, UTF-8:
+
+```
+2026-10-13T14:03:12.345+01:00 WARN [BitfocusCompanionClient] Companion request http://localhost:8000/press/bank/1/2 failed: ...
+```
+
+- Local timestamp with milliseconds and UTC offset, then the level, then the source in brackets, then the message.
+- Levels: `CRITICAL` (unhandled exception), `ERROR`, `WARN`, `INFO` (also plain `Trace.WriteLine`), `VERBOSE`.
+- Source is the class that logged; if that cannot be found, the trace source or `Trace.WriteLine` category, else `App`. Unhandled exceptions use `AppDomain` (with `terminating: true/false`) and unobserved task exceptions `TaskScheduler`.
+- Line breaks inside a message (e.g. stack traces) are written as the two characters `\n`, so an entry never spans lines.
+- The file is flushed after every entry and can be read while the app runs.
+
+Retention: when the file reaches 5 MB (checked on every entry and when the app starts) it is renamed to `PTZJoystickControl.1.log` (older ones shift to `.2` … `.4`, the oldest is deleted), so the logs never exceed about 25 MB. Newest entries are at the end of `PTZJoystickControl.log`.
+
+Reading after a show, e.g. on Windows:
+
+```
+findstr /C:" ERROR " /C:" CRITICAL " "%APPDATA%\PTZJoystickControl\PTZJoystickControl*.log"
+```
+
+or `grep -hE ' (ERROR|CRITICAL) ' ~/.config/PTZJoystickControl/PTZJoystickControl*.log` on macOS.
+
+New logging code uses `Trace.TraceError` / `TraceWarning` / `TraceInformation` so the level is right. `Debug.WriteLine` is compiled out of Release builds and `Console.WriteLine` goes nowhere in the packaged app; some older call sites still use them.
+
 ## Tests
 
 `Tests/` is an xUnit project (`PtzJoystickControl.Tests`) that references `Core` and `Application`. It is part of both `PTZJoystickControl.sln` and `PTZJoystickControl.App.slnf`. Run it with:

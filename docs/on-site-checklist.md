@@ -35,3 +35,10 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Release the stick and immediately push it the other way: the camera follows the new direction and does not stop.
 - [ ] Pan and tilt together, release only pan: tilt keeps moving at the same speed until released, then stops.
 - [ ] Optional, with Wireshark on the vMix PC filtered to the camera's VISCA port (normally `udp.port == 52381`): releasing an axis shows 3 identical stop packets roughly 50–65 ms apart.
+
+### #13: Log file and Log window
+
+- [ ] Start the installed (Release) build: `%APPDATA%\PTZJoystickControl\PTZJoystickControl.log` exists and its last lines include `INFO [Program] PTZJoystickControl <version> started`.
+- [ ] Tray menu → **Show log**: the Log window opens and shows the same startup entries. Close it: the app keeps running and the joystick still drives the cameras. Open it again: it reappears.
+- [ ] With the Log window open, stop Companion, select a camera from the joystick and pan it: a `WARN [BitfocusCompanionClient]` line appears in the window and in the file, and the camera moves and stops normally.
+- [ ] Start Companion again. Quit the app from the tray: the file ends with `PTZJoystickControl stopped`.

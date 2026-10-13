@@ -8,10 +8,6 @@ namespace PtzJoystickControl.Gui.Views
         public InstanceRunningWindow()
         {
             InitializeComponent();
-
-            //var logWin = new LogWindow();
-            //logWin.DataContext = new LogWindowViewModel();
-            //logWin.Show();
         }
     }
 }

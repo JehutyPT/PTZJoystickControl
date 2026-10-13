@@ -31,7 +31,7 @@ This app moves physical cameras during live shows. These rules apply to all inpu
 
 - Every network connection (cameras over TCP, Companion, SKAARHOJ) auto-reconnects with backoff.
 - Settings files are written atomically (write to temp file, then replace) so a crash mid-save cannot corrupt the config.
-- Log connection state changes and errors with timestamps to a rolling file.
+- ⚠️ Log connection state changes and errors with timestamps to a rolling file. The rolling file exists (see [development.md](development.md#logs)), but camera connection messages and several error paths still use `Debug.WriteLine`, which is compiled out of Release builds.
 
 ## Pre-show checklist (target state)
 
