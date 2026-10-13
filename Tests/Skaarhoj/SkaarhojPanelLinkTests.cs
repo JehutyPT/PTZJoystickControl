@@ -321,7 +321,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     }
 
     [Fact]
-    public void StartIfConfigured_WithNoAddress_ReturnsNull_AndLogsNothing()
+    public void CreateIfConfigured_WithNoAddress_ReturnsNull_AndLogsNothing()
     {
         var dir = Path.Combine(Path.GetTempPath(), "PtzSkaarhojLinkTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -329,9 +329,9 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         {
             var path = Path.Combine(dir, SkaarhojPanelSettingsStore.FileName);
 
-            Assert.Null(SkaarhojPanelLink.StartIfConfigured(path));
+            Assert.Null(SkaarhojPanelLink.CreateIfConfigured(path));
             File.WriteAllText(path, "{ \"Address\": \"\", \"Port\": 9923 }");
-            Assert.Null(SkaarhojPanelLink.StartIfConfigured(path));
+            Assert.Null(SkaarhojPanelLink.CreateIfConfigured(path));
 
             Assert.DoesNotContain(_trace.Messages, m => m.Contains(dir) || m.Contains("SKAARHOJ"));
         }
@@ -344,7 +344,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     [Theory]
     [InlineData(0)]
     [InlineData(70000)]
-    public void StartIfConfigured_WithAnInvalidPort_ReturnsNull_AndLogsAnError(int port)
+    public void CreateIfConfigured_WithAnInvalidPort_ReturnsNull_AndLogsAnError(int port)
     {
         var dir = Path.Combine(Path.GetTempPath(), "PtzSkaarhojLinkTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -353,7 +353,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
             var path = Path.Combine(dir, SkaarhojPanelSettingsStore.FileName);
             File.WriteAllText(path, $"{{ \"Address\": \"127.0.0.1\", \"Port\": {port} }}");
 
-            Assert.Null(SkaarhojPanelLink.StartIfConfigured(path));
+            Assert.Null(SkaarhojPanelLink.CreateIfConfigured(path));
 
             Assert.Contains(_trace.Events, e => e.Type == TraceEventType.Error && e.Message.Contains(path));
         }
@@ -364,20 +364,26 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     }
 
     [Fact]
-    public async Task StartIfConfigured_WithAnAddress_ConnectsToThePanel()
+    public async Task CreateIfConfigured_WithAnAddress_ReturnsALinkThatConnectsOnStart()
     {
         var dir = Path.Combine(Path.GetTempPath(), "PtzSkaarhojLinkTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         try
         {
             var path = Path.Combine(dir, SkaarhojPanelSettingsStore.FileName);
-            File.WriteAllText(path, $"{{ \"Address\": \"127.0.0.1\", \"Port\": {_panel.Port} }}");
-
-            var link = SkaarhojPanelLink.StartIfConfigured(path);
+            File.WriteAllText(path, $"{{ \"Address\": \" 127.0.0.1 \", \"Port\": {_panel.Port} }}");
+            var link = SkaarhojPanelLink.CreateIfConfigured(path);
 
             Assert.NotNull(link);
             _links.Add(link!);
-            Assert.True(await WaitUntil(() => link!.IsUp, TimeSpan.FromSeconds(2)));
+            Assert.Equal("127.0.0.1", link!.Host);
+            Assert.Equal(_panel.Port, link.Port);
+            // Not started: a subscriber attached now cannot miss the first LinkUp.
+            await Task.Delay(100);
+            Assert.Equal(0, _panel.Accepted);
+
+            link.Start();
+            Assert.True(await WaitUntil(() => link.IsUp, TimeSpan.FromSeconds(2)));
         }
         finally
         {

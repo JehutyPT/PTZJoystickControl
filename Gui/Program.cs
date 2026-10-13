@@ -63,9 +63,11 @@ internal class Program
             if (abandoned)
                 Trace.TraceWarning("The previous PTZJoystickControl instance did not exit cleanly (crashed or was killed); starting normally");
 
-            var companion = RegisterServices(log);
             // Null, and silent, when SkaarhojPanel.json names no panel.
-            var panel = SkaarhojPanelLink.StartIfConfigured(Path.Combine(settingsDirectory, SkaarhojPanelSettingsStore.FileName));
+            var panel = SkaarhojPanelLink.CreateIfConfigured(Path.Combine(settingsDirectory, SkaarhojPanelSettingsStore.FileName));
+            var companion = RegisterServices(log, settingsDirectory, ref panel);
+            // Started only now, so the panel controller has subscribed and cannot miss its first LinkUp.
+            panel?.Start();
 
             appBuilder.StartWithClassicDesktopLifetime(args, Avalonia.Controls.ShutdownMode.OnExplicitShutdown);
             // Also cancels a pending listener start retry.
@@ -89,7 +91,7 @@ internal class Program
             .UsePlatformDetect()
             .LogToTrace();
 
-    private static BitfocusCompanionService RegisterServices(AppLogListener log)
+    private static BitfocusCompanionService RegisterServices(AppLogListener log, string settingsDirectory, ref SkaarhojPanelLink? panel)
     {
         var services = Locator.CurrentMutable;
         var resolver = Locator.Current;
@@ -119,12 +121,22 @@ internal class Program
 
         // The one input queue: input arriving on other threads is run by SdlGamepadsService's input loop.
         var inputQueue = new InputQueue();
-        services.RegisterConstant<IGamepadsService>(new SdlGamepadsService(
+        var sdlGamepads = new SdlGamepadsService(
             resolver.GetServiceOrThrow<IGamepadSettingsStore>(),
             resolver.GetServiceOrThrow<ICamerasService>(),
             resolver.GetServiceOrThrow<ICommandsService>(),
             resolver.GetServiceOrThrow<IBitfocusCompanionService>(),
-            inputQueue));
+            inputQueue);
+        // With no panel configured, the USB joysticks alone are the controller list, as before.
+        var panelGamepads = panel == null ? null : CreatePanelGamepads(panel, settingsDirectory, resolver, inputQueue);
+        if (panelGamepads == null)
+        {
+            panel?.Dispose();
+            panel = null;
+        }
+        services.RegisterConstant<IGamepadsService>(panelGamepads == null
+            ? sdlGamepads
+            : new CompositeGamepadsService(sdlGamepads, panelGamepads));
 
         services.RegisterLazySingleton(() => new GamepadsViewModel(
             resolver.GetServiceOrThrow<IGamepadsService>()));
@@ -137,6 +149,29 @@ internal class Program
         services.RegisterLazySingleton(() => new TrayIconHandler());
 
         return companion;
+    }
+
+    // The panel as a controller, with its mappings in their own file (every Gamepads.json entry
+    // becomes a USB joystick). Null, with the error logged, if it cannot be set up: the USB
+    // joystick must still start.
+    private static SkaarhojGamepadsService? CreatePanelGamepads(SkaarhojPanelLink panel, string settingsDirectory,
+        IReadonlyDependencyResolver resolver, InputQueue inputQueue)
+    {
+        try
+        {
+            return new SkaarhojGamepadsService(
+                panel,
+                new GamepadSettingsStore(Path.Combine(settingsDirectory, SkaarhojGamepadsService.SettingsFileName)),
+                resolver.GetServiceOrThrow<ICamerasService>(),
+                resolver.GetServiceOrThrow<ICommandsService>(),
+                resolver.GetServiceOrThrow<IBitfocusCompanionService>(),
+                inputQueue);
+        }
+        catch (Exception e)
+        {
+            Trace.TraceError($"SKAARHOJ panel: failed to set up the panel controller; the panel stays off: {e}");
+            return null;
+        }
     }
 }
 
