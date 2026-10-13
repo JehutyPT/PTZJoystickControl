@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Application.Services;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Services;
@@ -10,8 +11,15 @@ namespace PtzJoystickControl.Tests.Services;
 
 public class CompositeGamepadsServiceTests
 {
-    private readonly FakeGamepadsService _usb = new("usb");
-    private readonly FakeGamepadsService _panel = new("panel");
+    private readonly InputQueue _queue = new();
+    private readonly FakeGamepadsService _usb;
+    private readonly FakeGamepadsService _panel;
+
+    public CompositeGamepadsServiceTests()
+    {
+        _usb = new("usb", _queue);
+        _panel = new("panel", _queue);
+    }
 
     [Fact]
     public void Gamepads_ListsEveryServicesControllers_InServiceOrder()
@@ -19,7 +27,7 @@ public class CompositeGamepadsServiceTests
         var joystick = _usb.AddInfo("joystick");
         var panel = _panel.AddInfo("skaarhoj:1");
 
-        var composite = new CompositeGamepadsService(_usb, _panel);
+        var composite = new CompositeGamepadsService(_queue, _usb, _panel);
 
         Assert.Equal(new IGamepadInfo[] { joystick, panel }, composite.Gamepads);
     }
@@ -28,14 +36,14 @@ public class CompositeGamepadsServiceTests
     public void Gamepads_FollowsAddsAndRemoves_WithoutResetting()
     {
         var panel = _panel.AddInfo("skaarhoj:1");
-        var composite = new CompositeGamepadsService(_usb, _panel);
+        var composite = new CompositeGamepadsService(_queue, _usb, _panel);
         var actions = new List<NotifyCollectionChangedAction>();
         composite.Gamepads.CollectionChanged += (_, e) => actions.Add(e.Action);
 
         var joystick = _usb.AddInfo("joystick");
         Assert.Equal(new IGamepadInfo[] { joystick, panel }, composite.Gamepads);
 
-        _usb.Gamepads.Remove(joystick);
+        _usb.RemoveInfo(joystick);
         Assert.Equal(new IGamepadInfo[] { panel }, composite.Gamepads);
         Assert.DoesNotContain(NotifyCollectionChangedAction.Reset, actions);
     }
@@ -45,7 +53,7 @@ public class CompositeGamepadsServiceTests
     {
         var joystick = _usb.AddInfo("joystick");
         var panel = _panel.AddInfo("skaarhoj:1");
-        var composite = new CompositeGamepadsService(_usb, _panel);
+        var composite = new CompositeGamepadsService(_queue, _usb, _panel);
 
         composite.ActivateGamepad(panel);
 
@@ -64,7 +72,7 @@ public class CompositeGamepadsServiceTests
     {
         var joystick = _usb.AddInfo("joystick");
         var panel = _panel.AddInfo("skaarhoj:1");
-        var composite = new CompositeGamepadsService(_usb, _panel);
+        var composite = new CompositeGamepadsService(_queue, _usb, _panel);
         composite.ActivateGamepad(joystick);
 
         composite.ActivateGamepad(panel);
@@ -82,7 +90,7 @@ public class CompositeGamepadsServiceTests
         var joystick = _usb.AddInfo("joystick", activated: true);
         var panel = _panel.AddInfo("skaarhoj:1", activated: true);
 
-        _ = new CompositeGamepadsService(_usb, _panel);
+        _ = new CompositeGamepadsService(_queue, _usb, _panel);
 
         Assert.True(joystick.IsActivated);
         Assert.False(panel.IsActivated);
@@ -93,7 +101,7 @@ public class CompositeGamepadsServiceTests
     public void AnUnknownController_IsIgnored()
     {
         _usb.AddInfo("joystick");
-        var composite = new CompositeGamepadsService(_usb, _panel);
+        var composite = new CompositeGamepadsService(_queue, _usb, _panel);
 
         composite.ActivateGamepad(new FakeGamepadsService.Info("stray"));
 
@@ -101,12 +109,51 @@ public class CompositeGamepadsServiceTests
         Assert.Empty(composite.ActiveGamepads);
     }
 
-    /// <summary>A controller source that records Activate/Deactivate and keeps its own typed collections.</summary>
+    [Fact]
+    public void ActivatingFromTheUi_WhileTheInputLoopChangesAnotherSource_NeverThrows_AndStaysInLine()
+    {
+        // The UI thread selects the panel on and off while the input loop plugs and unplugs a
+        // joystick: each change makes the merged list read every source.
+        var panel = _panel.AddInfo("skaarhoj:1");
+        var composite = new CompositeGamepadsService(_queue, _usb, _panel);
+        const int rounds = 10000;
+        using var start = new Barrier(2);
+
+        var ui = Task.Run(() =>
+        {
+            start.SignalAndWait();
+            for (int i = 0; i < rounds; i++)
+            {
+                composite.ActivateGamepad(panel);
+                composite.DeactivateGamepad(panel);
+            }
+        });
+        var inputLoop = Task.Run(() =>
+        {
+            start.SignalAndWait();
+            for (int i = 0; i < rounds; i++)
+                _usb.RemoveInfo(_usb.AddInfo($"joystick {i}"));
+        });
+
+        Assert.Null(Record.Exception(() => Task.WaitAll(ui, inputLoop)));
+        Assert.Equal(new IGamepadInfo[] { panel }, composite.Gamepads);
+        Assert.Empty(composite.ActiveGamepads);
+    }
+
+    /// <summary>
+    /// A controller source that records Activate/Deactivate and keeps its own typed collections,
+    /// changing them under the shared controllers lock as the real sources do.
+    /// </summary>
     internal sealed class FakeGamepadsService : IGamepadsService
     {
         private readonly string _name;
+        private readonly object _sync;
 
-        public FakeGamepadsService(string name) => _name = name;
+        public FakeGamepadsService(string name, InputQueue inputQueue)
+        {
+            _name = name;
+            _sync = inputQueue.ControllersLock;
+        }
 
         public ObservableCollection<IGamepadInfo> Gamepads { get; } = new();
         public ObservableCollection<IGamepad> ActiveGamepads { get; } = new();
@@ -115,27 +162,40 @@ public class CompositeGamepadsServiceTests
         public Info AddInfo(string id, bool activated = false)
         {
             var info = new Info(id) { IsActivated = activated };
-            Gamepads.Add(info);
+            lock (_sync)
+                Gamepads.Add(info);
             return info;
+        }
+
+        public void RemoveInfo(IGamepadInfo info)
+        {
+            lock (_sync)
+                Gamepads.Remove(info);
         }
 
         public void ActivateGamepad(IGamepadInfo gamepad)
         {
-            if (!Gamepads.Contains(gamepad))
-                throw new InvalidOperationException($"{_name} does not own {gamepad.Id}");
-            Log.Add($"activate {gamepad.Id}");
-            gamepad.IsActivated = true;
-            ActiveGamepads.Add(new NamedGamepad(gamepad.Id));
+            lock (_sync)
+            {
+                if (!Gamepads.Contains(gamepad))
+                    throw new InvalidOperationException($"{_name} does not own {gamepad.Id}");
+                Log.Add($"activate {gamepad.Id}");
+                gamepad.IsActivated = true;
+                ActiveGamepads.Add(new NamedGamepad(gamepad.Id));
+            }
         }
 
         public void DeactivateGamepad(IGamepadInfo gamepad)
         {
-            if (!Gamepads.Contains(gamepad))
-                throw new InvalidOperationException($"{_name} does not own {gamepad.Id}");
-            Log.Add($"deactivate {gamepad.Id}");
-            gamepad.IsActivated = false;
-            foreach (var active in ActiveGamepads.Where(g => g.Id == gamepad.Id).ToList())
-                ActiveGamepads.Remove(active);
+            lock (_sync)
+            {
+                if (!Gamepads.Contains(gamepad))
+                    throw new InvalidOperationException($"{_name} does not own {gamepad.Id}");
+                Log.Add($"deactivate {gamepad.Id}");
+                gamepad.IsActivated = false;
+                foreach (var active in ActiveGamepads.Where(g => g.Id == gamepad.Id).ToList())
+                    ActiveGamepads.Remove(active);
+            }
         }
 
         internal sealed class Info : IGamepadInfo

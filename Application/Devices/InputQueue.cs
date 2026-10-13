@@ -11,6 +11,14 @@ public sealed class InputQueue
 {
     private readonly ConcurrentQueue<Action> pending = new();
 
+    /// <summary>
+    /// Guards every controller source's collections (<c>Gamepads</c>, <c>ActiveGamepads</c>) and the
+    /// list that merges them. The input loop changes them, and so does activation from the UI thread;
+    /// one lock shared by every source lets the merged list read all of them at once without a
+    /// lock-order deadlock.
+    /// </summary>
+    public object ControllersLock { get; } = new();
+
     /// <summary>Queues <paramref name="input"/> to run on the input loop. Safe from any thread; never blocks.</summary>
     public void Enqueue(Action input) => pending.Enqueue(input);
 

@@ -37,9 +37,10 @@ public sealed class SkaarhojGamepadsService : IGamepadsService, IDisposable
     private readonly SkaarhojGamepadInfo _info;
     private SkaarhojPanelLink? _link;
 
-    // Guards the state below and every change to the collections: link events arrive through the
-    // input loop, activation from the UI thread.
-    private readonly object _sync = new();
+    // The controllers lock, shared with every other source (InputQueue.ControllersLock). Guards the
+    // state below and every change to the collections: link events arrive through the input loop,
+    // activation from the UI thread.
+    private readonly object _sync;
     private bool _linkUp;
     private bool _asleep;
     private SkaarhojGamepad? _gamepad;
@@ -73,6 +74,7 @@ public sealed class SkaarhojGamepadsService : IGamepadsService, IDisposable
         _commandsService = commandsService;
         _companion = companion;
         _inputQueue = inputQueue;
+        _sync = inputQueue.ControllersLock;
 
         var id = SkaarhojGamepad.IdFor(address);
         _info = new SkaarhojGamepadInfo(id, $"SKAARHOJ panel ({address})")

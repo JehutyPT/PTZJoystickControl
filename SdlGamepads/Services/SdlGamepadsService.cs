@@ -21,12 +21,16 @@ public class SdlGamepadsService : IGamepadsService
     // Input from other threads (Companion's HTTP listener, the SKAARHOJ panel link) is queued here;
     // UpdateLoop runs it alongside SDL input. Shared with every other controller source.
     private readonly InputQueue _inputQueue;
+    // The controllers lock, shared with every other source (see InputQueue.ControllersLock): the
+    // collections below change on the input loop and, through activation, on the UI thread.
+    private readonly object _sync;
     public ObservableCollection<IGamepadInfo> Gamepads { get; private set; } = new();
     public ObservableCollection<IGamepad> ActiveGamepads { get; private set; } = new();
 
     public SdlGamepadsService(IGamepadSettingsStore gamppadSettingsDb, ICamerasService camerasService, ICommandsService commandsService, IBitfocusCompanionService bitfocusCompanionService, InputQueue inputQueue)
     {
         _inputQueue = inputQueue;
+        _sync = inputQueue.ControllersLock;
         SDL.SDL_Init(SDL.SDL_INIT_JOYSTICK);
 
         _gamppadSettingsDb = gamppadSettingsDb;
@@ -55,43 +59,52 @@ public class SdlGamepadsService : IGamepadsService
         // concurrently with SDL input (live-safety). Controllers are addressed by reference.
         var camera = e.Camera;
         _inputQueue.Enqueue(() =>
-            CompanionCameraSelection.SelectOnEveryController(ActiveGamepads.ToArray(), camera));
+        {
+            lock (_sync)
+                CompanionCameraSelection.SelectOnEveryController(ActiveGamepads.ToArray(), camera);
+        });
     }
 
     public void ActivateGamepad(IGamepadInfo gamepadInfo)
     {
-        if (gamepadInfo is SdlGamepadInfo sdlGamepadInfo && !ActiveGamepads.Any(g => g.Id == gamepadInfo.Id))
+        lock (_sync)
         {
-            if (gamepadInfo.IsConnected)
+            if (gamepadInfo is SdlGamepadInfo sdlGamepadInfo && !ActiveGamepads.Any(g => g.Id == gamepadInfo.Id))
             {
-                var gamepad = LoadGamepad(sdlGamepadInfo);
-                gamepad.PersistentPropertyChanged += GamepadPersistentPropertyChanged;
-                gamepad.Acquire();
-                gamepad.IsActivated = true;
-                ActiveGamepads.Add(gamepad);
+                if (gamepadInfo.IsConnected)
+                {
+                    var gamepad = LoadGamepad(sdlGamepadInfo);
+                    gamepad.PersistentPropertyChanged += GamepadPersistentPropertyChanged;
+                    gamepad.Acquire();
+                    gamepad.IsActivated = true;
+                    ActiveGamepads.Add(gamepad);
+                }
+                sdlGamepadInfo.IsActivated = true;
             }
-            sdlGamepadInfo.IsActivated = true;
         }
     }
 
     public void DeactivateGamepad(IGamepadInfo gamepadInfo)
     {
-        if (gamepadInfo is SdlGamepadInfo sdlGamepadInfo)
+        lock (_sync)
         {
-            var gamepad = ActiveGamepads.OfType<SdlGamepad>().FirstOrDefault(g => g.Id == sdlGamepadInfo.Id);
-            if (gamepad != null)
+            if (gamepadInfo is SdlGamepadInfo sdlGamepadInfo)
             {
-                gamepad.IsActivated = false;
-                DisconnectGamepad(gamepad);
-            }
-            else
-            {
-                // Unplugged: no gamepad saves the flag, so save it here. Otherwise the joystick
-                // would be activated again on the next start alongside another controller.
-                PersistDeactivated(sdlGamepadInfo.Id);
-            }
+                var gamepad = ActiveGamepads.OfType<SdlGamepad>().FirstOrDefault(g => g.Id == sdlGamepadInfo.Id);
+                if (gamepad != null)
+                {
+                    gamepad.IsActivated = false;
+                    DisconnectGamepad(gamepad);
+                }
+                else
+                {
+                    // Unplugged: no gamepad saves the flag, so save it here. Otherwise the joystick
+                    // would be activated again on the next start alongside another controller.
+                    PersistDeactivated(sdlGamepadInfo.Id);
+                }
 
-            sdlGamepadInfo.IsActivated = false;
+                sdlGamepadInfo.IsActivated = false;
+            }
         }
     }
 
@@ -199,20 +212,28 @@ public class SdlGamepadsService : IGamepadsService
     private void OnJoystickAxisMotion(SDL.SDL_JoyAxisEvent jaxis)
     {
         var instanceId = jaxis.which;
-        ActiveGamepads.OfType<SdlGamepad>()
-            .FirstOrDefault(g => g.InstanceId == instanceId)
-            ?.OnAxisEvent(jaxis);
+        lock (_sync)
+            ActiveGamepads.OfType<SdlGamepad>()
+                .FirstOrDefault(g => g.InstanceId == instanceId)
+                ?.OnAxisEvent(jaxis);
     }
 
     private void OnJoystickButtonEvent(SDL.SDL_JoyButtonEvent jbutton)
     {
         var instanceId = jbutton.which;
-        ActiveGamepads.OfType<SdlGamepad>()
-            .FirstOrDefault(g => g.InstanceId == instanceId)
-            ?.OnButtonEvent(jbutton);
+        lock (_sync)
+            ActiveGamepads.OfType<SdlGamepad>()
+                .FirstOrDefault(g => g.InstanceId == instanceId)
+                ?.OnButtonEvent(jbutton);
     }
 
     private void OnJoystickAdded(SDL.SDL_JoyDeviceEvent jdevice)
+    {
+        lock (_sync)
+            AddJoystick(jdevice);
+    }
+
+    private void AddJoystick(SDL.SDL_JoyDeviceEvent jdevice)
     {
         var deviceIndex = jdevice.which;
         var id = SDL.SDL_JoystickGetDeviceGUID(deviceIndex).ToString();
@@ -240,6 +261,12 @@ public class SdlGamepadsService : IGamepadsService
     }
 
     private void OnJoystickRemoved(SDL.SDL_JoyDeviceEvent jdevice)
+    {
+        lock (_sync)
+            RemoveJoystick(jdevice);
+    }
+
+    private void RemoveJoystick(SDL.SDL_JoyDeviceEvent jdevice)
     {
         var instanceId = jdevice.which;
         var gamepadInfo = Gamepads.OfType<SdlGamepadInfo>().FirstOrDefault(g => g.InstanceId == instanceId);

@@ -375,10 +375,10 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
     [Fact]
     public void InTheControllerList_SelectingTheJoystickStopsThePanel_AndViceVersa_NeverBothActive()
     {
-        var usb = new CompositeGamepadsServiceTests.FakeGamepadsService("usb");
+        var usb = new CompositeGamepadsServiceTests.FakeGamepadsService("usb", _queue);
         var joystick = usb.AddInfo("joystick");
         var panel = NewService();
-        var composite = new CompositeGamepadsService(usb, panel);
+        var composite = new CompositeGamepadsService(_queue, usb, panel);
         Assert.Equal(new[] { "joystick", Id }, composite.Gamepads.Select(g => g.Id));
 
         composite.ActivateGamepad(Info(panel));

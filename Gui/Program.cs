@@ -136,7 +136,7 @@ internal class Program
         }
         services.RegisterConstant<IGamepadsService>(panelGamepads == null
             ? sdlGamepads
-            : new CompositeGamepadsService(sdlGamepads, panelGamepads));
+            : new CompositeGamepadsService(inputQueue, sdlGamepads, panelGamepads));
 
         services.RegisterLazySingleton(() => new GamepadsViewModel(
             resolver.GetServiceOrThrow<IGamepadsService>()));
