@@ -149,8 +149,6 @@ jobs:
     # Runners may ship newer SDKs than the LTS. Pin this run to the SDK just
     # installed so packages are built with the .NET 10 SDK. CI only: the repo
     # has no global.json so local builds use any SDK that supports net10.0.
-    # The win7-* RIDs below need the legacy RID graph, which
-    # Directory.Build.props turns on (UseRidGraph).
     - name: Pin .NET SDK for this run
       shell: bash
       run: printf '{"sdk":{"version":"%s"}}\n' "${{ steps.setup-dotnet.outputs.dotnet-version }}" > global.json
@@ -167,7 +165,7 @@ jobs:
     - name: Publish application
       run: dotnet publish Gui/Gui.csproj -c PublishRelease -r $env:Runtime --self-contained -p:PublishSingleFile=true -o publish
       env:
-        Runtime: ${{ format('win7-{0}', matrix.arch) }}
+        Runtime: ${{ format('win-{0}', matrix.arch) }}
 
     - name: List published files
       run: Get-ChildItem publish

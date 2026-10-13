@@ -7,19 +7,18 @@ using Avalonia.Platform;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Controls;
+using System.Globalization;
 using System.Reflection;
 
 namespace PtzJoystickControl.Gui.TrayIcon
 {
     internal class TrayIconHandler
     {
-        private readonly IAssetLoader _assetLoader;
         private readonly string _assemblyName;
         private readonly Avalonia.Controls.TrayIcon _trayIcon;
 
-        public TrayIconHandler(IAssetLoader assetLoader)
+        public TrayIconHandler()
         {
-            _assetLoader = assetLoader ?? throw new ArgumentNullException(nameof(assetLoader));
             _assemblyName = Assembly.GetExecutingAssembly().GetName().Name!;
 
             // Initialize Tray Icon
@@ -37,47 +36,59 @@ namespace PtzJoystickControl.Gui.TrayIcon
 
         public void UpdateIcon(int number)
         {
-            var assets = AvaloniaLocator.Current.GetServiceOrThrow<IAssetLoader>();
+            // Rendering is inside the try too: this runs on the UI thread when the selected camera
+            // changes, and a failure must only leave the old icon, never take the app down.
+            try
+            {
+                _trayIcon.Icon = IconFactory.PngsToMultiSizeIcon(RenderIcons(number));
+            }
+            catch (Exception e)
+            {
+                Trace.TraceWarning($"Tray icon: failed to set icon: {e}");
+            }
+        }
 
+        // The tray icon background with the camera number on it, at 16, 24 and 32 px.
+        private List<Bitmap> RenderIcons(int number)
+        {
             int[] sizes = { 16, 24, 32 };
             string text = number > 0 ? number < 100 ? number.ToString() : "##" : "-";
             List<Bitmap> bitmaps = new(sizes.Length);
 
             for (int i = 0; i < sizes.Length; i++)
             {
-                Bitmap bitmap = new(assets.Open(new Uri($"avares://{_assemblyName}/Assets/bg_{sizes[i]}.png")));
+                var size = sizes[i];
+                using Bitmap background = new(AssetLoader.Open(new Uri($"avares://{_assemblyName}/Assets/bg_{size}.png")));
 
-                using var rtbb = new RenderTargetBitmap(new PixelSize(sizes[i], sizes[i]));
-                using var ctx = rtbb.CreateDrawingContext(null);
-                
-                var brush = new SolidColorBrush(Colors.White);
-                var formattedTextt = new FormattedText(
-                    text,
-                    new Typeface("Microsoft Sans Serif", FontStyle.Normal, FontWeight.SemiBold),
-                    sizes[i] - 4,
-                    TextAlignment.Center,
-                    TextWrapping.NoWrap,
-                    new Size(sizes[i], sizes[i])
-                );
+                // 96 DPI: one bitmap pixel per device-independent pixel, as Avalonia 0.10 rendered it.
+                using var rtb = new RenderTargetBitmap(new PixelSize(size, size), new Vector(96, 96));
+                using (var ctx = rtb.CreateDrawingContext())
+                {
+                    var formattedText = new FormattedText(
+                        text,
+                        CultureInfo.InvariantCulture,
+                        FlowDirection.LeftToRight,
+                        new Typeface("Microsoft Sans Serif", FontStyle.Normal, FontWeight.SemiBold),
+                        size - 4,
+                        Brushes.White)
+                    {
+                        TextAlignment = TextAlignment.Center,
+                        MaxTextWidth = size,
+                        MaxTextHeight = size,
+                    };
 
-                ctx.DrawBitmap(bitmap.PlatformImpl, 1, new Rect(0, 0, sizes[i], sizes[i]), new Rect(0, 0, sizes[i], sizes[i]));
-                ctx.DrawText(brush, new Point(0, 0), formattedTextt.PlatformImpl);
+                    ctx.DrawImage(background, new Rect(0, 0, size, size));
+                    ctx.DrawText(formattedText, new Point(0, 0));
+                }
 
                 using var ms = new MemoryStream();
-                rtbb.Save(ms);
+                rtb.Save(ms, new PngBitmapEncoderOptions());
                 ms.Position = 0;
 
                 bitmaps.Add(new Bitmap(ms));
             }
 
-            try
-            {
-                _trayIcon.Icon = IconFactory.PngsToMultiSizeIcon(bitmaps);
-            }
-            catch (Exception e)
-            {
-                Trace.TraceWarning($"Tray icon: failed to set icon: {e}");
-            }
+            return bitmaps;
         }
 
         public void Exit(object? s, EventArgs e)

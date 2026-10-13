@@ -16,11 +16,13 @@ public class CommandPropsTemplateSelector : IDataTemplate
 
     public bool SupportsRecycling => false;
 
-    public IControl Build(object param)
+    public Control? Build(object? param)
     {
         IDataTemplate? returnTemplate = null;
 
-        var inputViewModel = (InputViewModel)param;
+        if (param is not InputViewModel inputViewModel)
+            return null;
+
         if (inputViewModel.SelectedCommand != null)
         {
             if (inputViewModel.InputType == InputType.Axis)
@@ -71,7 +73,7 @@ public class CommandPropsTemplateSelector : IDataTemplate
 
     private IDataTemplate? Template(string key) => Templates.TryGetValue(key, out var template) ? template : null;
 
-    public bool Match(object data)
+    public bool Match(object? data)
     {
         return data is InputViewModel;
     }

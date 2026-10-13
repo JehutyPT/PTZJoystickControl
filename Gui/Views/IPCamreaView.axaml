@@ -28,7 +28,7 @@
 		<Label		Grid.Column="4"  Grid.Row="0">Port</Label>
 		<TextBox	Grid.Column="4"  Grid.Row="1" Text="{Binding Port}"/>
 		<Label		Grid.Column="6"  Grid.Row="0">Protocol</Label>
-		<ComboBox	Grid.Column="6"  Grid.Row="1" Items="{Binding Protocols}" SelectedItem="{Binding Protocol}" HorizontalAlignment="Stretch"/>
+		<ComboBox	Grid.Column="6"  Grid.Row="1" ItemsSource="{Binding Protocols}" SelectedItem="{Binding Protocol}" HorizontalAlignment="Stretch"/>
 		<Label		Grid.Column="8"  Grid.Row="0">Header</Label>
 		<CheckBox	Grid.Column="8"  Grid.Row="1" IsChecked="{Binding UseHeader}" HorizontalAlignment="Center"/>
 		<Label		Grid.Column="10" Grid.Row="0">Interval</Label>

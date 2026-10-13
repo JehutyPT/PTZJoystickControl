@@ -25,7 +25,7 @@ namespace PtzJoystickControl.Gui
             if (ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
                 return;
 
-            if (desktop.Args.Contains("-r"))
+            if (desktop.Args?.Contains("-r") == true)
             {
                 desktop.MainWindow = new InstanceRunningWindow();
                 return;
@@ -41,8 +41,10 @@ namespace PtzJoystickControl.Gui
                 Locator.Current.GetServiceOrThrow<IBitfocusCompanionService>());
             mainWindow.DataContext = mainWindowViewModel;
 
-            mainWindow.Closing += (object? s, CancelEventArgs e) =>
-            {   // Prevent closnig to keep application running in background
+            mainWindow.Closing += (object? s, WindowClosingEventArgs e) =>
+            {   // Prevent closing to keep application running in background
+                if (IsAppOrOsShutdown(e))
+                    return;
                 mainWindow.Hide();
                 e.Cancel = true;
             };
@@ -94,6 +96,8 @@ namespace PtzJoystickControl.Gui
                 return;
 
             var mainWindow = desktop.MainWindow;
+            if (mainWindow == null)
+                return;
 
             mainWindow.Show();
             if (mainWindow.WindowState == WindowState.Minimized)
@@ -104,6 +108,12 @@ namespace PtzJoystickControl.Gui
                 mainWindow.Topmost = false;
             }
         }
+
+        // Since Avalonia 11, quitting (tray menu → Quit) and OS shutdown raise Closing on every
+        // window too; only a user closing the window hides it instead.
+        private static bool IsAppOrOsShutdown(WindowClosingEventArgs e) =>
+            e.CloseReason == WindowCloseReason.ApplicationShutdown
+            || e.CloseReason == WindowCloseReason.OSShutdown;
 
         private LogWindow? _logWindow;
 
@@ -116,8 +126,10 @@ namespace PtzJoystickControl.Gui
                     DataContext = Locator.Current.GetServiceOrThrow<LogWindowViewModel>()
                 };
                 var logWindow = _logWindow;
-                logWindow.Closing += (object? s, CancelEventArgs e) =>
+                logWindow.Closing += (object? s, WindowClosingEventArgs e) =>
                 {   // Hide instead of closing so the window keeps its log and can be reopened.
+                    if (IsAppOrOsShutdown(e))
+                        return;
                     logWindow.Hide();
                     e.Cancel = true;
                 };
@@ -147,7 +159,10 @@ namespace PtzJoystickControl.Gui
                         var dialog = new UpdateDialogWindow();
                         dialog.DataContext = new UpdateDialogViewModel(update, dialog);
                         ShowMainWindow();
-                        dialog.ShowDialog(desktop.MainWindow);
+                        if (desktop.MainWindow != null)
+                            dialog.ShowDialog(desktop.MainWindow);
+                        else
+                            dialog.Show();
                     };
                     if (Dispatcher.UIThread.CheckAccess())
                         showUpdateModal();

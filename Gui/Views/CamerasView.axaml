@@ -12,7 +12,7 @@
 	</UserControl.Resources>
 
 	<Grid RowDefinitions="*,Auto">
-		<ListBox Items="{Binding Cameras}" SelectedItem="{Binding SelectedCamera}" Background="#0000" Padding="10">
+		<ListBox ItemsSource="{Binding Cameras}" SelectedItem="{Binding SelectedCamera}" Background="#0000" Padding="10">
 
 			<ListBox.Styles>
 				<Style Selector="ListBoxItem">

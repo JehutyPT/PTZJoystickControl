@@ -25,6 +25,9 @@ namespace PtzJoystickControl.Gui.TrayIcon
 
         private const byte PngColorsInPalette = 0;
         private const ushort PngColorPlanes = 1;
+        // Bit count field of each entry. Written as 1, the value Avalonia 0.10's PixelFormat.Rgba8888
+        // enum had, so the icon bytes stay as before; Windows reads the size and depth from the PNG.
+        private const ushort PngBitCount = 1;
 
         public static WindowIcon PngsToMultiSizeIcon(IEnumerable<Bitmap> images)
         {
@@ -73,7 +76,7 @@ namespace PtzJoystickControl.Gui.TrayIcon
                     writer.Write(PngColorsInPalette);
                     writer.Write(EntryReserved);
                     writer.Write(PngColorPlanes);
-                    writer.Write((ushort)PixelFormat.Rgba8888);
+                    writer.Write(PngBitCount);
                     writer.Write((uint)buffer.Length);
                     writer.Write(offset);
 
@@ -136,7 +139,7 @@ namespace PtzJoystickControl.Gui.TrayIcon
         {
             using (var stream = new MemoryStream())
             {
-                image.Save(stream);
+                image.Save(stream, new PngBitmapEncoderOptions());
 
                 return stream.ToArray();
             }

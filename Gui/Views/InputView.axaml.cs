@@ -12,11 +12,6 @@ public partial class InputView : UserControl
         InitializeComponent();
     }
 
-    private void InitializeComponent()
-    {
-        AvaloniaXamlLoader.Load(this);
-    }
-
     //public static readonly DirectProperty<InputView, bool> ShowAxisSettingsProperty =
     //    AvaloniaProperty.RegisterDirect<InputView, bool>(nameof(ShowAxisSettings), o => o.ShowAxisSettings, (o, v) => o.ShowAxisSettings = v, false, BindingMode.OneWay);
 

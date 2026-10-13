@@ -2,7 +2,6 @@ using Avalonia.Layout;
 using Avalonia.Threading;
 using PtzJoystickControl.Core.Services;
 using PtzJoystickControl.Gui.Views;
-using ReactiveUI;
 using System;
 using System.Runtime.InteropServices;
 
@@ -41,7 +40,7 @@ public class MainWindowViewModel : ViewModelBase
     public string? CompanionInboundWarning
     {
         get => _companionInboundWarning;
-        private set => this.RaiseAndSetIfChanged(ref _companionInboundWarning, value);
+        private set => RaiseAndSetIfChanged(ref _companionInboundWarning, value);
     }
 
     private void UpdateCompanionInboundWarning() => CompanionInboundWarning = WarningFor(_companion.InboundListenerError);

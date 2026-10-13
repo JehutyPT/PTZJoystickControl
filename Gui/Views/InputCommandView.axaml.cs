@@ -10,10 +10,5 @@ namespace PtzJoystickControl.Gui.Views
         {
             InitializeComponent();
         }
-
-        private void InitializeComponent()
-        {
-            AvaloniaXamlLoader.Load(this);
-        }
     }
 }
