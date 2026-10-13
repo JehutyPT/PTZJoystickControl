@@ -26,7 +26,7 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
     public BitfocusCompanionListenerTests()
     {
         Trace.Listeners.Add(_trace);
-        _service = new BitfocusCompanionService(GetFreePort(), _port, _cameras);
+        _service = new BitfocusCompanionService(Settings(_port), _cameras);
         _client = new HttpClient
         {
             BaseAddress = new Uri($"http://localhost:{_port}/"),
@@ -117,7 +117,7 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
         try
         {
             BitfocusCompanionService? service = null;
-            var constructing = Record.Exception(() => service = new BitfocusCompanionService(GetFreePort(), blockedPort, _cameras));
+            var constructing = Record.Exception(() => service = new BitfocusCompanionService(Settings(blockedPort), _cameras));
 
             Assert.Null(constructing);
             Assert.NotNull(service!.InboundListenerError);
@@ -164,7 +164,7 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
     {
         var blockedPort = GetFreePort();
         var (blocker, blockerV6) = HoldPort(blockedPort);
-        var service = new BitfocusCompanionService(GetFreePort(), blockedPort, _cameras, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(200));
+        var service = new BitfocusCompanionService(Settings(blockedPort), _cameras, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(200));
         var changes = 0;
         service.InboundListenerErrorChanged += (_, _) => Interlocked.Increment(ref changes);
         try
@@ -202,7 +202,7 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
     {
         var blockedPort = GetFreePort();
         var (blocker, blockerV6) = HoldPort(blockedPort);
-        var service = new BitfocusCompanionService(GetFreePort(), blockedPort, _cameras, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(100));
+        var service = new BitfocusCompanionService(Settings(blockedPort), _cameras, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(100));
         try
         {
             Assert.Null(Record.Exception(service.StopListening));
@@ -236,6 +236,10 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
         using var response = await _client.GetAsync(pathAndQuery);
         return response.StatusCode;
     }
+
+    // Outbound goes to an unused local port: these tests only exercise the listener.
+    private static CompanionSettings Settings(int listenerPort) =>
+        new() { Port = GetFreePort(), ListenerPort = listenerPort };
 
     private static int GetFreePort()
     {

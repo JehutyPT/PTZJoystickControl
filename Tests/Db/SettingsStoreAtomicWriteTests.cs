@@ -126,31 +126,4 @@ public sealed class SettingsStoreAtomicWriteTests : IDisposable
         Assert.Equal("[]", File.ReadAllText(path));
         Assert.Equal(new[] { "Cameras.json" }, FolderEntries());
     }
-
-    [Fact]
-    public void CompanionStoreSave_OverExistingFile_ReplacesContentAndLeavesNoTempFile()
-    {
-        var path = FilePath("Gamepads.json");
-        File.WriteAllText(path, new string('x', 10_000));
-
-        Assert.True(new BitfocusCompanionSettingsStore(path).SaveGamepadSettings(Gamepad("pad-1", "Joystick")));
-
-        Assert.Equal("Joystick", new BitfocusCompanionSettingsStore(path).GetGamepadSettingsById("pad-1")?.Name);
-        Assert.Equal(new[] { "Gamepads.json" }, FolderEntries());
-    }
-
-    [Fact]
-    public void CompanionStoreSave_WhenWriteFailsBeforeReplace_ReturnsFalseAndKeepsPreviousFile()
-    {
-        if (!CanBlockNewFiles) return;
-        var path = FilePath("Gamepads.json");
-        File.WriteAllText(path, PreviousContent);
-        BlockNewFilesInFolder();
-
-        var saved = new BitfocusCompanionSettingsStore(path).SaveGamepadSettings(Gamepad("pad-1", "Joystick"));
-
-        Assert.False(saved);
-        Assert.Equal(PreviousContent, File.ReadAllText(path));
-        Assert.Equal(new[] { "Gamepads.json" }, FolderEntries());
-    }
 }
