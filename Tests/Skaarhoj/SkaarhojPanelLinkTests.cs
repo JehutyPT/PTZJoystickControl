@@ -333,7 +333,8 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
             File.WriteAllText(path, "{ \"Address\": \"\", \"Port\": 9923 }");
             Assert.Null(SkaarhojPanelLink.CreateIfConfigured(path));
 
-            Assert.DoesNotContain(_trace.Messages, m => m.Contains(dir) || m.Contains("SKAARHOJ"));
+            // Other test classes log SKAARHOJ lines in parallel: look only for this file and the connect line.
+            Assert.DoesNotContain(_trace.Messages, m => m.Contains(dir) || m.Contains("SKAARHOJ panel: connecting to"));
         }
         finally
         {
