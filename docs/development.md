@@ -14,7 +14,7 @@ dotnet build PTZJoystickControl.sln
 dotnet run --project Gui
 ```
 
-The solution builds on Windows, macOS and Linux. Off Windows, `Packaging/Windows` (WiX is Windows-only) builds nothing and prints `Skipping Windows: the MSI is built on Windows only.`
+The solution builds on Windows, macOS and Linux. Off Windows, `Packaging/Windows` (WiX is Windows-only) builds nothing and prints `Skipping Windows: the MSI is built on Windows only.` On Windows it builds the MSI from the `PublishRelease` publish output, so publish `Gui` first as the CI Windows job does.
 
 `Directory.Build.props` turns on the legacy RID graph (`UseRidGraph`) so the Windows package can still be published for `win7-x64`/`win7-x86`: Avalonia 0.10 ships its Windows renderer (`av_libglesv2.dll`) only for those RIDs. Remove it when Avalonia is upgraded.
 
@@ -94,7 +94,7 @@ New behavior and fixes land test-first. Priority coverage, each added with its o
 
 ## CI
 
-`.github/workflows/build-release.yml` runs the tests, then builds and packages releases. Each job installs the latest .NET 10 SDK and pins the run to it with a generated `global.json` (the repo has none), so a newer SDK on the runner image is never used. Packaging and releasing only start once the `test` job passes. The build jobs only upload their packages as workflow artifacts; on `main`, a single `release` job runs after all of them succeed and publishes the GitHub prerelease with every package at once. If any build fails, no release is created or updated.
+`.github/workflows/build-release.yml` runs the tests, then builds and packages releases. The test and package jobs install the latest .NET 10 SDK and pin the run to it with a generated `global.json` (the repo has none), so a newer SDK on the runner image is never used. Packaging and releasing only start once the `test` job passes. The build jobs only upload their packages as workflow artifacts; on `main`, a single `release` job runs after all of them succeed and publishes the GitHub prerelease with every package at once. If any build fails, no release is created or updated.
 
 A failed release run on `main` can be retried with "Re-run failed jobs" or "Re-run all jobs". The re-run reuses the bump commit and tag the first attempt pushed (same run number, same version), so it builds and releases that version again rather than bumping twice. If the tag already exists on a different commit, the run stops instead of overwriting another release.
 
