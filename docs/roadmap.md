@@ -6,7 +6,6 @@ Work is ordered so the app is safe for live use before new features land. Each i
 
 | Severity | Item |
 |---|---|
-| Critical | `PressButton` is `async void` without error handling; selecting a camera while Companion is unreachable crashes the app. |
 | High | No stop command is sent to cameras when a controller disconnects. |
 | High | Stop commands are sent once over UDP and never repeated; a lost packet leaves the camera moving. |
 | High | Companion camera selection hardcodes SDL instance id `0`; it stops working after a USB replug. |
