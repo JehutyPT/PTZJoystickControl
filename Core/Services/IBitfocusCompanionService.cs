@@ -10,8 +10,6 @@ namespace PtzJoystickControl.Core.Services
         /// Subscribers must queue the work for the input loop, never run controller input here.
         /// </summary>
         event EventHandler<BitfocusCompanionEvent>? ReceivedBitfocusCommand;
-        public void PressButton(int? pageNumber, int? buttonNumber);
-        public void SetCustomVariable(string variableName, string value);
 
         /// <summary>
         /// Why Companion → app requests are not being received, or null while the inbound listener is running.

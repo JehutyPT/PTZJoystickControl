@@ -41,10 +41,14 @@ public sealed class CompanionSettingsStoreTests : IDisposable
     private IEnumerable<string> Warnings =>
         _trace.Events.Where(e => e.Type == TraceEventType.Warning).Select(e => e.Message);
 
+    // Filtered to this test's file: other test classes log through the same global Trace in parallel.
+    private IEnumerable<string> Informations =>
+        _trace.Events.Where(e => e.Type == TraceEventType.Information && e.Message.Contains(_path)).Select(e => e.Message);
+
+    private IEnumerable<string> WarningsAboutThisFile => Warnings.Where(m => m.Contains(_path));
+
     private static void AssertDefaults(CompanionSettings settings)
     {
-        Assert.Equal("localhost", settings.Host);
-        Assert.Equal(8000, settings.Port);
         Assert.Equal(12345, settings.ListenerPort);
     }
 
@@ -64,10 +68,8 @@ public sealed class CompanionSettingsStoreTests : IDisposable
     [Fact]
     public void Load_ValidFile_ReturnsItsValues()
     {
-        var settings = Load("""{ "Host": "192.168.68.110", "Port": 8001, "ListenerPort": 12346 }""");
+        var settings = Load("""{ "ListenerPort": 12346 }""");
 
-        Assert.Equal("192.168.68.110", settings.Host);
-        Assert.Equal(8001, settings.Port);
         Assert.Equal(12346, settings.ListenerPort);
         Assert.Empty(Warnings);
     }
@@ -75,21 +77,15 @@ public sealed class CompanionSettingsStoreTests : IDisposable
     [Fact]
     public void Load_PropertyNamesAreCaseInsensitive()
     {
-        var settings = Load("""{ "host": "companion.local", "port": 8001, "listenerport": 12346 }""");
+        var settings = Load("""{ "listenerport": 12346 }""");
 
-        Assert.Equal("companion.local", settings.Host);
-        Assert.Equal(8001, settings.Port);
         Assert.Equal(12346, settings.ListenerPort);
     }
 
     [Fact]
-    public void Load_OmittedValues_KeepTheirDefaultsWithoutWarning()
+    public void Load_EmptyObject_KeepsTheDefaultsWithoutWarning()
     {
-        var settings = Load("""{ "Port": 8001 }""");
-
-        Assert.Equal("localhost", settings.Host);
-        Assert.Equal(8001, settings.Port);
-        Assert.Equal(12345, settings.ListenerPort);
+        AssertDefaults(Load("{ }"));
         Assert.Empty(Warnings);
     }
 
@@ -98,12 +94,12 @@ public sealed class CompanionSettingsStoreTests : IDisposable
     {
         var settings = Load("""
             {
-              // Production Companion
-              "Host": "192.168.68.110",
+              // Companion's HTTP module calls this port
+              "ListenerPort": 12346,
             }
             """);
 
-        Assert.Equal("192.168.68.110", settings.Host);
+        Assert.Equal(12346, settings.ListenerPort);
         Assert.Empty(Warnings);
     }
 
@@ -114,6 +110,36 @@ public sealed class CompanionSettingsStoreTests : IDisposable
 
         AssertDefaults(settings);
         Assert.Contains(Warnings, m => m.Contains(_path) && m.Contains("ListnerPort"));
+    }
+
+    // Host and Port only configured the app's outbound calls to Companion, which were removed (#15).
+    // Companion.json on the show PC may still have them: they are ignored with one INFO line, not a WARN.
+    [Theory]
+    [InlineData("""{ "Host": "192.168.68.110", "ListenerPort": 12346 }""", "Host")]
+    [InlineData("""{ "Port": 8001, "ListenerPort": 12346 }""", "Port")]
+    [InlineData("""{ "host": "192.168.68.110", "ListenerPort": 12346 }""", "host")]
+    [InlineData("""{ "Host": 42, "ListenerPort": 12346 }""", "Host")]
+    [InlineData("""{ "Port": 70000, "ListenerPort": 12346 }""", "Port")]
+    public void Load_RetiredHostOrPort_IsIgnoredWithAnInfoNotAWarning(string contents, string key)
+    {
+        var settings = Load(contents);
+
+        Assert.Equal(12346, settings.ListenerPort);
+        Assert.Empty(WarningsAboutThisFile);
+        var info = Assert.Single(Informations, m => m.Contains(key));
+        Assert.Contains("no longer used", info);
+    }
+
+    [Fact]
+    public void Load_RetiredHostAndPort_LogOneInfoLine()
+    {
+        var settings = Load("""{ "Host": "192.168.68.110", "Port": 8000, "ListenerPort": 12346 }""");
+
+        Assert.Equal(12346, settings.ListenerPort);
+        Assert.Empty(WarningsAboutThisFile);
+        var info = Assert.Single(Informations);
+        Assert.Contains("Host", info);
+        Assert.Contains("Port", info);
     }
 
     [Theory]
@@ -130,36 +156,18 @@ public sealed class CompanionSettingsStoreTests : IDisposable
     }
 
     [Theory]
-    [InlineData("""{ "Host": "192.168.68.110", "Port": 0, "ListenerPort": 12346 }""", "Port")]
-    [InlineData("""{ "Host": "192.168.68.110", "Port": 65536, "ListenerPort": 12346 }""", "Port")]
-    [InlineData("""{ "Host": "192.168.68.110", "Port": "8001", "ListenerPort": 12346 }""", "Port")]
-    [InlineData("""{ "Host": "192.168.68.110", "Port": 8001.5, "ListenerPort": 12346 }""", "Port")]
-    [InlineData("""{ "Host": "192.168.68.110", "Port": 8001, "ListenerPort": -1 }""", "ListenerPort")]
-    [InlineData("""{ "Host": "192.168.68.110", "Port": 8001, "ListenerPort": null }""", "ListenerPort")]
-    [InlineData("""{ "Host": "http://192.168.68.110", "Port": 8001, "ListenerPort": 12346 }""", "Host")]
-    [InlineData("""{ "Host": "192.168.68.110:8000", "Port": 8001, "ListenerPort": 12346 }""", "Host")]
-    [InlineData("""{ "Host": "", "Port": 8001, "ListenerPort": 12346 }""", "Host")]
-    [InlineData("""{ "Host": "two words", "Port": 8001, "ListenerPort": 12346 }""", "Host")]
-    [InlineData("""{ "Host": 42, "Port": 8001, "ListenerPort": 12346 }""", "Host")]
-    [InlineData("""{ "Host": "192.168.68.110/", "Port": 8001, "ListenerPort": 12346 }""", "Host")]
-    public void Load_InvalidValue_FallsBackForThatValueOnlyAndWarns(string contents, string invalid)
+    [InlineData("""{ "ListenerPort": 0 }""")]
+    [InlineData("""{ "ListenerPort": 65536 }""")]
+    [InlineData("""{ "ListenerPort": "12346" }""")]
+    [InlineData("""{ "ListenerPort": 12346.5 }""")]
+    [InlineData("""{ "ListenerPort": -1 }""")]
+    [InlineData("""{ "ListenerPort": null }""")]
+    public void Load_InvalidListenerPort_FallsBackToTheDefaultAndWarns(string contents)
     {
         var settings = Load(contents);
 
-        Assert.Equal(invalid == "Host" ? "localhost" : "192.168.68.110", settings.Host);
-        Assert.Equal(invalid == "Port" ? 8000 : 8001, settings.Port);
-        Assert.Equal(invalid == "ListenerPort" ? 12345 : 12346, settings.ListenerPort);
-        Assert.Contains(Warnings, m => m.Contains(_path) && m.Contains(invalid));
-        Assert.Null(Record.Exception(() => settings.OutboundBaseAddress));
-    }
-
-    [Fact]
-    public void OutboundBaseAddress_UsesHostAndPort()
-    {
-        Assert.Equal(new Uri("http://192.168.68.110:8001/"),
-            new CompanionSettings { Host = "192.168.68.110", Port = 8001 }.OutboundBaseAddress);
-        Assert.Equal(new Uri("http://[::1]:8000/"),
-            new CompanionSettings { Host = "::1" }.OutboundBaseAddress);
+        AssertDefaults(settings);
+        Assert.Contains(Warnings, m => m.Contains(_path) && m.Contains("ListenerPort"));
     }
 
     private sealed class RecordingTraceListener : TraceListener

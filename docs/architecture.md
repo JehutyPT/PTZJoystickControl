@@ -31,12 +31,12 @@ Commands are **event-driven**: a packet is only sent when the shaped input value
 | `IGamepad` | A controller: its inputs, available commands, camera list, and `SelectedCamera`. Any new controller type (e.g. SKAARHOJ) implements this. |
 | `IInput` | One axis, button or relative input (encoder), with its mapped command and shaping settings. |
 | `ICommand` | An action on the selected camera. Created per gamepad by `CommandsService`. |
-| `ViscaDeviceBase` | A camera: VISCA command builders, connection settings, its Companion number (what a Companion request selects it by), and the Companion page/button to press when it is selected. |
+| `ViscaDeviceBase` | A camera: VISCA command builders, connection settings, and its Companion number (what a Companion request selects it by). |
 | `IGamepadsService` | Discovers controllers, activates/deactivates them, owns the polling loop. |
 
 ## Settings
 
-JSON files in `%APPDATA%\PTZJoystickControl\` on Windows (`~/Library/Application Support/PTZJoystickControl/` on macOS, `~/.PTZJoystickControl/` on Linux): `Cameras.json` for cameras, `Gamepads.json` for input mappings, the optional, hand-edited `Companion.json` for Companion's host and ports (read at startup only; see [companion-integration.md](companion-integration.md#settings-companionjson)), and `SkaarhojPanel.json` for the SKAARHOJ panel's address and port (edited by hand; an empty address means no panel). Settings are saved on every persistent property change, atomically: each save writes a sibling `.tmp` file, flushes it to disk, then moves it over the target.
+JSON files in `%APPDATA%\PTZJoystickControl\` on Windows (`~/Library/Application Support/PTZJoystickControl/` on macOS, `~/.PTZJoystickControl/` on Linux): `Cameras.json` for cameras, `Gamepads.json` for input mappings, the optional, hand-edited `Companion.json` for the port the app listens on for Companion (read at startup only; see [companion-integration.md](companion-integration.md#settings-companionjson)), and `SkaarhojPanel.json` for the SKAARHOJ panel's address and port (edited by hand; an empty address means no panel). Settings are saved on every persistent property change, atomically: each save writes a sibling `.tmp` file, flushes it to disk, then moves it over the target.
 
 ## Threading
 

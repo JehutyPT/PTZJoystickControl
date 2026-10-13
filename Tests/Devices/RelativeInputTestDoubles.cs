@@ -53,8 +53,6 @@ internal sealed class RecordingDynamicCommand : IDynamicCommand
 internal sealed class NullCompanionService : IBitfocusCompanionService
 {
     public event EventHandler<BitfocusCompanionEvent>? ReceivedBitfocusCommand { add { } remove { } }
-    public void PressButton(int? pageNumber, int? buttonNumber) { }
-    public void SetCustomVariable(string variableName, string value) { }
     public string? InboundListenerError => null;
     public event EventHandler? InboundListenerErrorChanged { add { } remove { } }
 }

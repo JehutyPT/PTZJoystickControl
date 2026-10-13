@@ -129,12 +129,7 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
             Assert.Contains($"http://localhost:{blockedPort}/", service.InboundListenerError);
             Assert.Contains(_trace.Messages, m => m.Contains("Companion listener: failed to start") && m.Contains($"http://localhost:{blockedPort}/"));
 
-            var afterFailure = Record.Exception(() =>
-            {
-                service.PressButton(1, 1);
-                service.SetCustomVariable("ptz_selected_camera", "1");
-                service.StopListening();
-            });
+            var afterFailure = Record.Exception(() => service.StopListening());
             Assert.Null(afterFailure);
         }
         finally
@@ -242,9 +237,8 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
         return response.StatusCode;
     }
 
-    // Outbound goes to an unused local port: these tests only exercise the listener.
     private static CompanionSettings Settings(int listenerPort) =>
-        new() { Port = GetFreePort(), ListenerPort = listenerPort };
+        new() { ListenerPort = listenerPort };
 
     private static int GetFreePort()
     {

@@ -133,41 +133,6 @@ public class IPCameraViewModel : ViewModelBase, INotifyPropertyChanged
         }
     }
 
-    public int? BitfocusPage
-    {
-        get => _camera.OnSelectedBitfocusPageNumber;
-        set
-        {
-            try
-            {
-                _camera.OnSelectedBitfocusPageNumber = value;
-            }
-            catch (Exception e)
-            {
-                Trace.TraceInformation($"Camera {Name}: invalid BitfocusPage '{value}': {e.Message}");
-                throw new DataValidationException("Must be an integer");
-            }
-        }
-    }
-
-    public int? BitfocusButton
-    {
-        get => _camera.OnSelectedBitfocusButtonNumber;
-        set
-        {
-            try
-            {
-                _camera.OnSelectedBitfocusButtonNumber = value;
-                
-            }
-            catch (Exception e)
-            {
-                Trace.TraceInformation($"Camera {Name}: invalid BitfocusButton '{value}': {e.Message}");
-                throw new DataValidationException("Must be an integer");
-            }
-        }
-    }
-
     public new event PropertyChangedEventHandler? PropertyChanged;
     private void NotifyPropertyChanged([CallerMemberName] string propertyName = "")
     {

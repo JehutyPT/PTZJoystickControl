@@ -17,13 +17,13 @@ namespace PtzJoystickControl.Application.Services
         
         public event EventHandler<BitfocusCompanionEvent>? ReceivedBitfocusCommand;
 
-        private readonly BitfocusCompanionClient _outbound;
         private readonly ICamerasService _cameras;
 
         /// <summary>
-        /// Initializes http clients to communicate to and from a bitfocus companion instance
+        /// Starts the HTTP listener that receives Companion's camera selection requests. The app
+        /// makes no calls to Companion: Companion owns camera selection.
         /// </summary>
-        /// <param name="settings">Companion's host and HTTP port (outbound), and the localhost port the app listens on for Companion's requests (inbound)</param>
+        /// <param name="settings">The localhost port the app listens on for Companion's requests</param>
         /// <param name="cameras">The cameras an inbound request selects by Companion number</param>
         public BitfocusCompanionService(CompanionSettings settings, ICamerasService cameras)
             : this(settings, cameras, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30))
@@ -33,13 +33,12 @@ namespace PtzJoystickControl.Application.Services
         internal BitfocusCompanionService(CompanionSettings settings, ICamerasService cameras, TimeSpan retryInitialDelay, TimeSpan retryMaxDelay)
         {
             _cameras = cameras;
-            _outbound = new BitfocusCompanionClient(settings.OutboundBaseAddress);
             _prefix = $"http://localhost:{settings.ListenerPort}/";
             _retryInitialDelay = retryInitialDelay;
             _retryMaxDelay = retryMaxDelay;
 
             // A taken port or a denied URL ACL must not stop the app starting: joystick control
-            // and outbound feedback keep working, only Companion → app requests are lost until a
+            // keeps working, only Companion → app requests are lost until a
             // background retry gets the listener started.
             if (!TryStartListener(out var error))
             {
@@ -48,16 +47,6 @@ namespace PtzJoystickControl.Application.Services
                 _ = Task.Run(() => RetryUntilListening(_stopping.Token));
             }
         }
-        #region Outbound
-
-        public void PressButton(int? pageNumber, int? buttonNumber) =>
-            _outbound.PressButton(pageNumber, buttonNumber);
-
-        public void SetCustomVariable(string variableName, string value) =>
-            _outbound.SetCustomVariable(variableName, value);
-
-        #endregion
-
         #region Inbound
         private readonly string _prefix;
         private readonly TimeSpan _retryInitialDelay;

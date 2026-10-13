@@ -17,8 +17,8 @@ public class SelectCameraCommandTests
     {
         var gamepadA = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam A") });
         var gamepadB = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam B1"), new ViscaIpDevice("Cam B2") });
-        var commandA = new SelectCameraCommand(gamepadA, new RecordingCompanionService());
-        var commandB = new SelectCameraCommand(gamepadB, new RecordingCompanionService());
+        var commandA = new SelectCameraCommand(gamepadA, new NullCompanionService());
+        var commandB = new SelectCameraCommand(gamepadB, new NullCompanionService());
 
         Assert.Equal(new[] { "Cam A" }, commandA.Options.Select(o => o.Name));
         Assert.Equal(new[] { "Cam B1", "Cam B2" }, commandB.Options.Select(o => o.Name));
@@ -31,8 +31,8 @@ public class SelectCameraCommandTests
         var cameras = new ObservableCollection<ViscaDeviceBase> { camera, new ViscaIpDevice("Cam 2") };
         var removedGamepad = new TestGamepad(cameras) { SelectedCamera = camera };
         var liveGamepad = new TestGamepad(cameras) { SelectedCamera = camera };
-        var removedCommand = new SelectCameraCommand(removedGamepad, new RecordingCompanionService());
-        _ = new SelectCameraCommand(liveGamepad, new RecordingCompanionService());
+        var removedCommand = new SelectCameraCommand(removedGamepad, new NullCompanionService());
+        _ = new SelectCameraCommand(liveGamepad, new NullCompanionService());
         var removedCommandCollectionChanges = 0;
         removedCommand.CollectionChanged += (_, _) => removedCommandCollectionChanges++;
 
@@ -49,7 +49,7 @@ public class SelectCameraCommandTests
     {
         var camera = new ViscaIpDevice("Cam 1");
         var cameras = new ObservableCollection<ViscaDeviceBase> { camera };
-        var command = new SelectCameraCommand(new TestGamepad(cameras), new RecordingCompanionService());
+        var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
         var notifications = 0;
         command.PropertyChanged += (_, _) => notifications++;
         command.CollectionChanged += (_, _) => notifications++;
@@ -64,17 +64,16 @@ public class SelectCameraCommandTests
     }
 
     [Fact]
-    public void AfterDispose_SelectingACamera_DoesNotCallCompanion()
+    public void AfterDispose_SelectingACamera_DoesNotThrow()
     {
-        var camera = new ViscaIpDevice("Cam 1") { OnSelectedBitfocusPageNumber = 2, OnSelectedBitfocusButtonNumber = 5 };
+        var camera = new ViscaIpDevice("Cam 1");
         var gamepad = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { camera });
-        var companion = new RecordingCompanionService();
-        var command = new SelectCameraCommand(gamepad, companion);
+        var command = new SelectCameraCommand(gamepad, new NullCompanionService());
 
         command.Dispose();
-        gamepad.SelectedCamera = camera;
 
-        Assert.Empty(companion.Presses);
+        Assert.Null(Record.Exception(() => gamepad.SelectedCamera = camera));
+        Assert.Same(camera, gamepad.SelectedCamera);
     }
 
     [Fact]
@@ -82,7 +81,7 @@ public class SelectCameraCommandTests
     {
         var command = new SelectCameraCommand(
             new TestGamepad(new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1") }),
-            new RecordingCompanionService());
+            new NullCompanionService());
 
         command.Dispose();
 
@@ -90,43 +89,19 @@ public class SelectCameraCommandTests
     }
 
     [Fact]
-    public void SelectingACamera_PressesItsCompanionButton()
+    public void SelectingAndDeselectingACamera_DoesNotThrow()
     {
-        var camera = new ViscaIpDevice("Cam 1") { OnSelectedBitfocusPageNumber = 2, OnSelectedBitfocusButtonNumber = 5 };
+        var camera = new ViscaIpDevice("Cam 1");
         var gamepad = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { camera });
-        var companion = new RecordingCompanionService();
-        _ = new SelectCameraCommand(gamepad, companion);
+        _ = new SelectCameraCommand(gamepad, new NullCompanionService());
 
-        gamepad.SelectedCamera = camera;
-
-        Assert.Equal(new[] { ((int?)2, (int?)5) }, companion.Presses);
+        Assert.Null(Record.Exception(() => gamepad.SelectedCamera = camera));
+        Assert.Null(Record.Exception(() => gamepad.SelectedCamera = null));
     }
 
-    [Fact]
-    public void DeselectingTheCamera_DoesNotThrowOrCallCompanion()
+    private sealed class NullCompanionService : IBitfocusCompanionService
     {
-        var camera = new ViscaIpDevice("Cam 1") { OnSelectedBitfocusPageNumber = 2, OnSelectedBitfocusButtonNumber = 5 };
-        var gamepad = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { camera });
-        var companion = new RecordingCompanionService();
-        _ = new SelectCameraCommand(gamepad, companion);
-        gamepad.SelectedCamera = camera;
-
-        var exception = Record.Exception(() => gamepad.SelectedCamera = null);
-
-        Assert.Null(exception);
-        Assert.Equal(new[] { ((int?)2, (int?)5) }, companion.Presses);
-    }
-
-    private sealed class RecordingCompanionService : IBitfocusCompanionService
-    {
-        public List<(int? Page, int? Button)> Presses { get; } = new();
-
         public event EventHandler<BitfocusCompanionEvent>? ReceivedBitfocusCommand { add { } remove { } }
-
-        public void PressButton(int? pageNumber, int? buttonNumber) => Presses.Add((pageNumber, buttonNumber));
-
-        public void SetCustomVariable(string variableName, string value) { }
-
 
         public string? InboundListenerError => null;
 
