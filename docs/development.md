@@ -23,14 +23,14 @@ Only one instance can run at a time (named mutex, `Application/SingleInstance.cs
 Windows releases are a zip per architecture (`PTZJoystickControl_v<version>_win_x86.zip` / `_win_x64.zip`), not an installer. Build one locally, on any OS, the way the CI Windows job does:
 
 ```
-dotnet publish Gui/Gui.csproj -c PublishRelease -r win7-x64 --self-contained -p:PublishSingleFile=true -o publish
+dotnet publish Gui/Gui.csproj -c PublishRelease -r win-x64 --self-contained -p:PublishSingleFile=true -o publish
 ```
 
-`publish/` then holds `Gui.exe` (single file: the .NET runtime and every managed assembly), the native DLLs it loads (`av_libglesv2.dll`, `SDL2.dll`, `libSkiaSharp.dll`, `libHarfBuzzSharp.dll`), the pdbs (line numbers in logged stack traces) and `SdlGamepads.dll.config`. CI zips that folder as is. The native DLLs stay beside the exe on purpose: `IncludeNativeLibrariesForSelfExtract` would unpack them to `%TEMP%` on first run, which can fail on the show PC (antivirus, temp clean-up), while beside the exe they load from the app folder as they did from the old MSI's install folder.
+`publish/` then holds `Gui.exe` (single file: the .NET runtime and every managed assembly), the native DLLs it loads (`av_libglesv2.dll`, `SDL2.dll`, `libSkiaSharp.dll`, `libHarfBuzzSharp.dll`), the managed pdbs (line numbers in logged stack traces; `Gui.csproj` leaves out the native SkiaSharp/HarfBuzz pdbs, about 105 MB) and `SdlGamepads.dll.config`. CI zips that folder as is. The native DLLs stay beside the exe on purpose: `IncludeNativeLibrariesForSelfExtract` would unpack them to `%TEMP%` on first run, which can fail on the show PC (antivirus, temp clean-up), while beside the exe they load from the app folder as they did from the old MSI's install folder.
 
 Installing is unzipping to a permanent folder and running `Gui.exe`; settings and logs live in `%APPDATA%\PTZJoystickControl`, so replacing the folder with a newer zip keeps them. There are no shortcuts, Apps entry or uninstaller. The zip and exe are unsigned (so was the old MSI), so Windows SmartScreen may ask on first run.
 
-`Directory.Build.props` turns on the legacy RID graph (`UseRidGraph`) so the Windows package can still be published for `win7-x64`/`win7-x86`: Avalonia 0.10 ships its Windows renderer (`av_libglesv2.dll`) only for those RIDs. Remove it when Avalonia is upgraded.
+Use `-r win-x86` for the 32-bit zip.
 
 ## Logs
 
@@ -89,7 +89,7 @@ New behavior and fixes land test-first. Priority coverage, each added with its o
 
 | Check | Command |
 |---|---|
-| Build | `dotnet build PTZJoystickControl.sln` succeeds with no new warnings (known baseline: NU1903/NU1904 for SkiaSharp, Tmds.DBus and System.Drawing.Common, which Avalonia 0.10 pins; xUnit1031 in the log writer tests) |
+| Build | `dotnet build PTZJoystickControl.sln` succeeds with no new warnings (known baseline: xUnit1031 in the log writer tests) |
 | Tests | `dotnet test PTZJoystickControl.sln` passes |
 | Hardware | Pre-show checklist in [live-safety.md](live-safety.md) on real cameras for any change to input, commands, networking or threading. When no cameras are available, merge and add the change's checks to [on-site-checklist.md](on-site-checklist.md) in the same merge |
 | Secrets | No credentials or tokens committed |
