@@ -1,4 +1,4 @@
-# SKAARHOJ PTZ Extreme integration (planned)
+# SKAARHOJ PTZ Extreme integration (joystick axes built; buttons and displays in the Companion surface plugin)
 
 Hardware: SKAARHOJ PTZ Extreme running UniSketch firmware (pre-Blue Pill). This app uses its joystick and zoom rocker to drive the cameras. Its buttons, encoders, LEDs and displays are a Bitfocus Companion surface, served by a separate [Companion surface plugin](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel) (tracked in [its issue #1](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel/issues/1)), not by this app.
 
