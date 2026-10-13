@@ -26,26 +26,32 @@ public class CommandPropsTemplateSelector : IDataTemplate
             if (inputViewModel.InputType == InputType.Axis)
             {
                 if (inputViewModel.SelectedCommand is IDynamicCommand)
-                    returnTemplate = Templates["AxisWithDynamicCommand"];
+                    returnTemplate = Template("AxisWithDynamicCommand");
 
                 else if (inputViewModel.SelectedCommand is IStaticCommand)
-                    returnTemplate = Templates["AxisWithStaticCommand"];
+                    returnTemplate = Template("AxisWithStaticCommand");
             }
 
             else if (inputViewModel.InputType == InputType.Button)
             {
                 if (inputViewModel.SelectedCommand is IDynamicCommand)
-                    returnTemplate = Templates["ButtonWithDynamicCommand"];
+                    returnTemplate = Template("ButtonWithDynamicCommand");
 
                 else if (inputViewModel.SelectedCommand is IStaticCommand)
-                    returnTemplate = Templates["ButtonWithStaticCommand"];
+                    returnTemplate = Template("ButtonWithStaticCommand");
             }
+
+            // Relative inputs only take static commands (Input refuses dynamic ones).
+            else if (inputViewModel.InputType == InputType.Relative && inputViewModel.SelectedCommand is IStaticCommand)
+                returnTemplate = Template("RelativeWithStaticCommand");
         }
         else
-            returnTemplate = Templates["NoCommandSelected"];
+            returnTemplate = Template("NoCommandSelected");
 
+        // Any other input type or command (Unsupported, a future type): a placeholder, never a null control.
+        returnTemplate ??= Template("NoSettings");
 
-        var control = returnTemplate?.Build(param)!;
+        var control = returnTemplate?.Build(param) ?? new TextBlock { Text = "No settings" };
         void lambda(object? sender, PropertyChangedEventArgs eventArgs)
         {
             if (eventArgs.PropertyName == nameof(inputViewModel.SelectedCommand))
@@ -62,6 +68,8 @@ public class CommandPropsTemplateSelector : IDataTemplate
 
         return control;
     }
+
+    private IDataTemplate? Template(string key) => Templates.TryGetValue(key, out var template) ? template : null;
 
     public bool Match(object data)
     {

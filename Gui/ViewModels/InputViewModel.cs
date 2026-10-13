@@ -30,7 +30,8 @@ public class InputViewModel : ViewModelBase, INotifyPropertyChanged
 
     public float InputValue { get => _input.InputValue; }
     public float RawInputValue { get => _input.RawInputValue; }
-    public int MinValue { get => InputType == InputType.Axis ? -1 : 0; }
+    // Axes and relative inputs (signed steps) are centered; buttons go 0..1.
+    public int MinValue { get => InputType == InputType.Axis || InputType == InputType.Relative ? -1 : 0; }
     public static int MaxValue { get => 1; }
     public float DeadZone { get => _input.DeadZone; set => _input.DeadZone = value; }
     public float Saturation { get => _input.Saturation; set => _input.Saturation = value; }
@@ -67,8 +68,9 @@ public class InputViewModel : ViewModelBase, INotifyPropertyChanged
         SelectedCommand = null;
     }
 
-    public bool ShowSecondCommand { get => IsAxis && SelectedCommand is IStaticCommand && _secondInputViewModel != null; }
-    public bool DisableDirection { get => IsAxis && _secondInputViewModel == null; }
+    // Axes and relative inputs have a second command for the opposite direction, whose direction follows the first's.
+    public bool ShowSecondCommand { get => SelectedCommand is IStaticCommand && _secondInputViewModel != null; }
+    public bool DisableDirection { get => (IsAxis || InputType == InputType.Relative) && _secondInputViewModel == null; }
     public InputViewModel? SecondInputdiewModel { get => _secondInputViewModel; }
 
     private void OnInputPropertyCahnged(object? sender, PropertyChangedEventArgs e)
@@ -77,7 +79,7 @@ public class InputViewModel : ViewModelBase, INotifyPropertyChanged
         if (e?.PropertyName == nameof(_input.SelectedCommand))
         {
             NotifyPropertyChanged(nameof(IsCleared));
-            if (IsAxis)
+            if (_secondInputViewModel != null)
                 NotifyPropertyChanged(nameof(ShowSecondCommand));
         }
 
