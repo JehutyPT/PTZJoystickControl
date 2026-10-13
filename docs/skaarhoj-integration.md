@@ -70,7 +70,7 @@ This panel has a locally administered MAC address (`92:a1:…`), so the MAC does
 
 ### Sleep
 
-The panel has a global sleep timer. It is shared by all clients, set over Raw Panel, and survives the client disconnecting (whether it survives a power cycle is unverified). It was 4 hours (`14400000`) as shipped; it is now set to 30 minutes, the operator's choice.
+The panel has a global sleep timer, shared by all clients. Set over Raw Panel, it survives the client disconnecting but **not a reboot**: after a power cycle it was back to 4 hours (`14400000`). Setting **System → Panel Sleep Time = 1 hour** on the `Controller` HWC in WebConfig was saved (the config shows the action), but after a reboot `SleepTimer?` still reported 4 hours; why is unknown. Until that is understood, the app should send its own `SleepTimer=` on every connect rather than rely on the panel's stored value.
 
 | Send | Effect |
 |---|---|
