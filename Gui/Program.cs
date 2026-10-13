@@ -4,6 +4,7 @@ using Avalonia.ReactiveUI;
 using PtzJoystickControl.Gui.ViewModels;
 using PtzJoystickControl.Gui.TrayIcon;
 using PtzJoystickControl.Application.Db;
+using PtzJoystickControl.Application.Logging;
 using PtzJoystickControl.Application.Services;
 using PtzJoystickControl.Core.Db;
 using PtzJoystickControl.Core.Services;
@@ -14,6 +15,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Octokit;
 using System.Reflection;
 using PtzJoystickControl.Core.Model;
@@ -22,20 +24,26 @@ namespace PtzJoystickControl.Gui;
 
 internal class Program
 {
-    //private static FileStream? f;
-
     // Initialization code. Don't use any Avalonia, third-party APIs or any
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
     // yet and stuff might break.
     [STAThread]
     public static void Main(string[] args)
     {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            Directory.CreateDirectory(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".PTZJoystickControl/"));
-        else
-            Directory.CreateDirectory(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PTZJoystickControl/"));
-        //f = File.OpenWrite(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PTZJoystickControl/log.txt"));
-        //Trace.Listeners.Add(new TextWriterTraceListener(f));
+        // First, so that anything failing from here on is logged (see docs/development.md#logs).
+        var log = new AppLogListener();
+        Trace.Listeners.Add(log);
+        AppDomain.CurrentDomain.UnhandledException += (s, e) => log.LogUnhandledException(e.ExceptionObject, e.IsTerminating);
+        TaskScheduler.UnobservedTaskException += (s, e) =>
+        {
+            log.LogUnobservedTaskException(e.Exception);
+            e.SetObserved();
+        };
+
+        string settingsDirectory = RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".PTZJoystickControl/")
+            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PTZJoystickControl/");
+        Directory.CreateDirectory(settingsDirectory);
         Debug.AutoFlush = true;
 
         var appBuilder = BuildAvaloniaApp();
@@ -50,9 +58,15 @@ internal class Program
                 return;
             }
 
-            RegisterServices();
+            // Only the instance that owns the mutex writes the log file.
+            var logFile = new RollingLogFile(settingsDirectory);
+            log.AttachFile(logFile);
+            Trace.TraceInformation($"PTZJoystickControl {Assembly.GetExecutingAssembly().GetName().Version} started; log file {logFile.Path}");
+
+            RegisterServices(log);
 
             appBuilder.StartWithClassicDesktopLifetime(args, Avalonia.Controls.ShutdownMode.OnExplicitShutdown);
+            Trace.TraceInformation("PTZJoystickControl stopped");
         }
         finally
         {
@@ -67,7 +81,7 @@ internal class Program
             .LogToTrace()
             .UseReactiveUI();
 
-    private static void RegisterServices()
+    private static void RegisterServices(AppLogListener log)
     {
         var services = Locator.CurrentMutable;
         var resolver = Locator.Current;
@@ -101,6 +115,9 @@ internal class Program
         services.Register(() => new CamerasViewModel(
             resolver.GetServiceOrThrow<ICamerasService>(),
             resolver.GetServiceOrThrow<GamepadsViewModel>()));
+        services.RegisterConstant(log);
+        services.RegisterLazySingleton(() => new LogWindowViewModel(
+            resolver.GetServiceOrThrow<AppLogListener>()));
         services.RegisterLazySingleton(() => new TrayIconHandler(
             avaloniaLocator.GetServiceOrThrow<IAssetLoader>()));
     }

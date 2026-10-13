@@ -50,6 +50,7 @@ namespace PtzJoystickControl.Gui
             var trayIconHandler = Locator.Current.GetServiceOrThrow<TrayIconHandler>();
             trayIconHandler.OnShowClicked += (object? s, EventArgs e) => ShowMainWindow();
             trayIconHandler.OnUpdateCheckClicked += (object? s, EventArgs e) => CheckForUpdate(true);
+            trayIconHandler.OnShowLogClicked += (object? s, EventArgs e) => ShowLogWindow();
             trayIconHandler.OnQuitClicked += (object? s, EventArgs e) => desktop.Shutdown();
 
             camerasViewModel.PropertyChanged += (object? s, PropertyChangedEventArgs e) =>
@@ -102,6 +103,30 @@ namespace PtzJoystickControl.Gui
                 mainWindow.Topmost = true;
                 mainWindow.Topmost = false;
             }
+        }
+
+        private LogWindow? _logWindow;
+
+        private void ShowLogWindow()
+        {
+            if (_logWindow == null)
+            {
+                _logWindow = new LogWindow
+                {
+                    DataContext = Locator.Current.GetServiceOrThrow<LogWindowViewModel>()
+                };
+                var logWindow = _logWindow;
+                logWindow.Closing += (object? s, CancelEventArgs e) =>
+                {   // Hide instead of closing so the window keeps its log and can be reopened.
+                    logWindow.Hide();
+                    e.Cancel = true;
+                };
+            }
+
+            _logWindow.Show();
+            if (_logWindow.WindowState == WindowState.Minimized)
+                _logWindow.WindowState = WindowState.Normal;
+            _logWindow.Activate();
         }
 
         private void CheckForUpdate(bool showModalWhenNotAvailable = false)
