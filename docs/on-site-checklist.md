@@ -96,9 +96,24 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 The app now runs on .NET 10 (bundled in the MSI) and the MSI is built with WiX 5. The installer should behave as before: same install folder, shortcuts and settings, and it replaces the old version in place. The installed files change (the old `api-ms-win-*.dll`, `ucrtbase.dll` and `dbgshim.dll` are gone, a few new .NET 10 files are added). .NET 10 does not run on Windows 7 or 8.1.
 
+Releases after #31 ship a zip instead of an MSI. When testing such a build, skip the first two boxes (the #31 entry covers installing and keeping the settings) and run the rest against the unzipped `Gui.exe`.
+
 - [ ] Note the installed version in Settings → Apps, then run the new MSI over it without uninstalling first: it installs without errors, and Settings → Apps lists PTZ Joystick Control once, with the new version.
 - [ ] The Start menu and desktop shortcuts start the app. `%APPDATA%\PTZJoystickControl\Cameras.json` and `Gamepads.json` are kept: both cameras and the joystick settings are as before the upgrade.
 - [ ] The main window, tray icon and Log window draw normally (no blank or black window). `PTZJoystickControl.log` shows the new version started and no `ERROR` or `CRITICAL` lines, including from the startup update check.
 - [ ] The joystick is detected, and pan, tilt, zoom, focus and presets drive both cameras; each camera stops on release.
 - [ ] Companion selects cameras and gets selection feedback as before.
 - [ ] Quit from the tray: the log ends with `PTZJoystickControl stopped`. Start it again: it starts normally.
+
+### #31: Windows zip replaces the MSI
+
+The Windows release is now a zip (`PTZJoystickControl_v<version>_win_x64.zip`, or `_win_x86.zip` for 32-bit Windows) holding a single-file `Gui.exe` with four native DLLs beside it (`av_libglesv2.dll` draws the window, `SDL2.dll` reads the joystick, `libSkiaSharp.dll` and `libHarfBuzzSharp.dll` render). There is no installer: no Apps entry, no Start menu or desktop shortcut. Settings and logs stay in `%APPDATA%\PTZJoystickControl`.
+
+- [ ] Note the installed version in Settings → Apps, then uninstall PTZ Joystick Control there. `%APPDATA%\PTZJoystickControl\Cameras.json`, `Gamepads.json` and `PTZJoystickControl.log` are still there afterwards.
+- [ ] Unzip the new zip into a folder you keep (e.g. `C:\PTZJoystickControl`, not Downloads). It contains `Gui.exe`, the four DLLs above, `SdlGamepads.dll.config` and a few `.pdb` files, and nothing else is needed.
+- [ ] Double-click `Gui.exe`. If SmartScreen warns about an unrecognised app, choose **More info → Run anyway** (the MSI was unsigned too). The app starts, the tray icon appears, and both cameras and the joystick settings are as before.
+- [ ] The main window, tray icon and Log window draw normally (no blank or black window). `PTZJoystickControl.log` shows the new version started and no `ERROR` or `CRITICAL` lines, including from the startup update check.
+- [ ] The joystick is detected, and pan, tilt, zoom, focus and presets drive both cameras; each camera stops on release.
+- [ ] Companion selects cameras and gets selection feedback as before.
+- [ ] Quit from the tray: the log ends with `PTZJoystickControl stopped`. Start `Gui.exe` again: it starts normally.
+- [ ] Uninstalling the MSI removed its Start menu and desktop shortcuts, and any taskbar pin or Startup-folder shortcut pointing at the old `Program Files` folder no longer works. Recreate the ones the owner uses, pointing at the new `Gui.exe` (right-click → Show more options → Send to → Desktop (create shortcut), or Pin to taskbar), and check each one starts the app.

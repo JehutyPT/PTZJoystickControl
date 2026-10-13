@@ -13,13 +13,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SdlGamepads", "SdlGamepads\
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Tests", "Tests\Tests.csproj", "{1B71DE59-5BE6-4755-80BB-1456817141DD}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Packaging", "Packaging", "{4707B079-F27C-46F2-B1FA-7E34D4BAB7C0}"
-EndProject
-Project("{B7DD6F7E-DEF8-4E67-B5B7-07EF123DB6F0}") = "Windows", "Packaging\Windows\Windows.wixproj", "{489E9758-F88E-474E-8259-0B354F2177E3}"
-	ProjectSection(ProjectDependencies) = postProject
-		{0EC1F619-49C7-485B-8C89-727B6DF0B723} = {0EC1F619-49C7-485B-8C89-727B6DF0B723}
-	EndProjectSection
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -134,32 +127,9 @@ Global
 		{1B71DE59-5BE6-4755-80BB-1456817141DD}.Release|x64.Build.0 = Release|x64
 		{1B71DE59-5BE6-4755-80BB-1456817141DD}.Release|x86.ActiveCfg = Release|Any CPU
 		{1B71DE59-5BE6-4755-80BB-1456817141DD}.Release|x86.Build.0 = Release|Any CPU
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Debug|Any CPU.ActiveCfg = Debug|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Debug|Any CPU.Build.0 = Debug|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Debug|ARM.ActiveCfg = Debug|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Debug|ARM.Build.0 = Debug|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Debug|ARM64.ActiveCfg = Debug|ARM64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Debug|ARM64.Build.0 = Debug|ARM64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Debug|x64.ActiveCfg = Debug|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Debug|x64.Build.0 = Debug|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Debug|x86.ActiveCfg = Debug|x86
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Debug|x86.Build.0 = Debug|x86
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Release|Any CPU.ActiveCfg = Release|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Release|Any CPU.Build.0 = Release|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Release|ARM.ActiveCfg = Release|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Release|ARM.Build.0 = Release|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Release|ARM64.ActiveCfg = Release|ARM64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Release|ARM64.Build.0 = Release|ARM64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Release|x64.ActiveCfg = Release|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Release|x64.Build.0 = Release|x64
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Release|x86.ActiveCfg = Release|x86
-		{489E9758-F88E-474E-8259-0B354F2177E3}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
-	EndGlobalSection
-	GlobalSection(NestedProjects) = preSolution
-		{489E9758-F88E-474E-8259-0B354F2177E3} = {4707B079-F27C-46F2-B1FA-7E34D4BAB7C0}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {83B294C0-1FAE-49D5-85C8-5FB768F65282}
