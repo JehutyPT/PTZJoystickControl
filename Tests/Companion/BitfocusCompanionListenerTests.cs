@@ -87,10 +87,13 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
     [Fact]
     public void PortInUse_DoesNotThrow_IsLoggedAndReported_AndTheServiceStaysUsable()
     {
-        // Hold the port with a plain socket, as another process would.
+        // Hold the port with plain sockets, as another process would. Block both loopback
+        // addresses: which one the managed HttpListener binds "localhost" to differs by OS.
         var blockedPort = GetFreePort();
         var blocker = new TcpListener(IPAddress.Loopback, blockedPort);
         blocker.Start();
+        var blockerV6 = new TcpListener(IPAddress.IPv6Loopback, blockedPort);
+        blockerV6.Start();
         try
         {
             BitfocusCompanionService? service = null;
@@ -112,6 +115,7 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
         finally
         {
             blocker.Stop();
+            blockerV6.Stop();
         }
     }
 
