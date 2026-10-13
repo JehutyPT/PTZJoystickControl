@@ -27,16 +27,14 @@ namespace PtzJoystickControl.Application.Services
         {
             _outbound = new BitfocusCompanionClient(new Uri($"http://localhost:{outboundPort}/"));
 
-            // Create a listener.
-            var prefix = $"http://localhost:{inboundPort}/";
-            HttpListener listener = new HttpListener();
-            listener.Prefixes.Add(prefix);
-            _listener = listener;
-
             // A taken port or a denied URL ACL must not stop the app starting: joystick control
             // and outbound feedback keep working, only Companion → app requests are lost.
+            var prefix = $"http://localhost:{inboundPort}/";
+            HttpListener listener = new HttpListener();
+            _listener = listener;
             try
             {
+                listener.Prefixes.Add(prefix);
                 listener.Start();
                 listener.BeginGetContext(new AsyncCallback(ListenerCallback), listener);
             }
