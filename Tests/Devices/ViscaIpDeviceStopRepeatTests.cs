@@ -20,19 +20,20 @@ public class ViscaIpDeviceStopRepeatTests
     private const int MinStopSends = 3;
 
     // Long enough for the whole repeat window (~100 ms) plus scheduling jitter on a busy CI host.
-    private static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(600);
+    private static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(900);
 
     // How long to collect after a single-axis stop. Deliberately looser than the spread bound
     // below so a slow start on CI cannot drop a packet; the spread assertion carries the timing.
-    private static readonly TimeSpan SingleAxisStopWindow = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan SingleAxisStopWindow = TimeSpan.FromMilliseconds(600);
 
     // Max time from an axis's first stop packet to its third. Nominally 2 x 50 ms plus timer
-    // resolution (~15.6 ms per wait on Windows) and the 30 ms send throttle.
-    private static readonly TimeSpan SingleAxisStopSpread = TimeSpan.FromMilliseconds(200);
+    // resolution (~15.6 ms per wait on Windows) and the 30 ms send throttle. Doubled for headroom:
+    // the first socket test and loaded hosts (parallel builds, CI) measured up to ~250 ms.
+    private static readonly TimeSpan SingleAxisStopSpread = TimeSpan.FromMilliseconds(400);
 
     // Stop() queues all three axes behind the 30 ms send throttle, so each axis's stops
     // interleave with the others' and can spread further.
-    private static readonly TimeSpan ForceStopSpread = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan ForceStopSpread = TimeSpan.FromMilliseconds(500);
 
     [Fact]
     public async Task PanTiltStop_IsSentAtLeastThreeTimes()
