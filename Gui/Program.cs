@@ -33,12 +33,8 @@ internal class Program
         // First, so that anything failing from here on is logged (see docs/development.md#logs).
         var log = new AppLogListener();
         Trace.Listeners.Add(log);
-        AppDomain.CurrentDomain.UnhandledException += (s, e) => log.LogUnhandledException(e.ExceptionObject, e.IsTerminating);
-        TaskScheduler.UnobservedTaskException += (s, e) =>
-        {
-            log.LogUnobservedTaskException(e.Exception);
-            e.SetObserved();
-        };
+        AppDomain.CurrentDomain.UnhandledException += log.OnUnhandledException;
+        TaskScheduler.UnobservedTaskException += log.OnUnobservedTaskException;
 
         string settingsDirectory = RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".PTZJoystickControl/")

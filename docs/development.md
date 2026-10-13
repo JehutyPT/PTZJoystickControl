@@ -19,7 +19,7 @@ Only one instance can run at a time (named mutex in `Gui/Program.cs`).
 
 ## Logs
 
-Everything the app writes through `System.Diagnostics.Trace` (and `Debug`, in Debug builds only), plus any unhandled exception, goes through one listener (`Application/Logging/AppLogListener.cs`) to a log file and to the in-app Log window (tray menu → **Show log**, which shows the last 1000 entries since startup).
+Everything the app writes through `System.Diagnostics.Trace` (and `Debug`, in Debug builds only), plus any unhandled exception, goes through one listener (`Application/Logging/AppLogListener.cs`) to a log file and to the in-app Log window (tray menu → **Show log**, which shows the last 1000 entries since startup or since **Clear Log**; clearing never touches the file).
 
 The file sits next to the settings files (`Cameras.json`, `Gamepads.json`):
 
@@ -37,11 +37,11 @@ One entry per line, UTF-8:
 
 - Local timestamp with milliseconds and UTC offset, then the level, then the source in brackets, then the message.
 - Levels: `CRITICAL` (unhandled exception), `ERROR`, `WARN`, `INFO` (also plain `Trace.WriteLine`), `VERBOSE`.
-- Source is the class that logged.
+- Source is the class that logged; if that cannot be found, the trace source or `Trace.WriteLine` category, else `App`. Unhandled exceptions use `AppDomain` (with `terminating: true/false`) and unobserved task exceptions `TaskScheduler`.
 - Line breaks inside a message (e.g. stack traces) are written as the two characters `\n`, so an entry never spans lines.
 - The file is flushed after every entry and can be read while the app runs.
 
-Retention: when the file reaches 5 MB it is renamed to `PTZJoystickControl.1.log` (older ones shift to `.2` … `.4`, the oldest is deleted), so the logs never exceed about 25 MB. Newest entries are at the end of `PTZJoystickControl.log`.
+Retention: when the file reaches 5 MB (checked on every entry and when the app starts) it is renamed to `PTZJoystickControl.1.log` (older ones shift to `.2` … `.4`, the oldest is deleted), so the logs never exceed about 25 MB. Newest entries are at the end of `PTZJoystickControl.log`.
 
 Reading after a show, e.g. on Windows:
 

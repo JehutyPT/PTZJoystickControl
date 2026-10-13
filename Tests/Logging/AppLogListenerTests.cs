@@ -29,14 +29,7 @@ public sealed class AppLogListenerTests : IDisposable
         Directory.Delete(_dir, recursive: true);
     }
 
-    private string[] FileLines() => ReadShared(Path.Combine(_dir, "PTZJoystickControl.log"));
-
-    internal static string[] ReadShared(string path)
-    {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
-    }
+    private string[] FileLines() => SharedFile.ReadLines(Path.Combine(_dir, "PTZJoystickControl.log"));
 
     [Fact]
     public void WriteLine_IsOneInfoEntry_WithTimestampAndCallingType_InFileAndPublished()
@@ -156,40 +149,134 @@ public sealed class AppLogListenerTests : IDisposable
     }
 
     [Fact]
-    public void LogUnhandledException_IsCritical_WithTheFullException_OnDisk()
+    public void OnUnhandledException_IsCritical_WithTheFullException_OnDisk()
     {
         Exception thrown;
         try { throw new InvalidOperationException("boom"); }
         catch (Exception e) { thrown = e; }
 
-        _listener.LogUnhandledException(thrown, isTerminating: true);
+        _listener.OnUnhandledException(null, new UnhandledExceptionEventArgs(thrown, isTerminating: true));
 
         var line = Assert.Single(FileLines());
-        Assert.StartsWith("2026-10-13T14:03:12.345+01:00 CRITICAL [AppDomain] Unhandled exception (terminating): System.InvalidOperationException: boom", line);
+        Assert.StartsWith("2026-10-13T14:03:12.345+01:00 CRITICAL [AppDomain] Unhandled exception (terminating: true): System.InvalidOperationException: boom", line);
         Assert.Contains(@"\n   at ", line);
     }
 
     [Fact]
-    public void LogUnhandledException_AcceptsNonExceptionObjects()
+    public void OnUnhandledException_StatesTheTerminatingFlag_AndAcceptsNonExceptionObjects()
     {
-        _listener.LogUnhandledException("not an exception", isTerminating: false);
-        _listener.LogUnhandledException(null, isTerminating: false);
+        _listener.OnUnhandledException(null, new UnhandledExceptionEventArgs("not an exception", isTerminating: false));
+        _listener.OnUnhandledException(null, new UnhandledExceptionEventArgs(null!, isTerminating: false));
 
         Assert.Equal(new[]
         {
-            "2026-10-13T14:03:12.345+01:00 CRITICAL [AppDomain] Unhandled exception: not an exception",
-            "2026-10-13T14:03:12.345+01:00 CRITICAL [AppDomain] Unhandled exception: (null)",
+            "2026-10-13T14:03:12.345+01:00 CRITICAL [AppDomain] Unhandled exception (terminating: false): not an exception",
+            "2026-10-13T14:03:12.345+01:00 CRITICAL [AppDomain] Unhandled exception (terminating: false): (null)",
         }, FileLines());
     }
 
     [Fact]
-    public void LogUnobservedTaskException_IsAnError()
+    public void OnUnobservedTaskException_IsAnError_AndMarksTheExceptionObserved()
     {
-        _listener.LogUnobservedTaskException(new AggregateException(new TimeoutException("late")));
+        var args = new UnobservedTaskExceptionEventArgs(new AggregateException(new TimeoutException("late")));
 
+        _listener.OnUnobservedTaskException(null, args);
+
+        Assert.True(args.Observed);
         var line = Assert.Single(FileLines());
         Assert.StartsWith("2026-10-13T14:03:12.345+01:00 ERROR [TaskScheduler] Unobserved task exception: System.AggregateException:", line);
         Assert.Contains("TimeoutException: late", line);
+    }
+
+    [Fact]
+    public void OnUnobservedTaskException_MarksObserved_EvenWhenLoggingFails()
+    {
+        var listener = new AppLogListener(() => throw new InvalidOperationException("clock failed"), capacity: 10);
+        var args = new UnobservedTaskExceptionEventArgs(new AggregateException(new TimeoutException("late")));
+
+        listener.OnUnobservedTaskException(null, args);
+
+        Assert.True(args.Observed);
+    }
+
+    [Fact]
+    public void Source_WhenTheCallerIsUnknown_FallsBackToTheTraceSource()
+    {
+        var listener = new AppLogListener(() => Now, capacity: 10) { ResolveCaller = () => null };
+
+        listener.TraceEvent(new TraceEventCache(), "Companion", TraceEventType.Warning, 0, "with message");
+        listener.TraceEvent(new TraceEventCache(), "Companion", TraceEventType.Warning, 0, "camera {0}", 2);
+        listener.TraceEvent(new TraceEventCache(), "Companion", TraceEventType.Warning, 0);
+        listener.TraceData(new TraceEventCache(), "Companion", TraceEventType.Warning, 0, "data");
+        listener.TraceData(new TraceEventCache(), "Companion", TraceEventType.Warning, 0, "a", "b");
+
+        Assert.All(listener.Snapshot(), line => Assert.Contains(" WARN [Companion] ", line));
+        Assert.Equal(5, listener.Snapshot().Count);
+    }
+
+    [Fact]
+    public void Source_WhenTheCallerIsUnknown_FallsBackToTheCategory()
+    {
+        var listener = new AppLogListener(() => Now, capacity: 10) { ResolveCaller = () => null };
+
+        listener.WriteLine("connected", "Camera1");
+
+        Assert.Equal("2026-10-13T14:03:12.345+01:00 INFO [Camera1] connected", Assert.Single(listener.Snapshot()));
+    }
+
+    [Fact]
+    public void Source_WithNoCallerSourceOrCategory_IsApp()
+    {
+        var listener = new AppLogListener(() => Now, capacity: 10) { ResolveCaller = () => null };
+
+        listener.WriteLine("plain");
+        listener.WriteLine("no category", null);
+        listener.TraceEvent(null, "", TraceEventType.Error, 0, "no source");
+
+        Assert.Equal(new[]
+        {
+            "2026-10-13T14:03:12.345+01:00 INFO [App] plain",
+            "2026-10-13T14:03:12.345+01:00 INFO [App] no category",
+            "2026-10-13T14:03:12.345+01:00 ERROR [App] no source",
+        }, listener.Snapshot());
+    }
+
+    [Fact]
+    public void Source_CallingTypeWinsOverCategory()
+    {
+        _listener.WriteLine("connected", "Camera1");
+
+        Assert.Equal("2026-10-13T14:03:12.345+01:00 INFO [AppLogListenerTests] connected", Assert.Single(FileLines()));
+    }
+
+    [Fact]
+    public void AttachFile_RollsAnOversizedFileFromAnEarlierRun_BeforeTheFirstEntry()
+    {
+        var dir = Path.Combine(_dir, "earlier-run");
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(Path.Combine(dir, "PTZJoystickControl.log"), new string('o', 100));
+        using var listener = new AppLogListener(() => Now, capacity: 10);
+
+        listener.AttachFile(new RollingLogFile(dir, maxBytes: 50, maxArchives: 1));
+
+        Assert.Equal(100, new FileInfo(Path.Combine(dir, "PTZJoystickControl.1.log")).Length);
+        Assert.False(File.Exists(Path.Combine(dir, "PTZJoystickControl.log")));
+    }
+
+    [Fact]
+    public void Snapshot_ReturnsTheRecentEntries_AndClearRecentEmptiesThem()
+    {
+        var listener = new AppLogListener(() => Now, capacity: 2);
+        listener.WriteLine("one");
+        listener.WriteLine("two");
+        listener.WriteLine("three");
+
+        Assert.Equal(new[] { "two", "three" }, listener.Snapshot().Select(MessageOf));
+
+        listener.ClearRecent();
+        Assert.Empty(listener.Snapshot());
+        listener.WriteLine("four");
+        Assert.Equal(new[] { "four" }, listener.Snapshot().Select(MessageOf));
     }
 
     private static string MessageOf(string line) => line[(line.IndexOf("] ", StringComparison.Ordinal) + 2)..];

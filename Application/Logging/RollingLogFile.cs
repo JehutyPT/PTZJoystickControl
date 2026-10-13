@@ -7,7 +7,8 @@ namespace PtzJoystickControl.Application.Logging;
 /// <c>PTZJoystickControl.log</c> past <see cref="MaxBytes"/>, it becomes
 /// <c>PTZJoystickControl.1.log</c> (older archives shift up) and at most
 /// <see cref="MaxArchives"/> archives are kept, so disk use stays bounded.
-/// Every line is flushed as it is written. Nothing here ever throws: a file that
+/// A file left oversized by an earlier run is rolled by <see cref="RollIfOversized"/>,
+/// which <see cref="AppLogListener.AttachFile"/> calls. Every line is flushed as it is written. Nothing here ever throws: a file that
 /// cannot be opened, written or rolled is skipped and retried on the next line.
 /// Not thread-safe; <see cref="AppLogListener"/> serialises calls.
 /// </summary>
@@ -33,8 +34,26 @@ public sealed class RollingLogFile : IDisposable
 
     /// <summary>The active log file.</summary>
     public string Path { get; }
-    public long MaxBytes { get; }
-    public int MaxArchives { get; }
+    internal long MaxBytes { get; }
+    internal int MaxArchives { get; }
+
+    /// <summary>
+    /// Rolls the active file if it is already larger than <see cref="MaxBytes"/>, e.g. left
+    /// over from an earlier run. Never throws.
+    /// </summary>
+    public void RollIfOversized()
+    {
+        try
+        {
+            long length = _writer != null ? _length : new FileInfo(Path).Length;
+            if (length > MaxBytes)
+                Roll();
+        }
+        catch
+        {
+            // Missing file or unusable directory: nothing to roll.
+        }
+    }
 
     public void Append(string line)
     {

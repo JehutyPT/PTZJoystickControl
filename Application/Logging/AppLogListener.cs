@@ -10,11 +10,12 @@ namespace PtzJoystickControl.Application.Logging;
 /// The app's single logging path. Registered in <see cref="Trace.Listeners"/>, it turns
 /// every <see cref="Trace"/> call (and <c>Debug</c> calls in Debug builds) into one line:
 /// <c>2026-10-13T14:03:12.345+01:00 ERROR [CallingType] message</c>, with CR/LF in the
-/// message escaped as <c>\n</c>. Each line is appended to the attached
-/// <see cref="RollingLogFile"/>, kept in a bounded in-memory history and published to
-/// subscribers (the Log window). Never throws to the caller. Subscribers run on the
-/// logging thread while a lock is held, so they must only hand the line off
-/// (e.g. post it to the UI thread).
+/// message escaped as <c>\n</c>. The source is the calling type, falling back to the
+/// trace source or category, then to <c>App</c>. Each line is appended to the attached
+/// <see cref="RollingLogFile"/>, kept in a bounded in-memory history
+/// (<see cref="Snapshot"/>) and published to subscribers (the Log window). Never throws to
+/// the caller. Subscribers run on the logging thread while a lock is held, so they must
+/// only hand off (e.g. post to the UI thread).
 /// </summary>
 public sealed class AppLogListener : TraceListener
 {
@@ -39,14 +40,28 @@ public sealed class AppLogListener : TraceListener
 
     public override bool IsThreadSafe => true;
 
-    /// <summary>Starts writing every following entry to <paramref name="file"/>.</summary>
+    /// <summary>
+    /// Names the type that logged, or null when none can be found. Settable so tests can
+    /// exercise the fallback, which a managed caller never reaches.
+    /// </summary>
+    internal Func<string?> ResolveCaller { get; init; } = CallerName;
+
+    /// <summary>
+    /// Starts writing every following entry to <paramref name="file"/>, first rolling it
+    /// if an earlier run left it oversized.
+    /// </summary>
     public void AttachFile(RollingLogFile file)
     {
-        lock (_lock)
+        try
         {
-            _file?.Dispose();
-            _file = file;
+            lock (_lock)
+            {
+                _file?.Dispose();
+                _file = file;
+                file.RollIfOversized();
+            }
         }
+        catch { }
     }
 
     /// <summary>
@@ -68,19 +83,52 @@ public sealed class AppLogListener : TraceListener
             _subscribers.Remove(onEntry);
     }
 
-    /// <summary>For <see cref="AppDomain.UnhandledException"/>. Flushes to disk before returning.</summary>
-    public void LogUnhandledException(object? exceptionObject, bool isTerminating)
+    /// <summary>The recent entries, oldest first, bounded to the listener's capacity.</summary>
+    public IReadOnlyList<string> Snapshot()
     {
-        Log(TraceEventType.Critical, "AppDomain",
-            $"Unhandled exception{(isTerminating ? " (terminating)" : "")}: {exceptionObject?.ToString() ?? "(null)"}");
         lock (_lock)
-            _file?.Flush(toDisk: true);
+            return _recent.ToArray();
     }
 
-    /// <summary>For <see cref="TaskScheduler.UnobservedTaskException"/>.</summary>
-    public void LogUnobservedTaskException(Exception? exception)
+    /// <summary>Empties the recent entries (the Log window's Clear). The file is unchanged.</summary>
+    public void ClearRecent()
     {
-        Log(TraceEventType.Error, "TaskScheduler", $"Unobserved task exception: {exception?.ToString() ?? "(null)"}");
+        lock (_lock)
+            _recent.Clear();
+    }
+
+    /// <summary>
+    /// Handler for <see cref="AppDomain.UnhandledException"/>: logs CRITICAL and flushes to
+    /// disk before returning. Never throws.
+    /// </summary>
+    public void OnUnhandledException(object? sender, UnhandledExceptionEventArgs e)
+    {
+        try
+        {
+            Log(TraceEventType.Critical, "AppDomain",
+                $"Unhandled exception (terminating: {(e.IsTerminating ? "true" : "false")}): {e.ExceptionObject?.ToString() ?? "(null)"}");
+            lock (_lock)
+                _file?.Flush(toDisk: true);
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// Handler for <see cref="TaskScheduler.UnobservedTaskException"/>: logs ERROR and marks
+    /// the exception observed, even if logging fails. Never throws.
+    /// </summary>
+    public void OnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e)
+    {
+        try
+        {
+            Log(TraceEventType.Error, "TaskScheduler", $"Unobserved task exception: {e.Exception?.ToString() ?? "(null)"}");
+        }
+        catch { }
+        try
+        {
+            e.SetObserved();
+        }
+        catch { }
     }
 
     public override void Write(string? message)
@@ -95,11 +143,14 @@ public sealed class AppLogListener : TraceListener
 
     public override void WriteLine(string? message) => Log(TraceEventType.Information, null, message, joinPending: true);
 
+    public override void WriteLine(string? message, string? category)
+        => Log(TraceEventType.Information, null, message, joinPending: true, fallbackSource: category);
+
     public override void TraceEvent(TraceEventCache? eventCache, string source, TraceEventType eventType, int id)
-        => Log(eventType, null, string.Empty);
+        => Log(eventType, null, string.Empty, fallbackSource: source);
 
     public override void TraceEvent(TraceEventCache? eventCache, string source, TraceEventType eventType, int id, string? message)
-        => Log(eventType, null, message);
+        => Log(eventType, null, message, fallbackSource: source);
 
     public override void TraceEvent(TraceEventCache? eventCache, string source, TraceEventType eventType, int id, string? format, params object?[]? args)
     {
@@ -114,14 +165,14 @@ public sealed class AppLogListener : TraceListener
         {
             message = format;
         }
-        Log(eventType, null, message);
+        Log(eventType, null, message, fallbackSource: source);
     }
 
     public override void TraceData(TraceEventCache? eventCache, string source, TraceEventType eventType, int id, object? data)
-        => Log(eventType, null, data?.ToString());
+        => Log(eventType, null, data?.ToString(), fallbackSource: source);
 
     public override void TraceData(TraceEventCache? eventCache, string source, TraceEventType eventType, int id, params object?[]? data)
-        => Log(eventType, null, data == null ? null : string.Join(", ", data));
+        => Log(eventType, null, data == null ? null : string.Join(", ", data), fallbackSource: source);
 
     public override void Flush()
     {
@@ -146,10 +197,8 @@ public sealed class AppLogListener : TraceListener
         base.Dispose(disposing);
     }
 
-    /// <summary>
-    /// Formats one entry. Public so the format has one definition; see docs/development.md.
-    /// </summary>
-    public static string FormatLine(DateTimeOffset timestamp, TraceEventType level, string source, string? message)
+    /// <summary>Formats one entry; see docs/development.md for the format.</summary>
+    internal static string FormatLine(DateTimeOffset timestamp, TraceEventType level, string source, string? message)
     {
         string text = (message ?? string.Empty)
             .Replace("\r\n", "\\n")
@@ -158,7 +207,7 @@ public sealed class AppLogListener : TraceListener
         return $"{timestamp.ToString("yyyy-MM-ddTHH:mm:ss.fffzzz", CultureInfo.InvariantCulture)} {LevelName(level)} [{source}] {text}";
     }
 
-    public static string LevelName(TraceEventType level) => level switch
+    internal static string LevelName(TraceEventType level) => level switch
     {
         TraceEventType.Critical => "CRITICAL",
         TraceEventType.Error => "ERROR",
@@ -167,12 +216,16 @@ public sealed class AppLogListener : TraceListener
         _ => "INFO",
     };
 
-    private void Log(TraceEventType level, string? source, string? message, bool joinPending = false)
+    /// <param name="source">Fixed source (e.g. <c>AppDomain</c>); otherwise the calling type.</param>
+    /// <param name="fallbackSource">Trace source or category, used when the caller is unknown.</param>
+    private void Log(TraceEventType level, string? source, string? message, bool joinPending = false, string? fallbackSource = null)
     {
         try
         {
             // Resolve the caller outside the lock; it walks the stack.
-            source ??= CallerName();
+            source ??= ResolveCaller()
+                ?? (string.IsNullOrWhiteSpace(fallbackSource) ? null : fallbackSource)
+                ?? "App";
             lock (_lock)
             {
                 if (_pending.Length > 0)
@@ -211,12 +264,13 @@ public sealed class AppLogListener : TraceListener
     }
 
     /// <summary>
-    /// Name of the first type on the stack outside tracing and logging infrastructure.
+    /// Name of the first type on the stack outside tracing and logging infrastructure, or
+    /// null if there is none.
     /// Compiler-generated types (async state machines, lambdas) resolve to the type that
     /// declares them. In Release builds the JIT may inline the true caller, in which case
     /// the nearest non-inlined caller is named.
     /// </summary>
-    private static string CallerName()
+    private static string? CallerName()
     {
         try
         {
@@ -238,6 +292,6 @@ public sealed class AppLogListener : TraceListener
             }
         }
         catch { }
-        return "App";
+        return null;
     }
 }

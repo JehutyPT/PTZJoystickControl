@@ -45,7 +45,7 @@ public sealed class RollingLogFileTests : IDisposable
         using var file = new RollingLogFile(_dir);
         file.Append("later");
 
-        Assert.Equal(new[] { "earlier", "later" }, AppLogListenerTests.ReadShared(file.Path));
+        Assert.Equal(new[] { "earlier", "later" }, SharedFile.ReadLines(file.Path));
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public sealed class RollingLogFileTests : IDisposable
         Assert.Equal(new[] { "PTZJoystickControl.1.log", "PTZJoystickControl.2.log", "PTZJoystickControl.log" }, names);
         foreach (var name in names)
             Assert.True(new FileInfo(PathOf(name!)).Length <= cap, $"{name} exceeds the cap");
-        Assert.Equal(3, AppLogListenerTests.ReadShared(file.Path).Length);
+        Assert.Equal(3, SharedFile.ReadLines(file.Path).Length);
     }
 
     [Fact]
@@ -75,20 +75,47 @@ public sealed class RollingLogFileTests : IDisposable
         file.Append("b");
         file.Append("c");
 
-        Assert.Equal(new[] { "c" }, AppLogListenerTests.ReadShared(file.Path));
+        Assert.Equal(new[] { "c" }, SharedFile.ReadLines(file.Path));
         Assert.Equal("b", File.ReadAllText(PathOf("PTZJoystickControl.1.log")).Trim());
         Assert.Equal("a", File.ReadAllText(PathOf("PTZJoystickControl.2.log")).Trim());
     }
 
     [Fact]
-    public void AnOversizedFileFromAnEarlierRun_IsRolledOnTheFirstAppend()
+    public void RollIfOversized_RollsAFileFromAnEarlierRun_BeforeAnyAppend()
     {
         File.WriteAllText(PathOf("PTZJoystickControl.log"), new string('o', 100));
         using var file = new RollingLogFile(_dir, maxBytes: 50, maxArchives: 1);
-        file.Append("new run");
+
+        file.RollIfOversized();
 
         Assert.Equal(100, new FileInfo(PathOf("PTZJoystickControl.1.log")).Length);
-        Assert.Equal(new[] { "new run" }, AppLogListenerTests.ReadShared(file.Path));
+        Assert.False(File.Exists(file.Path));
+        file.Append("new run");
+        Assert.Equal(new[] { "new run" }, SharedFile.ReadLines(file.Path));
+    }
+
+    [Fact]
+    public void RollIfOversized_KeepsAFileWithinTheCap_AndAMissingFileIsFine()
+    {
+        using (var missing = new RollingLogFile(_dir, maxBytes: 50, maxArchives: 1))
+            missing.RollIfOversized();
+        Assert.Empty(Directory.GetFiles(_dir));
+
+        File.WriteAllText(PathOf("PTZJoystickControl.log"), new string('o', 50));
+        using var file = new RollingLogFile(_dir, maxBytes: 50, maxArchives: 1);
+        file.RollIfOversized();
+
+        Assert.Equal(new[] { "PTZJoystickControl.log" }, Directory.GetFiles(_dir).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public void RollIfOversized_InAnUnusableDirectory_DoesNotThrow()
+    {
+        var notADir = PathOf("file");
+        File.WriteAllText(notADir, "");
+        using var file = new RollingLogFile(notADir, maxBytes: 1);
+
+        file.RollIfOversized();
     }
 
     [Fact]
