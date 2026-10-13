@@ -12,7 +12,7 @@ A C# / Avalonia tray app that drives two Canon CR-N500 PTZ cameras over VISCA-ov
 | Read | When |
 |---|---|
 | [docs/architecture.md](docs/architecture.md) | Changing structure; tracing how input becomes a camera command |
-| [docs/development.md](docs/development.md) | Building (macOS needs the app solution filter), testing, branching, releasing |
+| [docs/development.md](docs/development.md) | Building (macOS needs the app solution filter), testing, branching, committing, releasing |
 | [docs/roadmap.md](docs/roadmap.md) | Picking up work; phase order |
 | [docs/companion-integration.md](docs/companion-integration.md) | Bitfocus Companion |
 | [docs/skaarhoj-integration.md](docs/skaarhoj-integration.md) | SKAARHOJ panel |

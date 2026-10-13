@@ -40,6 +40,11 @@ There is no test project yet, and `dotnet test` is commented out in CI. Adding `
 - `main` is the working line.
 - New work branches off `main`: `fix/<issue#>-short-description` or `feature/<issue#>-short-description`, one roadmap item per branch where practical.
 
+## Commits
+
+- The repo owner is the sole author of every commit. Agents commit under the configured git user and add no co-author or AI attribution trailers.
+- After `git am` or a cherry-pick of agent-produced patches, reset the author (`git rebase --reset-author` / `git commit --amend --reset-author`).
+
 ## CI
 
 `.github/workflows/build-release.yml` builds and packages releases (currently pinned to .NET 6). `.github/workflows/issue-readiness-audit.yml` keeps the `ready-for-agent` label honest; see [agents/issue-tracker.md](agents/issue-tracker.md).
