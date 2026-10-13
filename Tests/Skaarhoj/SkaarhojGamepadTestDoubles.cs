@@ -1,0 +1,82 @@
+using System.Collections.Concurrent;
+using System.Collections.ObjectModel;
+using PtzJoystickControl.Core.Devices;
+using PtzJoystickControl.Core.Services;
+
+namespace PtzJoystickControl.Tests.Skaarhoj;
+
+/// <summary>
+/// A camera that records every motion command and stop, and keeps the base class's last-sent state
+/// the way <c>ViscaIpDevice</c> does, so <see cref="ViscaDeviceBase.IsMoving"/> reflects what was driven.
+/// Thread-safe to read from the test thread.
+/// </summary>
+internal sealed class MotionRecordingCamera : ViscaDeviceBase
+{
+    private readonly ConcurrentQueue<string> _calls = new();
+    private int _stopCalls;
+
+    public MotionRecordingCamera(string name) : base(name) { }
+
+    /// <summary>Motion commands in order, e.g. <c>Pan 24 Right</c>, <c>Zoom 7 Tele</c>.</summary>
+    public IReadOnlyList<string> Calls => _calls.ToArray();
+
+    public int StopCalls => Volatile.Read(ref _stopCalls);
+
+    public override void Stop()
+    {
+        Interlocked.Increment(ref _stopCalls);
+        panDir = PanDir.Stop;
+        tiltDir = TiltDir.Stop;
+        zoomCmd = (byte)ZoomDir.Stop;
+        focusCmd = (byte)FocusDir.Stop;
+    }
+
+    public override void Pan(byte panSpeed, PanDir panDir)
+    {
+        this.panDir = panDir;
+        _calls.Enqueue($"Pan {panSpeed} {panDir}");
+    }
+
+    public override void Tilt(byte tiltSpeed, TiltDir tiltDir)
+    {
+        this.tiltDir = tiltDir;
+        _calls.Enqueue($"Tilt {tiltSpeed} {tiltDir}");
+    }
+
+    public override void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir)
+    {
+        this.panDir = panDir;
+        this.tiltDir = tiltDir;
+        _calls.Enqueue($"PanTilt {panSpeed} {tiltSpeed} {panDir} {tiltDir}");
+    }
+
+    public override void Zoom(byte zoomSpeed, ZoomDir zoomDir)
+    {
+        zoomCmd = zoomDir == ZoomDir.Stop ? (byte)0x00 : (byte)((byte)zoomDir | zoomSpeed & 0x0f);
+        _calls.Enqueue($"Zoom {zoomSpeed} {zoomDir}");
+    }
+
+    public override void Focus(byte focusSpeed, FocusDir focusDir)
+    {
+        focusCmd = focusDir == FocusDir.Stop ? (byte)0x00 : (byte)((byte)focusDir | focusSpeed & 0x0f);
+        _calls.Enqueue($"Focus {focusSpeed} {focusDir}");
+    }
+
+    public override void Power(Power byteVal) { }
+    public override void FocusMode(FocusMode focusMode) { }
+    public override void FocusLock(FocusLock focusMode) { }
+    public override void Preset(Preset preset, byte presetNumber) { }
+    public override void PresetRecallSpeed(byte value) { }
+}
+
+internal sealed class FakeCamerasService : ICamerasService
+{
+    public FakeCamerasService(params ViscaDeviceBase[] cameras) =>
+        Cameras = new ObservableCollection<ViscaDeviceBase>(cameras);
+
+    public ObservableCollection<ViscaDeviceBase> Cameras { get; }
+
+    public void AddCamera(ViscaDeviceBase camera) => Cameras.Add(camera);
+
+    public void RemoveCamera(ViscaDeviceBase camera) => Cameras.Remove(camera);
+}
