@@ -19,6 +19,7 @@ This app moves physical cameras during live shows. These rules apply to all inpu
 ## 3. Failures stay isolated
 
 - Companion being down, restarting, or slow must never affect joystick → camera control.
+- Log file I/O (writes, flushes, rotation) never runs on the input path. Logging only queues the entry; a background writer does the disk work, and a full queue drops entries instead of waiting. A slow, full or locked disk must never delay joystick → camera control.
 - A SKAARHOJ disconnect must not affect the USB joystick, and vice versa.
 - Outbound calls to Companion are fire-and-forget with a short timeout, never awaited on the input path.
 

@@ -8,9 +8,11 @@ namespace PtzJoystickControl.Application.Logging;
 /// <c>PTZJoystickControl.1.log</c> (older archives shift up) and at most
 /// <see cref="MaxArchives"/> archives are kept, so disk use stays bounded.
 /// A file left oversized by an earlier run is rolled by <see cref="RollIfOversized"/>,
-/// which <see cref="AppLogListener.AttachFile"/> calls. Every line is flushed as it is written. Nothing here ever throws: a file that
-/// cannot be opened, written or rolled is skipped and retried on the next line.
-/// Not thread-safe; <see cref="AppLogListener"/> serialises calls.
+/// which the <see cref="AppLogListener"/> writer thread calls when it starts. Every line
+/// is flushed as it is written. Nothing here ever throws: a file that cannot be opened,
+/// written or rolled is skipped and retried on the next line.
+/// Not thread-safe; only the <see cref="AppLogListener"/> writer thread calls it, so its
+/// disk I/O never runs on a logging (input) thread.
 /// </summary>
 public sealed class RollingLogFile : IDisposable
 {

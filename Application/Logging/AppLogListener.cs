@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
@@ -11,15 +12,27 @@ namespace PtzJoystickControl.Application.Logging;
 /// every <see cref="Trace"/> call (and <c>Debug</c> calls in Debug builds) into one line:
 /// <c>2026-10-13T14:03:12.345+01:00 ERROR [CallingType] message</c>, with CR/LF in the
 /// message escaped as <c>\n</c>. The source is the calling type, falling back to the
-/// trace source or category, then to <c>App</c>. Each line is appended to the attached
-/// <see cref="RollingLogFile"/>, kept in a bounded in-memory history
-/// (<see cref="Snapshot"/>) and published to subscribers (the Log window). Never throws to
-/// the caller. Subscribers run on the logging thread while a lock is held, so they must
-/// only hand off (e.g. post to the UI thread).
+/// trace source or category, then to <c>App</c>. Each line is kept in a bounded in-memory
+/// history (<see cref="Snapshot"/>), published to subscribers (the Log window) and queued
+/// for the attached <see cref="RollingLogFile"/>. Never throws to the caller. Subscribers
+/// run on the logging thread while a lock is held, so they must only hand off (e.g. post
+/// to the UI thread).
+/// <para>
+/// Disk I/O never happens on the logging thread (it may be the SDL input loop or the VISCA
+/// send path). One background writer thread owns the file: it writes, flushes and rolls
+/// it, in the order entries were logged, with the timestamp taken when they were logged.
+/// The queue is bounded: when it is full, entries are dropped rather than waited for, and
+/// one WARN entry with the count is written ahead of the next entry that fits. The
+/// exceptions are an unhandled exception, whose CRITICAL entry waits a bounded time for
+/// room and for the writer to put it on disk (the process is terminating anyway), and
+/// process exit or <see cref="TraceListener.Dispose()"/>, which give the writer a bounded
+/// time to finish the queue.
+/// </para>
 /// </summary>
 public sealed class AppLogListener : TraceListener
 {
     public const int DefaultCapacity = 1000;
+    public const int DefaultQueueCapacity = 10_000;
 
     private readonly object _lock = new();
     private readonly Func<DateTimeOffset> _clock;
@@ -27,7 +40,12 @@ public sealed class AppLogListener : TraceListener
     private readonly Queue<string> _recent;
     private readonly List<Action<string>> _subscribers = new();
     private readonly StringBuilder _pending = new();
-    private RollingLogFile? _file;
+    private FileWriter? _writer;      // guarded by _lock
+    private long _lastQueued;         // guarded by _lock: sequence number of the newest queued entry
+    private int _dropped;             // guarded by _lock: entries dropped since the last notice
+    private bool _processExitHooked;  // guarded by _lock
+    private readonly object _progressLock = new();
+    private long _written;            // guarded by _progressLock: newest sequence number the writer finished
 
     public AppLogListener() : this(() => DateTimeOffset.Now) { }
 
@@ -46,22 +64,68 @@ public sealed class AppLogListener : TraceListener
     /// </summary>
     internal Func<string?> ResolveCaller { get; init; } = CallerName;
 
+    /// <summary>Most entries waiting for the file writer before new ones are dropped.</summary>
+    internal int QueueCapacity { get; init; } = DefaultQueueCapacity;
+
     /// <summary>
-    /// Starts writing every following entry to <paramref name="file"/>, first rolling it
-    /// if an earlier run left it oversized.
+    /// How long an unhandled exception, process exit or <see cref="TraceListener.Dispose()"/>
+    /// waits for the file writer.
+    /// </summary>
+    internal TimeSpan FlushTimeout { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Runs on the writer thread before each line is written. Lets tests slow down, block
+    /// or fail the writer.
+    /// </summary>
+    internal Action<string>? BeforeFileWrite { get; init; }
+
+    /// <summary>
+    /// Starts writing every following entry to <paramref name="file"/> on a background
+    /// writer thread, which first rolls the file if an earlier run left it oversized. Also
+    /// hooks <see cref="AppDomain.ProcessExit"/> so the queue is written before the process
+    /// ends.
     /// </summary>
     public void AttachFile(RollingLogFile file)
     {
         try
         {
+            FileWriter? previous;
             lock (_lock)
             {
-                _file?.Dispose();
-                _file = file;
-                file.RollIfOversized();
+                previous = _writer;
+                _writer = StartWriter(file);
+                if (!_processExitHooked)
+                {
+                    AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+                    _processExitHooked = true;
+                }
             }
+            previous?.Stop(FlushTimeout);
         }
         catch { }
+    }
+
+    /// <summary>
+    /// Waits up to <paramref name="timeout"/> until the file writer has handled every entry
+    /// queued so far. True if it has (or there is no file). Never called on the input path.
+    /// </summary>
+    internal bool WaitForWriter(TimeSpan timeout)
+    {
+        long target;
+        lock (_lock)
+            target = _lastQueued;
+        long deadline = Environment.TickCount64 + (long)timeout.TotalMilliseconds;
+        lock (_progressLock)
+        {
+            while (_written < target)
+            {
+                long left = deadline - Environment.TickCount64;
+                if (left <= 0)
+                    return false;
+                Monitor.Wait(_progressLock, (int)Math.Min(left, int.MaxValue));
+            }
+        }
+        return true;
     }
 
     /// <summary>
@@ -98,17 +162,19 @@ public sealed class AppLogListener : TraceListener
     }
 
     /// <summary>
-    /// Handler for <see cref="AppDomain.UnhandledException"/>: logs CRITICAL and flushes to
-    /// disk before returning. Never throws.
+    /// Handler for <see cref="AppDomain.UnhandledException"/>: logs CRITICAL and waits up to
+    /// <see cref="FlushTimeout"/> in all for room in the queue and for the writer to flush
+    /// the entry to disk. Never throws.
     /// </summary>
     public void OnUnhandledException(object? sender, UnhandledExceptionEventArgs e)
     {
         try
         {
+            long deadline = Environment.TickCount64 + (long)FlushTimeout.TotalMilliseconds;
             Log(TraceEventType.Critical, "AppDomain",
-                $"Unhandled exception (terminating: {(e.IsTerminating ? "true" : "false")}): {e.ExceptionObject?.ToString() ?? "(null)"}");
-            lock (_lock)
-                _file?.Flush(toDisk: true);
+                $"Unhandled exception (terminating: {(e.IsTerminating ? "true" : "false")}): {e.ExceptionObject?.ToString() ?? "(null)"}",
+                crashDeadline: deadline);
+            WaitForWriter(TimeSpan.FromMilliseconds(Math.Max(0, deadline - Environment.TickCount64)));
         }
         catch { }
     }
@@ -174,25 +240,33 @@ public sealed class AppLogListener : TraceListener
     public override void TraceData(TraceEventCache? eventCache, string source, TraceEventType eventType, int id, params object?[]? data)
         => Log(eventType, null, data == null ? null : string.Join(", ", data), fallbackSource: source);
 
-    public override void Flush()
-    {
-        try
-        {
-            lock (_lock)
-                _file?.Flush();
-        }
-        catch { }
-    }
+    /// <summary>
+    /// Does nothing: the writer flushes every line it writes. <see cref="Trace.AutoFlush"/>
+    /// calls this after every entry, so it must never wait on the writer.
+    /// </summary>
+    public override void Flush() { }
 
+    /// <summary>Stops the file writer, giving it up to <see cref="FlushTimeout"/> to finish the queue.</summary>
     protected override void Dispose(bool disposing)
     {
         if (disposing)
         {
-            lock (_lock)
+            try
             {
-                _file?.Dispose();
-                _file = null;
+                FileWriter? writer;
+                lock (_lock)
+                {
+                    writer = _writer;
+                    _writer = null;
+                    if (_processExitHooked)
+                    {
+                        AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+                        _processExitHooked = false;
+                    }
+                }
+                writer?.Stop(FlushTimeout);
             }
+            catch { }
         }
         base.Dispose(disposing);
     }
@@ -218,7 +292,12 @@ public sealed class AppLogListener : TraceListener
 
     /// <param name="source">Fixed source (e.g. <c>AppDomain</c>); otherwise the calling type.</param>
     /// <param name="fallbackSource">Trace source or category, used when the caller is unknown.</param>
-    private void Log(TraceEventType level, string? source, string? message, bool joinPending = false, string? fallbackSource = null)
+    /// <param name="crashDeadline">
+    /// For the unhandled-exception entry: the <see cref="Environment.TickCount64"/> until
+    /// which it waits for room in the queue.
+    /// </param>
+    private void Log(TraceEventType level, string? source, string? message, bool joinPending = false, string? fallbackSource = null,
+        long? crashDeadline = null)
     {
         try
         {
@@ -239,7 +318,7 @@ public sealed class AppLogListener : TraceListener
                     else
                         Emit(FormatLine(_clock(), TraceEventType.Information, source, fragment));
                 }
-                Emit(FormatLine(_clock(), level, source, message));
+                Emit(FormatLine(_clock(), level, source, message), crashDeadline);
             }
         }
         catch
@@ -248,9 +327,10 @@ public sealed class AppLogListener : TraceListener
         }
     }
 
-    private void Emit(string line)
+    private void Emit(string line, long? crashDeadline = null)
     {
-        _file?.Append(line);
+        if (_writer != null)
+            QueueForFile(_writer, line, crashDeadline);
 
         if (_recent.Count >= _capacity)
             _recent.Dequeue();
@@ -259,6 +339,128 @@ public sealed class AppLogListener : TraceListener
         foreach (var subscriber in _subscribers.ToArray())
         {
             try { subscriber(line); }
+            catch { }
+        }
+    }
+
+    /// <summary>
+    /// Queues <paramref name="line"/> for the writer, preceded by a notice if entries were
+    /// dropped. Called under <see cref="_lock"/>, which keeps the queue in logging order.
+    /// Never blocks, except for the crash entry, which waits until
+    /// <paramref name="crashDeadline"/> for room.
+    /// </summary>
+    private void QueueForFile(FileWriter writer, string line, long? crashDeadline)
+    {
+        if (_dropped > 0)
+        {
+            string notice = FormatLine(_clock(), TraceEventType.Warning, nameof(AppLogListener),
+                $"Dropped {_dropped} log entries because the log file writer fell behind");
+            if (!TryQueue(writer, notice, crashDeadline, flushToDisk: false))
+            {
+                _dropped++;
+                return;
+            }
+            _dropped = 0;
+        }
+        if (!TryQueue(writer, line, crashDeadline, flushToDisk: crashDeadline != null))
+            _dropped++;
+    }
+
+    /// <returns>False only when the queue is full.</returns>
+    private bool TryQueue(FileWriter writer, string line, long? crashDeadline, bool flushToDisk)
+    {
+        var entry = new FileEntry(_lastQueued + 1, line, flushToDisk);
+        bool queued;
+        try
+        {
+            queued = crashDeadline is long deadline
+                ? writer.Queue.TryAdd(entry, (int)Math.Clamp(deadline - Environment.TickCount64, 0, int.MaxValue))
+                : writer.Queue.TryAdd(entry);
+        }
+        catch (InvalidOperationException)
+        {
+            return true; // The writer is stopping: not a drop to report.
+        }
+        if (queued)
+            _lastQueued = entry.Sequence;
+        return queued;
+    }
+
+    private FileWriter StartWriter(RollingLogFile file)
+    {
+        var writer = new FileWriter(file, new BlockingCollection<FileEntry>(Math.Max(1, QueueCapacity)));
+        writer.Thread = new Thread(() => RunWriter(writer))
+        {
+            IsBackground = true, // never keeps the process alive; OnProcessExit gives it time to finish
+            Name = "Log file writer",
+        };
+        writer.Thread.Start();
+        return writer;
+    }
+
+    /// <summary>The writer thread: the only place the file is written, flushed or rolled.</summary>
+    private void RunWriter(FileWriter writer)
+    {
+        try
+        {
+            writer.File.RollIfOversized();
+            foreach (var entry in writer.Queue.GetConsumingEnumerable())
+            {
+                try
+                {
+                    BeforeFileWrite?.Invoke(entry.Line);
+                    writer.File.Append(entry.Line);
+                    if (entry.FlushToDisk)
+                        writer.File.Flush(toDisk: true);
+                }
+                catch { }
+                lock (_progressLock)
+                {
+                    _written = Math.Max(_written, entry.Sequence);
+                    Monitor.PulseAll(_progressLock);
+                }
+            }
+        }
+        catch { }
+        finally
+        {
+            try
+            {
+                writer.File.Flush(toDisk: true);
+                writer.File.Dispose();
+            }
+            catch { }
+        }
+    }
+
+    private void OnProcessExit(object? sender, EventArgs e)
+    {
+        try { Dispose(); }
+        catch { }
+    }
+
+    private readonly record struct FileEntry(long Sequence, string Line, bool FlushToDisk);
+
+    private sealed class FileWriter
+    {
+        public FileWriter(RollingLogFile file, BlockingCollection<FileEntry> queue)
+        {
+            File = file;
+            Queue = queue;
+        }
+
+        public RollingLogFile File { get; }
+        public BlockingCollection<FileEntry> Queue { get; }
+        public Thread? Thread { get; set; }
+
+        /// <summary>Lets the writer finish the queue, waiting up to <paramref name="timeout"/>.</summary>
+        public void Stop(TimeSpan timeout)
+        {
+            try
+            {
+                Queue.CompleteAdding();
+                Thread?.Join(timeout);
+            }
             catch { }
         }
     }

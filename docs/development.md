@@ -39,7 +39,7 @@ One entry per line, UTF-8:
 - Levels: `CRITICAL` (unhandled exception), `ERROR`, `WARN`, `INFO` (also plain `Trace.WriteLine`), `VERBOSE`.
 - Source is the class that logged; if that cannot be found, the trace source or `Trace.WriteLine` category, else `App`. Unhandled exceptions use `AppDomain` (with `terminating: true/false`) and unobserved task exceptions `TaskScheduler`.
 - Line breaks inside a message (e.g. stack traces) are written as the two characters `\n`, so an entry never spans lines.
-- The file is flushed after every entry and can be read while the app runs.
+- A background writer thread writes, flushes and rolls the file, normally within milliseconds of each entry, so logging never waits on the disk. Entries keep their order and the time they were logged. If the writer falls behind by 10,000 entries, new entries are dropped from the file (not from the Log window) and a `WARN [AppLogListener] Dropped N log entries ...` line marks the gap. On exit, and on an unhandled exception, the app waits up to 2 seconds for the queued entries to reach the file. The file can be read while the app runs.
 
 Retention: when the file reaches 5 MB (checked on every entry and when the app starts) it is renamed to `PTZJoystickControl.1.log` (older ones shift to `.2` … `.4`, the oldest is deleted), so the logs never exceed about 25 MB. Newest entries are at the end of `PTZJoystickControl.log`.
 
