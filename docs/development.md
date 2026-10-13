@@ -77,7 +77,7 @@ New behavior and fixes land test-first. Priority coverage, each added with its o
 
 | Check | Command |
 |---|---|
-| Build | `dotnet build PTZJoystickControl.sln` succeeds with no new warnings |
+| Build | `dotnet build PTZJoystickControl.sln` succeeds with no new warnings (known baseline: NU1903/NU1904 for SkiaSharp, Tmds.DBus and System.Drawing.Common, which Avalonia 0.10 pins; xUnit1031 in the log writer tests) |
 | Tests | `dotnet test PTZJoystickControl.sln` passes |
 | Hardware | Pre-show checklist in [live-safety.md](live-safety.md) on real cameras for any change to input, commands, networking or threading. When no cameras are available, merge and add the change's checks to [on-site-checklist.md](on-site-checklist.md) in the same merge |
 | Secrets | No credentials or tokens committed |
