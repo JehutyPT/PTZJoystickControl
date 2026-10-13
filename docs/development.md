@@ -44,7 +44,7 @@ New behavior and fixes land test-first. Priority coverage, each added with its o
 |---|---|
 | Build | `dotnet build PTZJoystickControl.sln` succeeds with no new warnings |
 | Tests | `dotnet test PTZJoystickControl.App.slnf` passes |
-| Hardware | Pre-show checklist in [live-safety.md](live-safety.md) on real cameras for any change to input, commands, or networking |
+| Hardware | Pre-show checklist in [live-safety.md](live-safety.md) on real cameras for any change to input, commands, networking or threading. When no cameras are available, merge and add the change's checks to [on-site-checklist.md](on-site-checklist.md) in the same merge |
 | Secrets | No credentials or tokens committed |
 
 ## Branches
