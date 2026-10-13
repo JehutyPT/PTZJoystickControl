@@ -37,10 +37,9 @@ There is no test project yet, and `dotnet test` is commented out in CI. Adding `
 
 ## Branches
 
-- `main` mirrors upstream.
-- `feature/BitfocusCompanionIntegration` is the current working line.
-- New work branches off it: `fix/<issue#>-short-description` or `feature/<issue#>-short-description`, one roadmap item per branch where practical.
+- `main` is the working line. It is not kept in sync with upstream.
+- New work branches off `main`: `fix/<issue#>-short-description` or `feature/<issue#>-short-description`, one roadmap item per branch where practical.
 
 ## CI
 
-`.github/workflows/build-release.yml` builds and packages releases (currently pinned to .NET 6).
+`.github/workflows/build-release.yml` builds and packages releases (currently pinned to .NET 6). `.github/workflows/issue-readiness-audit.yml` keeps the `ready-for-agent` label honest; see [agents/issue-tracker.md](agents/issue-tracker.md).

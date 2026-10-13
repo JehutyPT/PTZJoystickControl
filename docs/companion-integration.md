@@ -2,7 +2,7 @@
 
 **Target: the latest stable Companion release.** Verify endpoints and protocol details against the current Companion documentation before changing this code; Companion's APIs have changed between major versions.
 
-## Current state (branch `feature/BitfocusCompanionIntegration`)
+## Current state
 
 ### Companion → app: camera selection
 
