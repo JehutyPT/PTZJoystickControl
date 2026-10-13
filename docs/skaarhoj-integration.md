@@ -4,6 +4,11 @@ Hardware: SKAARHOJ PTZ Extreme running UniSketch firmware (pre-Blue Pill). Goal:
 
 > **Status: design only, panel input side verified.** The [Raw Panel input protocol](#raw-panel-verified-on-hardware) was checked against a real panel on 2026-10-13. LED/display output, the [Satellite API](#satellite-api-companion-side) and the [mapping](#mapping) are still design and unverified; check them against SKAARHOJ's Raw Panel documentation, Companion's Satellite API documentation and real hardware before relying on them.
 
+## Vendor references
+
+- [SKAARHOJ Raw Panel manual](https://github.com/SKAARHOJ/Support/blob/master/Manuals/SKAARHOJ/SKAARHOJ_RawPanel_V2.pdf): protocol commands, including LED and display output.
+- [SKAARHOJ installation and operation manual](https://github.com/SKAARHOJ/Support/blob/master/Manuals/SKAARHOJ/SKAARHOJ_Manual.pdf): firmware updater, online and local configuration, enabling WebConfig (pages 17 and 45).
+
 ## Overview
 
 ```
@@ -57,6 +62,7 @@ This panel had a locally administered MAC address (`92:a1:…`) and port 80 clos
 - The panel sends **nothing while idle**: no keepalive, no repeats (30 s idle observed). Silence on the socket says nothing about link health.
 - Send `ping`; the panel replies `ack`. Round trip on the LAN: 1.4–18 ms, median 12.5 ms (144 samples, 1 ping/s, light input load).
 - With the panel's Ethernet cable pulled, `ack`s stopped immediately, but the OS reported no error on the socket for ~10 s (macOS returned `EHOSTDOWN` on send, driven by ARP). A blocking read would wait forever. **Detect loss with a `ping`/`ack` timeout**, not with socket errors or input silence; this is the dead-man timeout in [live-safety.md](live-safety.md). A 100 ms ping interval and a ~300 ms timeout fit the measured latency; not yet tested under heavy input load.
+- The panel also reports `_isSleeping=0` (seen in a `list` reply). The manual describes a display sleep timer; whether a sleeping panel still sends joystick input is unverified.
 - After the cable was replugged, the panel accepted new connections normally. How soon it re-accepts, and whether it keeps the old half-open socket, were not measured.
 
 ### Queries
