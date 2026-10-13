@@ -12,6 +12,8 @@ public class InputSettings
     public bool Inverted { get; set; }
     public float DeadZoneHigh { get; set; }
     public float DeadZoneLow { get; set; }
+    // Missing in files from before expo existed: loads as 0 (linear).
+    public float Expo { get; set; }
     public InputSettings? SecondInputSettings { get; set; }
 
     public InputSettings()
@@ -29,6 +31,7 @@ public class InputSettings
         Inverted = input.Inverted;
         DeadZoneHigh = input.Saturation;
         DeadZoneLow = input.DeadZone;
+        Expo = input.Expo;
         SecondInputSettings = input.SecondInput != null ? new InputSettings(input.SecondInput) : null;
     }
 }

@@ -36,6 +36,8 @@ public static class GamepadInputSetup
                 input.Inverted = storedInput.Inverted;
                 input.Saturation = storedInput.DeadZoneHigh;
                 input.DeadZone = storedInput.DeadZoneLow;
+                // Validated by the setter: a bad value becomes 0 with a warning.
+                input.Expo = storedInput.Expo;
                 if (input.SecondInput != null && storedInput.SecondInputSettings != null)
                 {
                     if (storedInput.SecondInputSettings.CommandType != null && commandsDict.TryGetValue(storedInput.SecondInputSettings.CommandType, out var secondCommand))
