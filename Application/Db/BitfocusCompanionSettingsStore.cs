@@ -23,6 +23,11 @@ public class BitfocusCompanionSettingsStore : IGamepadSettingsStore
                 "PTZJoystickControl/Gamepads.json");
     }
 
+    public BitfocusCompanionSettingsStore(string filePath)
+    {
+        _camerasFilePath = filePath;
+    }
+
     public List<GamepadSettings> GetAllGamepadSettings()
     {
         if (StoredGamepadSettings != null)
@@ -62,7 +67,7 @@ public class BitfocusCompanionSettingsStore : IGamepadSettingsStore
         try
         {
             var serializedGamepadSettings = JsonSerializer.Serialize(gamepadSettings);
-            File.WriteAllText(_camerasFilePath, serializedGamepadSettings);
+            AtomicFile.WriteAllText(_camerasFilePath, serializedGamepadSettings);
             return true;
         }
         catch (Exception e)

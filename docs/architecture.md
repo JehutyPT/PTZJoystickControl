@@ -33,7 +33,7 @@ Commands are **event-driven**: a packet is only sent when the shaped input value
 
 ## Settings
 
-JSON files in `%APPDATA%\PTZJoystickControl\` on Windows (`~/.PTZJoystickControl/` on macOS): `Cameras.json` for cameras and `Gamepads.json` for input mappings. Settings are saved on every persistent property change.
+JSON files in `%APPDATA%\PTZJoystickControl\` on Windows (`~/.PTZJoystickControl/` on macOS): `Cameras.json` for cameras and `Gamepads.json` for input mappings. Settings are saved on every persistent property change, atomically: each save writes a sibling `.tmp` file, flushes it to disk, then moves it over the target.
 
 ## Threading
 

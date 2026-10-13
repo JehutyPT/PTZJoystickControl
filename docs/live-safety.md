@@ -30,7 +30,7 @@ This app moves physical cameras during live shows. These rules apply to all inpu
 ## 5. Recoverability
 
 - Every network connection (cameras over TCP, Companion, SKAARHOJ) auto-reconnects with backoff.
-- ⚠️ Settings files are written atomically (write to temp file, then replace) so a crash mid-save cannot corrupt the config.
+- Settings files are written atomically (write to temp file, then replace) so a crash mid-save cannot corrupt the config.
 - Log connection state changes and errors with timestamps to a rolling file.
 
 ## Pre-show checklist (target state)
