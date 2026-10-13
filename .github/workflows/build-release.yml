@@ -190,14 +190,6 @@ jobs:
         path: Packaging/Windows/Packages/**/*.msi
         if-no-files-found: error
 
-    - name: GH Release
-      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-      uses: softprops/action-gh-release@v3
-      with:
-        prerelease: true
-        tag_name: v${{ needs.bump-version.outputs.VERSION }}
-        files: Packaging/Windows/Packages/**/*.msi
-
   build-macos-packeges:
     needs: bump-version
     # macos-latest is arm64; the x64 app is cross-published and runs under Rosetta.
@@ -270,10 +262,31 @@ jobs:
           path: "*.dmg"
           if-no-files-found: error
 
+  # The only job that touches the GitHub Release. It runs after every build
+  # job has succeeded (a failed build skips it, so no partial release) and
+  # publishes all packages in one go instead of three jobs racing on one tag.
+  release:
+    needs: [bump-version, build-windows-packeges, build-macos-packeges]
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download packages
+      uses: actions/download-artifact@v8
+      with:
+        path: packages
+        merge-multiple: true
+
+    - name: List packages
+      run: ls -lR packages
+
     - name: GH Release
-      if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
       uses: softprops/action-gh-release@v3
       with:
-          prerelease: true
-          tag_name: v${{ needs.bump-version.outputs.VERSION }}
-          files: "*.dmg"
+        prerelease: true
+        tag_name: v${{ needs.bump-version.outputs.VERSION }}
+        fail_on_unmatched_files: true
+        files: |
+          packages/**/*_win_x86.msi
+          packages/**/*_win_x64.msi
+          packages/**/*.dmg
