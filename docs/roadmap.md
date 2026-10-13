@@ -11,7 +11,6 @@ Work is ordered so the app is safe for live use before new features land. Each i
 | High | Companion camera selection hardcodes SDL instance id `0`; it stops working after a USB replug. |
 | High | Companion events call into gamepad input from the HTTP thread, concurrently with the SDL loop. |
 | Medium | Companion virtual buttons are only added when the gamepad already has saved settings. |
-| Medium | Settings files are written non-atomically and can be corrupted by a crash mid-save. |
 | Medium | Unused ASP.NET Core 2.2 package references (out of support, known vulnerabilities). |
 | Medium | Projects and CI target .NET 6 (out of support); move to the current .NET LTS. Also upgrade WiX off `4.0.0-rc.4` and make `PTZJoystickControl.sln` build on macOS/Linux (skip the WiX project off Windows). |
 | Low | Global unhandled-exception logging and a rolling log file. |

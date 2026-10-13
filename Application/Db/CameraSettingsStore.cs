@@ -24,6 +24,11 @@ namespace PtzJoystickControl.Application.Db
 
         }
 
+        public CameraSettingsStore(string filePath)
+        {
+            _cameratFilePath = filePath;
+        }
+
         public IEnumerable<ViscaDeviceBase> GetAllCameras()
         {
             if (!File.Exists(_cameratFilePath))
@@ -67,7 +72,7 @@ namespace PtzJoystickControl.Application.Db
             {
                 var viscaDeviceSettings = viscaDevices.Select(viscaDevice => new ViscaDeviceSettings(viscaDevice));
                 string serializedViscaDeviceSettings = JsonSerializer.Serialize(viscaDeviceSettings);
-                File.WriteAllText(_cameratFilePath, serializedViscaDeviceSettings);
+                AtomicFile.WriteAllText(_cameratFilePath, serializedViscaDeviceSettings);
                 return true;
             }
             catch (Exception e)

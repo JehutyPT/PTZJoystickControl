@@ -23,6 +23,11 @@ public class GamepadSettingsStore : IGamepadSettingsStore
                 "PTZJoystickControl/Gamepads.json");
     }
 
+    public GamepadSettingsStore(string filePath)
+    {
+        _camerasFilePath = filePath;
+    }
+
     public List<GamepadSettings> GetAllGamepadSettings()
     {
         if (StoredGamepadSettings != null)
@@ -62,7 +67,7 @@ public class GamepadSettingsStore : IGamepadSettingsStore
         try
         {
             var serializedGamepadSettings = JsonSerializer.Serialize(gamepadSettings);
-            File.WriteAllText(_camerasFilePath, serializedGamepadSettings);
+            AtomicFile.WriteAllText(_camerasFilePath, serializedGamepadSettings);
             return true;
         }
         catch (Exception e)
