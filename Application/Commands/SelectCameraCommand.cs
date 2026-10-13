@@ -10,7 +10,7 @@ using PtzJoystickControl.Core.Services;
 
 namespace PtzJoystickControl.Application.Commands;
 
-public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INotifyCollectionChanged
+public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INotifyCollectionChanged, IDisposable
 {
     public SelectCameraCommand(IGamepad gamepad, IBitfocusCompanionService companionService) : base(gamepad, companionService)
     {
@@ -33,7 +33,8 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
         }
     }
 
-    private static ObservableCollection<ViscaDeviceBase> cameras = null!;
+    private ObservableCollection<ViscaDeviceBase> cameras = null!;
+    private bool disposed;
 
     private ObservableCollection<ViscaDeviceBase> Cameras
     {
@@ -41,12 +42,7 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
         set
         {
             if (value == null) throw new ArgumentNullException(nameof(value));
-            if (cameras != null)
-            {
-                cameras.CollectionChanged -= OnCamerasChanged;
-                foreach (var camera in cameras)
-                    camera.PropertyChanged -= OnDeviceChange;
-            }
+            UnsubscribeFromCameras();
 
             cameras = value;
             
@@ -78,6 +74,28 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
     {
         if (e.PropertyName == nameof(ViscaDeviceBase.Name))
             NotifyPropertyChanged(nameof(Options));
+    }
+
+    private void UnsubscribeFromCameras()
+    {
+        if (cameras == null)
+            return;
+
+        cameras.CollectionChanged -= OnCamerasChanged;
+        foreach (var camera in cameras)
+            camera.PropertyChanged -= OnDeviceChange;
+    }
+
+    // Called when the gamepad goes away (unplugged or deactivated). Detaches from the shared
+    // camera list and the gamepad so a dead gamepad's command stops reacting to changes.
+    public void Dispose()
+    {
+        if (disposed)
+            return;
+
+        disposed = true;
+        Gamepad.PropertyChanged -= Gamepad_PropertyChanged;
+        UnsubscribeFromCameras();
     }
 
     public override string CommandName => "Select camera";

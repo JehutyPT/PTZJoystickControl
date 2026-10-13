@@ -55,14 +55,18 @@ public class SdlGamepadsService : IGamepadsService
                     SDL.SDL_JoyButtonEvent buttonEvent = new SDL.SDL_JoyButtonEvent()
                     {
                         button = (byte) e.Button,
-                        state = 1,
-                        which = 0 //TODO: do we care about multi gamepad support?
                     };
 
-                    OnJoystickButtonEvent(buttonEvent);
+                    // Press the Companion virtual button on every active gamepad by reference.
+                    // SDL instance ids change on every replug, so they cannot address a gamepad here.
+                    foreach (var gamepad in ActiveGamepads.Cast<SdlGamepad>().ToArray())
+                    {
+                        buttonEvent.state = 1;
+                        gamepad.OnButtonEvent(buttonEvent);
 
-                    buttonEvent.state = 0;
-                    OnJoystickButtonEvent(buttonEvent);
+                        buttonEvent.state = 0;
+                        gamepad.OnButtonEvent(buttonEvent);
+                    }
                 }
 
                 break;
@@ -235,16 +239,16 @@ public class SdlGamepadsService : IGamepadsService
     {
         var instanceId = jaxis.which;
         ActiveGamepads.Cast<SdlGamepad>()
-            .First(g => g.InstanceId == instanceId)
-            .OnAxisEvent(jaxis);
+            .FirstOrDefault(g => g.InstanceId == instanceId)
+            ?.OnAxisEvent(jaxis);
     }
 
     private void OnJoystickButtonEvent(SDL.SDL_JoyButtonEvent jbutton)
     {
         var instanceId = jbutton.which;
         ActiveGamepads.Cast<SdlGamepad>()
-            .First(g => g.InstanceId == instanceId)
-            .OnButtonEvent(jbutton);
+            .FirstOrDefault(g => g.InstanceId == instanceId)
+            ?.OnButtonEvent(jbutton);
     }
 
     private void OnJoystickAdded(SDL.SDL_JoyDeviceEvent jdevice)

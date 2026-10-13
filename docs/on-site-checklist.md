@@ -35,3 +35,10 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Release the stick and immediately push it the other way: the camera follows the new direction and does not stop.
 - [ ] Pan and tilt together, release only pan: tilt keeps moving at the same speed until released, then stops.
 - [ ] Optional, with Wireshark on the vMix PC filtered to the camera's VISCA port (normally `udp.port == 52381`): releasing an axis shows 3 identical stop packets roughly 50–65 ms apart.
+
+### #5: Companion camera selection survives a USB replug
+
+- [ ] Trigger `SetCameraPreview` for each camera from Companion: the app's camera selection follows and Companion's feedback updates.
+- [ ] Unplug the joystick and plug it back in (no app restart). Trigger `SetCameraPreview` for each camera from Companion again: the selection still follows, and the joystick drives the newly selected camera.
+- [ ] Deactivate the joystick in the app, activate it again, and repeat the Companion selection: it still follows.
+- [ ] Rename a camera and add or remove a camera in the app after a replug: the joystick's camera-select options update and the app stays up.
