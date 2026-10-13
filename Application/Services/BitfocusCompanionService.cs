@@ -93,7 +93,7 @@ namespace PtzJoystickControl.Application.Services
         internal static bool ShouldLogRetryFailure(int attempt) => attempt > 0 && (attempt & (attempt - 1)) == 0;
 
         /// <summary>
-        /// Stops accepting requests from Companion and cancels any pending start retry. A pending accept completes and is logged.
+        /// Stops accepting requests from Companion and cancels any pending start retry. A pending accept ends silently.
         /// </summary>
         public void StopListening()
         {
@@ -121,6 +121,15 @@ namespace PtzJoystickControl.Application.Services
             catch (Exception e)
             {
                 Trace.TraceWarning($"Companion listener: failed to stop: {e}");
+            }
+        }
+
+        private bool IsStopped
+        {
+            get
+            {
+                lock (_listenerLock)
+                    return _stopped;
             }
         }
 
@@ -224,6 +233,11 @@ namespace PtzJoystickControl.Application.Services
                 {
                     context = listener.EndGetContext(ar);
                 }
+                catch (Exception) when (IsStopped)
+                {
+                    // StopListening closed the listener under the pending accept: a deliberate stop, not a failure.
+                    return;
+                }
                 catch (Exception e)
                 {
                     Trace.TraceWarning($"Companion listener: failed to accept request: {e.Message}");
@@ -248,6 +262,10 @@ namespace PtzJoystickControl.Application.Services
             {
                 if (listener.IsListening)
                     listener.BeginGetContext(new AsyncCallback(ListenerCallback), listener);
+            }
+            catch (Exception) when (IsStopped)
+            {
+                // StopListening closed the listener between the check and the call.
             }
             catch (Exception e)
             {
