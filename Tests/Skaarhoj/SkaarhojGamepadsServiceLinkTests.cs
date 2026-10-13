@@ -9,13 +9,16 @@ using Xunit;
 
 namespace PtzJoystickControl.Tests.Skaarhoj;
 
-// The panel controller over a real SkaarhojPanelLink and FakeRawPanel, at the scaled timings of
-// SkaarhojPanelLinkTests. The test plays the input loop: nothing is applied until it calls RunPending.
+// The panel controller over a real SkaarhojPanelLink and FakeRawPanel. The test plays the input
+// loop: nothing is applied until it calls RunPending.
+// The link goes down only when the test drops the connection: the ping timeout is far longer than
+// any test, because a busy parallel test run can starve the link's own pings past a short one and
+// drop a healthy link mid-test. The ping timeout itself is tested in SkaarhojPanelLinkTests.
 public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
 {
     private static readonly TimeSpan Ping = TimeSpan.FromMilliseconds(20);
-    private static readonly TimeSpan Timeout = TimeSpan.FromMilliseconds(100);
-    private static readonly TimeSpan Grace = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan Grace = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan Within = TimeSpan.FromSeconds(3);
 
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "ptz-skaarhoj-link-" + Guid.NewGuid().ToString("N"));
@@ -68,6 +71,12 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
 
     private bool Received(string messageText) => _linkEvents.Any(e => e.Contains(messageText));
 
+    // Up, and the fake panel holds exactly the connection numbered `connection`, so Send reaches it.
+    private async Task WaitForConnection(int connection)
+    {
+        Assert.True(await WaitUntil(() => Count("up") == connection && _panel.Accepted == connection && _panel.OpenClients == 1, Within));
+    }
+
     private SkaarhojGamepad ActiveGamepad() => Assert.IsType<SkaarhojGamepad>(Assert.Single(_service.ActiveGamepads));
 
     // Activated, link up, LR → pan and Rotate → zoom on camera A.
@@ -75,7 +84,7 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
     {
         _service.ActivateGamepad(_service.Gamepads.Single());
         _link.Start();
-        Assert.True(await WaitUntil(() => Count("up") == 1, Within));
+        await WaitForConnection(1);
         _queue.RunPending();
         var gamepad = ActiveGamepad();
         gamepad.Inputs.Single(i => i.Name == "LR").SelectedCommand = gamepad.Commands.OfType<PanCommand>().Single();
@@ -99,7 +108,7 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
     }
 
     [Fact]
-    public async Task LinkDown_WhenThePanelStopsAnsweringPings_StopsEveryDrivenCamera_AndShowsDisconnected()
+    public async Task LinkDown_StopsEveryDrivenCamera_AndShowsDisconnected()
     {
         var gamepad = await ConnectAndMap();
         _panel.Send("HWC#60=Speed:500");
@@ -112,7 +121,7 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
         Assert.True(_camB.IsMoving);
         var stopsA = _camA.StopCalls;
 
-        _panel.AnswerPings = false;
+        _panel.DropConnections();
         Assert.True(await WaitUntil(() => Count("down") == 1, Within));
         _queue.RunPending();
 
@@ -131,10 +140,8 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
         Assert.True(await WaitUntil(() => Received("Value = 500"), Within));
         _queue.RunPending();
 
-        _panel.AnswerPings = false;
-        Assert.True(await WaitUntil(() => Count("down") == 1, Within));
-        _panel.AnswerPings = true;
-        Assert.True(await WaitUntil(() => Count("up") == 2, Within));
+        _panel.DropConnections();
+        await WaitForConnection(2);
         _queue.RunPending();
         var calls = _camA.Calls.Count;
 
@@ -194,10 +201,8 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
         _queue.RunPending();
         _service.DeactivateGamepad(_service.Gamepads.Single());
         _service.ActivateGamepad(_service.Gamepads.Single());
-        _panel.AnswerPings = false;
-        Assert.True(await WaitUntil(() => Count("down") == 1, Within));
-        _panel.AnswerPings = true;
-        Assert.True(await WaitUntil(() => Count("up") == 2, Within));
+        _panel.DropConnections();
+        await WaitForConnection(2);
         _queue.RunPending();
         await Task.Delay(Ping * 3);
 
