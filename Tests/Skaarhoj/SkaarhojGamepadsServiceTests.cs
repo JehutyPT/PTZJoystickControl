@@ -4,6 +4,7 @@ using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Application.Services;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.SkaarhojPanel;
+using PtzJoystickControl.Tests.Services;
 using Xunit;
 
 namespace PtzJoystickControl.Tests.Skaarhoj;
@@ -369,6 +370,38 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
 
         first.DeactivateGamepad(Info(first));
         Assert.False(Info(NewService()).IsActivated);
+    }
+
+    [Fact]
+    public void InTheControllerList_SelectingTheJoystickStopsThePanel_AndViceVersa_NeverBothActive()
+    {
+        var usb = new CompositeGamepadsServiceTests.FakeGamepadsService("usb");
+        var joystick = usb.AddInfo("joystick");
+        var panel = NewService();
+        var composite = new CompositeGamepadsService(usb, panel);
+        Assert.Equal(new[] { "joystick", Id }, composite.Gamepads.Select(g => g.Id));
+
+        composite.ActivateGamepad(Info(panel));
+        panel.OnLinkUp();
+        _queue.RunPending();
+        var gamepad = Active(panel);
+        MapLrToPan(gamepad);
+        gamepad.SelectedCamera = _camA;
+        Speed(panel, 60, 500);
+        _queue.RunPending();
+        Assert.Equal(Id, Assert.Single(composite.ActiveGamepads).Id);
+        var stops = _camA.StopCalls;
+
+        composite.ActivateGamepad(joystick);
+
+        Assert.Equal(1, _camA.StopCalls - stops);
+        Assert.False(Info(panel).IsActivated);
+        Assert.Equal("joystick", Assert.Single(composite.ActiveGamepads).Id);
+
+        composite.ActivateGamepad(Info(panel));
+
+        Assert.False(joystick.IsActivated);
+        Assert.Equal(Id, Assert.Single(composite.ActiveGamepads).Id);
     }
 
     [Fact]
