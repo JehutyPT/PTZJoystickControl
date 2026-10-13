@@ -35,6 +35,7 @@ public class InputViewModel : ViewModelBase, INotifyPropertyChanged
     public static int MaxValue { get => 1; }
     public float DeadZone { get => _input.DeadZone; set => _input.DeadZone = value; }
     public float Saturation { get => _input.Saturation; set => _input.Saturation = value; }
+    public float Expo { get => _input.Expo; set => _input.Expo = value; }
     public string OutputValue { get => $"{_input.CurrentDirection} {_input.CurrentValue}"; }
 
     public bool Inverted { get => _input.Inverted; set => _input.Inverted = value; }

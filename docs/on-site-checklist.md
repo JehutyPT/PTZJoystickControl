@@ -6,6 +6,17 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #20: Expo response curve per axis
+
+Each axis has a new **Expo** setting next to **Dead zone** (0 % = linear, as before; up to 100 %). It only bends pan, tilt, zoom and focus speeds between the dead zone and the saturation zone. Existing settings load with Expo 0 %. Back up `%APPDATA%\PTZJoystickControl\Gamepads.json` before starting the new build.
+
+- [ ] Start the new build with the existing `Gamepads.json`: no settings `WARN` or `ERROR` in the log (tray menu → **Show log**), every axis shows **Expo** 0 %, buttons show no Expo field, and the joystick mappings, dead zones and saturations are unchanged.
+- [ ] With Expo 0 %, pan, tilt and zoom each camera slowly and fully, and release: the speeds feel the same as the previous build (the output label next to the axis shows the same speed for the same deflection) and each camera stops on release.
+- [ ] Set the pan axis's Expo to 50 %: small deflections give noticeably slower pan than before, a deflection just past the dead zone still moves the camera (output label not `Stop`), and full deflection still reaches the configured max speed (output label shows the max-speed value). Release: the camera stops.
+- [ ] Repeat at 100 %: fine control near centre, full deflection still reaches max speed, release stops.
+- [ ] Quit and restart: the axis still shows the Expo you set. Set it back to the value the operator wants for the show.
+- [ ] An axis mapped to a static command (e.g. *Preset*) with Expo set above 0 % still triggers at the same deflection as before.
+
 ### #15: The app no longer calls Companion
 
 Companion owns camera selection. The app no longer presses a Companion button when the selected camera changes (that call used Companion's legacy HTTP API, which the production Companion has disabled), the camera row's **Bitfocus Page/Button** fields are gone, and `Host` and `Port` in `Companion.json` are no longer used. Companion → app selection (`?SelectCamera=N`, `?SetCameraPreview=N`) is unchanged. The other entries no longer ask for Companion's feedback to update for this reason. Before starting the new build, back up `%APPDATA%\PTZJoystickControl\Cameras.json` and `Companion.json` (if present).

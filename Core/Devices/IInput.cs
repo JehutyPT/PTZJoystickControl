@@ -19,6 +19,13 @@ public interface IInput : INotifyPropertyChanged
     float RawInputValue { get; }
     float DeadZone { get; set; }
     float Saturation { get; set; }
+
+    /// <summary>
+    /// Expo curve strength, 0..1 (0 = linear). Bends an axis's response between the deadzone and
+    /// the saturation zone for dynamic commands: out = (1 - e)·x + e·x³. Any other value is stored
+    /// as 0 with a warning.
+    /// </summary>
+    float Expo { get; set; }
     bool Inverted { get; set; }
     bool DefaultCenter { get; set; }
     string Name { get; }
