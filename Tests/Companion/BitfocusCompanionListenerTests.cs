@@ -90,16 +90,21 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
     }
 
     [Fact]
-    public async Task StoppingTheListener_IsLoggedAndNotThrownFromTheCallback()
+    public async Task StopListening_WhileAccepting_LogsNoWarning_AndRaisesNoError()
     {
+        var changes = 0;
+        _service.InboundListenerErrorChanged += (_, _) => Interlocked.Increment(ref changes);
+
         _service.StopListening();
 
-        // The pending accept completes with an error once the listener stops; it must be logged, not thrown.
-        var deadline = DateTime.UtcNow.AddSeconds(3);
-        while (DateTime.UtcNow < deadline && !_trace.Messages.Any(m => m.Contains("Companion listener: failed to accept request")))
-            await Task.Delay(20);
+        // The pending accept completes with an error once the listener closes; a deliberate stop must end it silently.
+        await Task.Delay(1000);
 
-        Assert.Contains(_trace.Messages, m => m.Contains("Companion listener: failed to accept request"));
+        Assert.DoesNotContain(_trace.Messages, m => m.Contains("Companion listener: failed to accept request"));
+        Assert.DoesNotContain(_trace.Messages, m => m.Contains("Companion listener: failed to listen for the next request"));
+        Assert.DoesNotContain(_trace.Messages, m => m.Contains("Companion listener: unexpected failure"));
+        Assert.Null(_service.InboundListenerError);
+        Assert.Equal(0, Volatile.Read(ref changes));
         await Assert.ThrowsAnyAsync<HttpRequestException>(() => StatusOf("?SetCameraPreview=1"));
     }
 

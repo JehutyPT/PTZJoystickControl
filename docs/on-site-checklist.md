@@ -187,3 +187,8 @@ The Windows release is now a zip (`PTZJoystickControl_v<version>_win_x64.zip`, o
 - [ ] Companion selects cameras and gets selection feedback as before.
 - [ ] Quit from the tray: the log ends with `PTZJoystickControl stopped`. Start `Gui.exe` again: it starts normally.
 - [ ] Uninstalling the MSI removed its Start menu and desktop shortcuts, and any taskbar pin or Startup-folder shortcut pointing at the old `Program Files` folder no longer works. Recreate the ones the owner uses, pointing at the new `Gui.exe` (right-click → Show more options → Send to → Desktop (create shortcut), or Pin to taskbar), and check each one starts the app.
+
+### Companion listener stops quietly on quit
+
+- [ ] Quit from the tray: the last lines of `PTZJoystickControl.log` have no `WARN [BitfocusCompanionService] Companion listener: failed to accept request` line.
+- [ ] Start the app again: `?SelectCamera=N` from Companion still selects cameras.
