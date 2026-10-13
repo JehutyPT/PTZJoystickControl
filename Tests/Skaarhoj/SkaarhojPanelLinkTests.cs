@@ -310,7 +310,9 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     [Fact]
     public async Task ModelVersionAndConnectionsReplies_AreLogged()
     {
-        Start();
+        // The dead-man stays unarmed: a busy test run can starve the pings past the short timeout,
+        // and with no reconnect the replies would then go nowhere.
+        Start(grace: NoReconnect);
         Assert.True(await WaitUntil(() => _panel.Received.Contains("Connections?"), TimeSpan.FromSeconds(2)));
 
         _panel.Send("_model=SK_PTZEXTREMEV2", "_serial=123", "_version=v2.5.27", $"_connections=127.0.0.1;");
