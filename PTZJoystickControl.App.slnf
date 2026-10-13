@@ -5,7 +5,8 @@
       "Application\\Application.csproj",
       "Core\\Core.csproj",
       "Gui\\Gui.csproj",
-      "SdlGamepads\\SdlGamepads.csproj"
+      "SdlGamepads\\SdlGamepads.csproj",
+      "Tests\\Tests.csproj"
     ]
   }
 }

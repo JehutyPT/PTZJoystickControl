@@ -15,7 +15,35 @@ permissions:
 
 jobs:
 
+  # Runs before anything is versioned, tagged, packaged or released: a failing
+  # test stops the whole pipeline.
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Setup .NET 6 SDK
+      id: setup-dotnet
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 6.0.x
+
+    # CI only, see the Windows job.
+    - name: Pin .NET SDK for this run
+      shell: bash
+      run: printf '{"sdk":{"version":"%s"}}\n' "${{ steps.setup-dotnet.outputs.dotnet-version }}" > global.json
+
+    - name: Show .NET SDK
+      run: dotnet --version
+
+    # The solution filter skips the WiX packaging project, which only builds on Windows.
+    - name: Run tests
+      run: dotnet test PTZJoystickControl.App.slnf
+
   bump-version:
+    needs: test
     runs-on: ubuntu-latest
 
     outputs:
@@ -96,10 +124,6 @@ jobs:
 
     - name: Show .NET SDK
       run: dotnet --version
-
-    ## Execute all unit tests in the solution
-    #- name: Execute unit tests
-    #  run: dotnet test
 
     - name: Publish application
       run: dotnet publish Gui/Gui.csproj -c PublishRelease -r $env:Runtime --self-contained
