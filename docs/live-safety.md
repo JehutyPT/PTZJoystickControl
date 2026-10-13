@@ -21,7 +21,6 @@ This app moves physical cameras during live shows. These rules apply to all inpu
 - Companion being down, restarting, or slow must never affect joystick → camera control.
 - Log file I/O (writes, flushes, rotation) never runs on the input path. Logging only queues the entry; a background writer does the disk work, and a full queue drops entries instead of waiting. A slow, full or locked disk must never delay joystick → camera control.
 - A SKAARHOJ disconnect must not affect the USB joystick, and vice versa.
-- Outbound calls to Companion are fire-and-forget with a short timeout, never awaited on the input path.
 
 ## 4. Threading
 
@@ -38,5 +37,5 @@ This app moves physical cameras during live shows. These rules apply to all inpu
 
 1. App shows all controllers connected and all cameras reachable.
 2. Move each axis fully and release: camera moves and stops.
-3. Select each camera from Companion; confirm the app follows and Companion feedback updates.
+3. Select each camera from Companion; confirm the app follows.
 4. Unplug the joystick mid-pan: camera stops.

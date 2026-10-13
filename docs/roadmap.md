@@ -8,7 +8,7 @@ All phase 1 items are done.
 
 ## Phase 2: Companion integration cleanup
 
-- Move outbound calls to Companion's current HTTP API; prefer a custom variable for selection feedback.
+No open items. Moving the app's outbound calls to Companion's current HTTP API (#15) was closed as won't-do: Companion owns camera selection, so the app's outbound calls were removed instead (see [companion-integration.md](companion-integration.md#app--companion-nothing)).
 
 ## Phase 3: SKAARHOJ PTZ Extreme
 

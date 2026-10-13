@@ -47,7 +47,7 @@ The file sits next to the settings files (`Cameras.json`, `Gamepads.json`, `Comp
 One entry per line, UTF-8:
 
 ```
-2026-10-13T14:03:12.345+01:00 WARN [BitfocusCompanionClient] Companion request http://localhost:8000/press/bank/1/2 failed: ...
+2026-10-13T14:03:12.345+01:00 WARN [BitfocusCompanionService] Companion listener: rejected request '?SelectCamera=9': No camera has Companion number 9 (command 'SelectCamera')
 ```
 
 - Local timestamp with milliseconds and UTC offset, then the level, then the source in brackets, then the message.
