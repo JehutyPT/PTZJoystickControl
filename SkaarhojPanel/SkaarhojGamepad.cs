@@ -12,7 +12,7 @@ namespace PtzJoystickControl.SkaarhojPanel;
 /// <summary>
 /// The SKAARHOJ panel's joystick and zoom rocker as a controller: four <see cref="InputType.Axis"/>
 /// inputs fed from <c>HWC#&lt;id&gt;=Speed:&lt;n&gt;</c> messages (docs/skaarhoj-integration.md, "HWC map").
-/// Every other HWC is ignored: buttons, encoders and lights belong to the bridge (#18).
+/// Every other HWC is ignored: buttons, encoders and lights belong to the Companion surface plugin.
 /// <para>
 /// One instance lives from activation (or link up, or wake) to deactivation (or link down, or sleep):
 /// <see cref="DrivenCameras"/> is terminal once stopped, so a new instance is made each time, with

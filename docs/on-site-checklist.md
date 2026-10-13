@@ -91,7 +91,7 @@ The Companion listener port moved from code to an optional `Companion.json` next
 
 ### #36: Relative input type (controller page regression)
 
-Nothing produces a relative input yet (the SKAARHOJ panel, #38, will), so its own checks come with #38. This change touched how an axis's second command and the command settings are shown, so check that axes and buttons are unchanged.
+Nothing produces a relative input yet, so it has no checks of its own. This change touched how an axis's second command and the command settings are shown, so check that axes and buttons are unchanged.
 
 - [ ] Open the joystick's inputs. An axis mapped to a static command (e.g. *Preset* or *Select camera*) still shows its second command row, the second row's direction is greyed out, and deflecting the axis each way runs the matching command once.
 - [ ] Axes mapped to pan, tilt, zoom and focus still show their max-speed setting and drive the cameras; each camera stops on release.

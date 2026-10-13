@@ -85,7 +85,7 @@ New behavior and fixes land test-first. Priority coverage, each added with its o
 - input shaping (deadzone, saturation, inversion, expo) and stop-on-deadzone behavior;
 - stop-on-disconnect and stop repetition;
 - Companion request parsing (valid, unknown, malformed);
-- Raw Panel and Satellite message parsing, once those exist.
+- Raw Panel message parsing.
 
 ## Verification before merging
 
