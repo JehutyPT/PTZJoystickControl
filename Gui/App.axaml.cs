@@ -144,8 +144,8 @@ namespace PtzJoystickControl.Gui
 
                     var showUpdateModal = () =>
                     {
-                        var vm = new UpdateDialogViewModel(update);
-                        var dialog = new UpdateDialogWindow() { DataContext = vm };
+                        var dialog = new UpdateDialogWindow();
+                        dialog.DataContext = new UpdateDialogViewModel(update, dialog);
                         ShowMainWindow();
                         dialog.ShowDialog(desktop.MainWindow);
                     };
