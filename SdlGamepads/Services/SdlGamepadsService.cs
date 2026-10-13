@@ -120,54 +120,10 @@ public class SdlGamepadsService : IGamepadsService
         var gamepad = new SdlGamepad(gamepadInfo, _commandsService, _camerasService.Cameras);
 
         GamepadSettings? gamepadSettings = _gamppadSettingsDb.GetGamepadSettingsById(gamepadInfo.Id);
-        if (gamepadSettings == null)
-            return gamepad;
-
-        AddBitfocusCompanionButtons(gamepad);
-
-        var commandsDict = gamepad.Commands.ToDictionary(val => val.GetType().ToString());
-
-        foreach (IInput input in gamepad.Inputs)
-        {
-            InputSettings? storedInput = gamepadSettings.Inputs?.FirstOrDefault(i => i.Id == input.Id);
-
-            if (storedInput != null)
-            {
-                if (storedInput.CommandType != null && commandsDict.TryGetValue(storedInput.CommandType, out var command))
-                    input.SelectedCommand = command;
-                input.CommandDirection = storedInput.CommandDirection;
-                input.CommandValue = storedInput.CommandValue;
-                input.Inverted = storedInput.Inverted;
-                input.Saturation = storedInput.DeadZoneHigh;
-                input.DeadZone = storedInput.DeadZoneLow;
-                if(input.SecondInput != null && storedInput.SecondInputSettings != null) {
-                    if (storedInput.SecondInputSettings.CommandType != null && commandsDict.TryGetValue(storedInput.SecondInputSettings.CommandType, out var secondCommand))
-                        input.SecondInput.SelectedCommand = secondCommand;
-                    input.SecondInput.CommandDirection = storedInput.SecondInputSettings.CommandDirection;
-                    input.SecondInput.CommandValue = storedInput.SecondInputSettings.CommandValue;
-                }
-            }
-        }
+        GamepadInputSetup.Configure(gamepad, gamepad.AddInput, SdlGamepad.ButtonNameFormatString,
+            _bitfocusCompanionService.SupportedEvents, gamepadSettings);
 
         return gamepad;
-    }
-
-    private void AddBitfocusCompanionButtons(SdlGamepad gamepad)
-    {
-        var buttonCount = gamepad.Inputs.Count(i => i.InputType == InputType.Button);
-
-        IBitfocusCompanionService.SetJoystickButtonCount(buttonCount);
-
-        var bitfocusCommandCount = 2;
-
-        foreach (var companionEvent in _bitfocusCompanionService.SupportedEvents)
-        {
-            var id = string.Format(SdlGamepad.ButtonNameFormatString, companionEvent.Button);
-            var name = string.Format(companionEvent.EventNameFormatString, companionEvent.Value);
-
-            IInput bitfocusInput = new Input(id, name, InputType.Button, gamepad.Commands);
-            gamepad.AddInput(id, bitfocusInput);
-        }
     }
 
     private async Task UpdateLoop()
