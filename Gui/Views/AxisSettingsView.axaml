@@ -46,6 +46,8 @@
 			<NumericUpDown Width="140" Value="{Binding Saturation}" Minimum="0" Maximum=".25" Increment="0.01" FormatString="P2"></NumericUpDown>
 			<Label Margin="20,0,0,0">Dead zone</Label>
 			<NumericUpDown Width="140" Value="{Binding DeadZone}" Minimum="0" Maximum=".25" Increment="0.01" FormatString="P2"></NumericUpDown>
+			<Label Margin="20,0,0,0" IsVisible="{Binding IsAxis}" ToolTip.Tip="0% is linear; higher gives finer control near centre. Full deflection still reaches max speed.">Expo</Label>
+			<NumericUpDown Width="140" Value="{Binding Expo}" Minimum="0" Maximum="1" Increment="0.05" FormatString="P0" IsVisible="{Binding IsAxis}"></NumericUpDown>
 			<Label Margin="20,0,0,0" Content="{Binding OutputValue}"/>
 			<Label Margin="20,0,0,0" Content="{Binding InputValue}"/>
 		</StackPanel>
