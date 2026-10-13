@@ -13,6 +13,14 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Unplug and replug the joystick: it is detected again and still drives the cameras.
 - [ ] On Apple Silicon (osx-arm64), if used: the app starts and detects the joystick.
 
+### #36: Relative input type (controller page regression)
+
+Nothing produces a relative input yet (the SKAARHOJ panel, #38, will), so its own checks come with #38. This change touched how an axis's second command and the command settings are shown, so check that axes and buttons are unchanged.
+
+- [ ] Open the joystick's inputs. An axis mapped to a static command (e.g. *Preset* or *Select camera*) still shows its second command row, the second row's direction is greyed out, and deflecting the axis each way runs the matching command once.
+- [ ] Axes mapped to pan, tilt, zoom and focus still show their max-speed setting and drive the cameras; each camera stops on release.
+- [ ] Buttons mapped to static and dynamic commands still show their settings and work as before. An input with no command still shows "Select a command".
+
 ### #14: Companion selects cameras by Companion number on every controller
 
 The "Vmix Cam 1/2 Preview" virtual buttons are gone. `?SetCameraPreview=N` (the existing Companion buttons) and the new `?SelectCamera=N` select the camera whose **Companion #** (new field in each camera row) is N, on every active controller, with no mapping. Existing cameras get their list position as their number: the first camera in the list is 1, the second is 2.
