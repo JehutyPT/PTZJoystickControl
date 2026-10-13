@@ -66,16 +66,10 @@ namespace PtzJoystickControl.Application.Services
 
             try
             {
-                foreach (var queryParam in request.QueryString.AllKeys)
-                {
-                    var companionEvent =
-                        BitfocusCompanionEvent.FindMatchingEvent(queryParam!, request.QueryString[queryParam]);
-                    if(companionEvent != null)
-                    {
-                        RaiseCompanionEvent(companionEvent);
-                    }
-                        
-                }
+                var parameters = request.QueryString.AllKeys
+                    .Select(name => new KeyValuePair<string?, string?>(name, request.QueryString[name]));
+                foreach (var companionEvent in BitfocusCompanionEvent.ParseRequest(parameters).Events)
+                    RaiseCompanionEvent(companionEvent);
 
                 response.StatusCode = 200;
             }

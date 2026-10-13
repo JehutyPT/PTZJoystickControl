@@ -25,16 +25,36 @@ namespace PtzJoystickControl.Core.Model
         private static int _buttonCounter = 0;
         private static int _joystickButtonCountOffset = 0;
 
-        public static BitfocusCompanionEvent? FindMatchingEvent(string param, string? value)
+        /// <summary>
+        /// Validates every parameter of an inbound request before anything is executed.
+        /// A parameter matches only a defined command by exact, case-sensitive name and one of
+        /// its supported values. Returns existing <see cref="SupportedEvents"/> entries, or a
+        /// rejection when the request is empty or any parameter does not match.
+        /// </summary>
+        public static BitfocusCompanionRequestParseResult ParseRequest(IEnumerable<KeyValuePair<string?, string?>> parameters)
         {
-            var inboundEvent = Enum.Parse<InboundBitfocusCompanionEventEnum>(param);
+            var events = new List<BitfocusCompanionEvent>();
 
-            var match = SupportedEvents.FindAll(e => e.EventType == inboundEvent && e.Value == value);
+            foreach (var (name, value) in parameters)
+            {
+                if (name == null)
+                    return BitfocusCompanionRequestParseResult.Rejected($"Parameter without a name (value '{value}')");
 
-            if (match.Count != 1)
-                return null;
+                // Ordinal name comparison, not Enum.Parse/TryParse: those accept numbers and other casings.
+                if (!Enum.GetNames<InboundBitfocusCompanionEventEnum>().Contains(name, StringComparer.Ordinal))
+                    return BitfocusCompanionRequestParseResult.Rejected($"Unknown command '{name}'");
 
-            return match[0];
+                var match = SupportedEvents.FindAll(e => e.EventType.ToString() == name && e.Value == value);
+                if (match.Count != 1)
+                    return BitfocusCompanionRequestParseResult.Rejected($"Unsupported value '{value}' for command '{name}'");
+
+                events.Add(match[0]);
+            }
+
+            if (events.Count == 0)
+                return BitfocusCompanionRequestParseResult.Rejected("No command in request");
+
+            return BitfocusCompanionRequestParseResult.Accepted(events);
         }
 
         public static void SetButtonCountOffset(int offset) => _joystickButtonCountOffset = offset;
