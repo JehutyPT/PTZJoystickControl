@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using PtzJoystickControl.Core.Devices;
+using PtzJoystickControl.Core.Model;
 using PtzJoystickControl.Core.Services;
 
 namespace PtzJoystickControl.Tests.Skaarhoj;
@@ -79,4 +80,16 @@ internal sealed class FakeCamerasService : ICamerasService
     public void AddCamera(ViscaDeviceBase camera) => Cameras.Add(camera);
 
     public void RemoveCamera(ViscaDeviceBase camera) => Cameras.Remove(camera);
+}
+
+/// <summary>A Companion service whose inbound camera selections the test raises.</summary>
+internal sealed class RaisingCompanionService : IBitfocusCompanionService
+{
+    public event EventHandler<BitfocusCompanionEvent>? ReceivedBitfocusCommand;
+    public void Select(ViscaDeviceBase camera) =>
+        ReceivedBitfocusCommand?.Invoke(this, new BitfocusCompanionEvent(InboundBitfocusCompanionEventEnum.SelectCamera, 1, camera));
+    public void PressButton(int? pageNumber, int? buttonNumber) { }
+    public void SetCustomVariable(string variableName, string value) { }
+    public string? InboundListenerError => null;
+    public event EventHandler? InboundListenerErrorChanged { add { } remove { } }
 }

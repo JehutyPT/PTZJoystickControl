@@ -97,6 +97,11 @@ public sealed class SkaarhojPanelLink : IDisposable
 
     public bool IsUp => _isUp;
 
+    /// <summary>The panel's address, as configured.</summary>
+    public string Host => _host;
+
+    public int Port => _port;
+
     private string Endpoint => $"{_host}:{_port}";
 
     /// <summary>
