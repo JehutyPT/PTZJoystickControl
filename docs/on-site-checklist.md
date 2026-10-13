@@ -6,6 +6,18 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #35: SKAARHOJ panel link
+
+Needs the SKAARHOJ PTZ Extreme at 192.168.1.163, with no other Raw Panel client connected (close SKAARHOJ's updater app and any test tool). This build only connects to the panel: the panel's joystick and buttons do nothing yet. **While the app is connected, the panel switches off all its LEDs and displays** and leaves them to the app, which sends none yet, so a dark panel is expected; it lights up again when the app quits.
+
+- [ ] Quit the app. In the settings folder (`%APPDATA%\PTZJoystickControl`), open `SkaarhojPanel.json` (start and quit the app once if it is missing) and set `"Address": "192.168.1.163"`, keeping `"Port": 9923`. Start the app.
+- [ ] Tray menu → **Show log**: an `INFO [SkaarhojPanelLink]` "link up to 192.168.1.163:9923" line, then `_model=SK_PTZEXTREMEV2` and `_version=…`. No "link down" in the first few seconds (the ~0.5 s post-connect stall must not trip it).
+- [ ] The logged `_connections=` reply lists only the vMix PC's address.
+- [ ] Pull the panel's Ethernet cable: within about half a second a `WARN` "link down … no ack for ~300 ms" line appears. The joystick still drives both cameras.
+- [ ] Plug the cable back in: within about 30 s an `INFO` "link up" line appears without restarting the app, followed by `_connections=` listing only the vMix PC. A single further down/up right after reconnecting is acceptable (seen in the protocol tests); repeated flapping is not.
+- [ ] Quit from the tray: the log ends with "link down … (stopped)" then `PTZJoystickControl stopped`, and the panel's own lights come back.
+- [ ] Set `"Address": ""`, start the app: no `SkaarhojPanelLink` lines in the log, and the joystick and Companion work as before.
+
 ### SDL2 upgrade to SDL 2.31 (`ppy.SDL2-CS` 1.0.741-alpha)
 
 - [ ] The joystick is detected at startup and appears in the app.

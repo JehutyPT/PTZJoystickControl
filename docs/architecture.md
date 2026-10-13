@@ -2,14 +2,15 @@
 
 ## Projects
 
-The solution has four projects with a one-way dependency flow:
+The solution has five projects with a one-way dependency flow (plus `Tests`):
 
 ```
-Gui ──► SdlGamepads ──► Application ──► Core
-  └──────────────────────► Application
+Gui ──► SdlGamepads ───► Application ──► Core
+  ├───► SkaarhojPanel ──► Application
+  └───────────────────────► Application
 ```
 
-`Core` holds interfaces and models only. `Application` implements commands, devices, and services. `SdlGamepads` is one implementation of controller input. `Gui` wires everything together in `Program.cs` using Splat's service locator (`services.RegisterConstant(...)`). `Packaging/` holds the macOS app packaging (the Windows zip needs no files of its own, see [development.md](development.md#windows-package)); it is not part of the dependency graph.
+`Core` holds interfaces and models only. `Application` implements commands, devices, and services. `SdlGamepads` is one implementation of controller input. `SkaarhojPanel` holds the TCP link to a SKAARHOJ panel (connect, `ping`/`ack` dead-man, reconnect, message parsing); it does not drive cameras yet (see [skaarhoj-integration.md](skaarhoj-integration.md#the-panel-link-in-this-app)). `Gui` wires everything together in `Program.cs` using Splat's service locator (`services.RegisterConstant(...)`). `Packaging/` holds the macOS app packaging (the Windows zip needs no files of its own, see [development.md](development.md#windows-package)); it is not part of the dependency graph.
 
 ## From stick movement to camera movement
 
@@ -35,11 +36,12 @@ Commands are **event-driven**: a packet is only sent when the shaped input value
 
 ## Settings
 
-JSON files in `%APPDATA%\PTZJoystickControl\` on Windows (`~/Library/Application Support/PTZJoystickControl/` on macOS, `~/.PTZJoystickControl/` on Linux): `Cameras.json` for cameras, `Gamepads.json` for input mappings and the optional, hand-edited `Companion.json` for Companion's host and ports (read at startup only; see [companion-integration.md](companion-integration.md#settings-companionjson)). Settings are saved on every persistent property change, atomically: each save writes a sibling `.tmp` file, flushes it to disk, then moves it over the target.
+JSON files in `%APPDATA%\PTZJoystickControl\` on Windows (`~/Library/Application Support/PTZJoystickControl/` on macOS, `~/.PTZJoystickControl/` on Linux): `Cameras.json` for cameras, `Gamepads.json` for input mappings, the optional, hand-edited `Companion.json` for Companion's host and ports (read at startup only; see [companion-integration.md](companion-integration.md#settings-companionjson)), and `SkaarhojPanel.json` for the SKAARHOJ panel's address and port (edited by hand; an empty address means no panel). Settings are saved on every persistent property change, atomically: each save writes a sibling `.tmp` file, flushes it to disk, then moves it over the target.
 
 ## Threading
 
 - SDL polling and command execution run on the `UpdateLoop` background task. It is the input loop: no other thread runs gamepad input.
 - The Companion HTTP listener runs its callbacks on thread-pool threads. It validates the request against a snapshot of the camera list and only queues each camera selection on `InputQueue`; `UpdateLoop` runs the queued input at the start of every tick, before polling SDL. A queued input that throws is logged and skipped (see [companion-integration.md](companion-integration.md)).
+- The SKAARHOJ panel link (`SkaarhojPanelLink`) runs on its own background task and raises its events there. It does not run any gamepad input yet; when it does (#37), that input must be queued on `InputQueue` like Companion's.
 - Avalonia UI updates must happen on the UI thread. `SelectedCamera` changes are raised synchronously on the input loop, so `DrivenCameras` and `SelectCameraCommand` see them at once; `CamerasViewModel` re-raises them on the UI thread for bindings.
 - Selecting a camera or activating/deactivating a controller from the main window still runs on the UI thread and is not serialized with the input loop. The app is not operated from its window during live use.

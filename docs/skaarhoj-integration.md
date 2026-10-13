@@ -2,7 +2,7 @@
 
 Hardware: SKAARHOJ PTZ Extreme running UniSketch firmware (pre-Blue Pill). Goal: use its joystick to drive the cameras through this app, and use its buttons and displays as a Bitfocus Companion surface.
 
-> **Status: design only, panel side verified.** The [Raw Panel protocol](#raw-panel-verified-on-hardware) (input, LED/display output, sleep, reconnect) was checked against a real panel on 2026-10-13. The [Satellite API](#satellite-api-companion-side) and the [mapping](#mapping) are still design and unverified; check them against Companion's Satellite API documentation and real hardware before relying on them.
+> **Status: link built, no control yet.** The [Raw Panel protocol](#raw-panel-verified-on-hardware) (input, LED/display output, sleep, reconnect) was checked against a real panel on 2026-10-13. The app's [panel link](#the-panel-link-in-this-app) (#35) connects, parses the panel's messages, detects loss and reconnects; it does not drive cameras yet (#37). The [Satellite API](#satellite-api-companion-side) and the [mapping](#mapping) are still design and unverified; check them against Companion's Satellite API documentation and real hardware before relying on them.
 
 ## Vendor references
 
@@ -23,7 +23,35 @@ One module inside this app owns the TCP connection to the panel and splits its t
 - **Joystick and camera-control axes** become inputs on a `SkaarhojGamepad : IGamepad`. Mapping, deadzone/saturation, camera selection, and safety logic are then shared with the USB joystick for free.
 - **Buttons, LEDs, and displays** are bridged to Companion as a Satellite surface.
 
-New code lives in its own project (e.g. `SkaarhojPanel/`), mirroring `SdlGamepads/`.
+New code lives in its own project, `SkaarhojPanel/`, mirroring `SdlGamepads/`.
+
+## The panel link in this app
+
+`SkaarhojPanel/SkaarhojPanelLink.cs` owns the one TCP connection to the panel (#35). It moves no camera; the gamepad (#37), sleep handling (#37/#39), LEDs and displays (#19) and Companion (#18) build on it.
+
+**Settings.** `SkaarhojPanel.json`, next to `Cameras.json` and `Gamepads.json` (see [architecture.md](architecture.md#settings)), holds the panel's address and port. There is no GUI for it yet: the app writes an empty template on first start, and you fill in the address by hand and restart the app.
+
+```json
+{
+  "Address": "192.168.1.163",
+  "Port": 9923
+}
+```
+
+With `Address` empty or missing, the app makes no connection and logs nothing about the panel. A file that cannot be read, or a port outside 1–65535, is logged as an `ERROR` and the panel stays off; the app never overwrites a file it could not read.
+
+**Behaviour.** Each step follows from a measurement in [Connection](#connection) and [Heartbeat and disconnect](#heartbeat-and-disconnect):
+
+- The link is reported up as soon as TCP connects. It does not wait for `RDY`, and accepts `map=` lines at any time.
+- After connecting it sends `list` and `Connections?`, then `ping` every 100 ms.
+- The dead-man timeout is 300 ms without an `ack`. It counts only after a 1 s grace from connect, and from the end of the grace if no `ack` came later, so the panel's ~0.5 s post-connect stall (and a quick first `ack` before it) never drops a new connection. A separate timer checks the deadline every 25 ms, so a stalled send cannot delay it. The panel closing the connection, or a failed read or send, drops the link at once.
+- On down, the link closes the socket, then reconnects after 1 s, doubling to at most 30 s. Each connect attempt gives up after 2 s. The delay starts again from 1 s only after a connection has received an `ack`, so a panel that accepts connections but never answers is not retried every second.
+- The link holds at most one connection: the next attempt starts only after the previous socket is closed.
+- Each received line is split on `\n` and parsed (`RawPanelParser`) into `Speed`, `Down`/`Up` (with the four-way edge, if any), `Encoder`, `Press`, `Map`, `Ready`, `Ack`, `Reply` (`_key=value`) or `Unknown`. A trailing `\r` is ignored. `Speed` is passed on unclamped. Malformed or unknown lines are logged as `WARN` (the 1st, 2nd, 4th, 8th, …) and ignored.
+
+**Log lines** (source `SkaarhojPanelLink`): `INFO` link up, and the `_model`, `_version` and `_connections` replies; `WARN` link down with the reason (no ack, panel closed the connection, read or send failed); `WARN` connect failures, at the 1st, 2nd, 4th, 8th, … consecutive attempt. Input events are never logged.
+
+**Threading.** The link runs on one background task. Its `LinkUp`, `LinkDown` and `MessageReceived` events are raised there; a subscriber that throws is logged and the link carries on. Anything that drives cameras from these events must queue onto `InputQueue` (live-safety §4). Quitting the app disposes the link, which cancels pings and reconnects and closes the socket.
 
 ## Raw Panel (verified on hardware)
 
