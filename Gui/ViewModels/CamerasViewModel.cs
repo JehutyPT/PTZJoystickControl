@@ -1,4 +1,5 @@
-﻿using Avalonia.Utilities;
+﻿using Avalonia.Threading;
+using Avalonia.Utilities;
 using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Services;
@@ -34,7 +35,14 @@ public class CamerasViewModel : ViewModelBase, INotifyPropertyChanged
     private void OnGamepadsViewModelPropertyCahnged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(IGamepad.SelectedCamera) || e.PropertyName == nameof(GamepadsViewModel.SelectedGamepad))
-            NotifyPropertyChanged(nameof(IGamepad.SelectedCamera));
+        {
+            // Selection can change on the input loop (joystick or Companion); bindings need the UI thread.
+            // Marshalled here rather than in the gamepad, so safety tracking (DrivenCameras) stays synchronous.
+            if (Dispatcher.UIThread.CheckAccess())
+                NotifyPropertyChanged(nameof(IGamepad.SelectedCamera));
+            else
+                Dispatcher.UIThread.Post(() => NotifyPropertyChanged(nameof(IGamepad.SelectedCamera)));
+        }
     }
 
     private void OnCamerasServicePropertyCahnged(object? sender, NotifyCollectionChangedEventArgs e)

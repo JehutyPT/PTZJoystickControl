@@ -24,7 +24,7 @@ This app moves physical cameras during live shows. These rules apply to all inpu
 
 ## 4. Threading
 
-- ⚠️ Input from any source (SDL loop, Companion listener, SKAARHOJ socket) must be marshalled onto one input thread or guarded so command execution is never concurrent for the same camera.
+- Input from any source (SDL loop, Companion listener, SKAARHOJ socket) must be marshalled onto one input thread or guarded so command execution is never concurrent for the same camera. Input arriving on another thread is queued on `InputQueue` and run by the SDL `UpdateLoop`; a SKAARHOJ controller must do the same.
 - Raise UI-bound `PropertyChanged` on the UI thread.
 
 ## 5. Recoverability

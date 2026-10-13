@@ -79,3 +79,9 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Pan camera 2, then select camera 1 from the app's camera list while holding the stick: camera 2 stops.
 - [ ] Recall a preset on camera 1 that needs a long move, then select camera 2 (from the joystick, and again via Companion `SetCameraPreview`) before camera 1 arrives: camera 1 completes the recall and ends at the preset position.
 - [ ] Switch back and forth between the cameras several times without touching the stick: nothing moves, and the app stays responsive.
+
+### #6: Companion input runs on the joystick input loop
+
+- [ ] Alternate several times: select a camera from Companion, then pan and zoom it with the joystick and release. Each time the joystick drives the camera Companion selected, it stops on release, and the app stays up. (Don't switch while an axis is held: stop on camera switch is tracked separately, #25.)
+- [ ] Press Companion's camera-select buttons rapidly in alternation: the app ends on the last one pressed, and the main window and tray icon show that camera.
+- [ ] With the main window open, select a camera from Companion: the highlighted camera in the window updates without delay or error in the Log window.

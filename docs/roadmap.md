@@ -6,7 +6,6 @@ Work is ordered so the app is safe for live use before new features land. Each i
 
 | Severity | Item |
 |---|---|
-| High | Companion events call into gamepad input from the HTTP thread, concurrently with the SDL loop. |
 | Medium | Projects and CI target .NET 6 (out of support); move to the current .NET LTS. Also upgrade WiX off `4.0.0-rc.4` and make `PTZJoystickControl.sln` build on macOS/Linux (skip the WiX project off Windows). |
 
 ## Phase 2: Companion integration cleanup
