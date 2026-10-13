@@ -130,6 +130,8 @@ public class SelectCameraCommandTests
         public List<BitfocusCompanionEvent> SupportedEvents => new();
 
         public string? InboundListenerError => null;
+
+        public event EventHandler? InboundListenerErrorChanged { add { } remove { } }
     }
 
     private sealed class TestGamepad : IGamepad

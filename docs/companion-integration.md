@@ -7,7 +7,7 @@
 ### Companion → app: camera selection
 
 - `BitfocusCompanionService` starts an `HttpListener` on `http://localhost:12345/` (port hardcoded in `Gui/Program.cs`).
-- If the listener cannot start (port taken, URL ACL denied), the app still starts: the failure is logged through `Trace`, `InboundListenerError` holds the reason, and the main window shows a red notice. Companion → app requests are off until the app is restarted with the port free; joystick control and outbound feedback are unaffected.
+- If the listener cannot start (port taken, URL ACL denied), the app still starts: the failure is logged as a warning, `InboundListenerError` holds the reason, and the main window shows a red notice. The service retries in the background (1 s, doubling, capped at 30 s; failed retries are logged only at attempts 1, 2, 4, 8, …). Once the port is free and a retry starts the listener, `InboundListenerError` clears, `InboundListenerErrorChanged` fires, the notice disappears and Companion → app requests work, with no restart. Joystick control and outbound feedback are unaffected throughout. Quitting the app (`StopListening`) cancels the retry.
 - Companion (via its generic HTTP module) calls e.g. `http://localhost:12345/?SetCameraPreview=1`.
 - `BitfocusCompanionEvent.ParseRequest` maps the query parameters to events. `SupportedEvents` is hardcoded to two cameras ("Vmix Cam 1/2 Preview").
 - When an SDL gamepad is loaded, `GamepadInputSetup.Configure` adds one **virtual button input** per event, numbered after the physical buttons, whether or not the gamepad has saved settings, then applies any saved settings. The user maps each virtual button to the *Select Camera* command in the UI; the mapping is saved like a physical button's.

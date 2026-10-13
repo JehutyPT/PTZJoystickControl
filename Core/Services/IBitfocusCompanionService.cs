@@ -19,5 +19,10 @@ namespace PtzJoystickControl.Core.Services
         /// Why Companion → app requests are not being received, or null while the inbound listener is running.
         /// </summary>
         public string? InboundListenerError { get; }
+
+        /// <summary>
+        /// Raised, on a background thread, when <see cref="InboundListenerError"/> changes (for example, once a retry starts the listener).
+        /// </summary>
+        event EventHandler? InboundListenerErrorChanged;
     }
 }

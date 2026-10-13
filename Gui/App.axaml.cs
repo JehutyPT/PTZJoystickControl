@@ -38,7 +38,7 @@ namespace PtzJoystickControl.Gui
                 Locator.Current.GetServiceOrThrow<GamepadsViewModel>(),
                 camerasViewModel,
                 mainWindow,
-                Locator.Current.GetServiceOrThrow<IBitfocusCompanionService>().InboundListenerError);
+                Locator.Current.GetServiceOrThrow<IBitfocusCompanionService>());
             mainWindow.DataContext = mainWindowViewModel;
 
             mainWindow.Closing += (object? s, CancelEventArgs e) =>
