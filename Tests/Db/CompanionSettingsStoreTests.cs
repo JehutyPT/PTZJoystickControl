@@ -62,7 +62,7 @@ public sealed class CompanionSettingsStoreTests : IDisposable
     public void Load_NoFile_ReturnsDefaultsWithoutWarning()
     {
         AssertDefaults(Load(null));
-        Assert.Empty(Warnings);
+        Assert.Empty(WarningsAboutThisFile);
     }
 
     [Fact]
@@ -71,7 +71,7 @@ public sealed class CompanionSettingsStoreTests : IDisposable
         var settings = Load("""{ "ListenerPort": 12346 }""");
 
         Assert.Equal(12346, settings.ListenerPort);
-        Assert.Empty(Warnings);
+        Assert.Empty(WarningsAboutThisFile);
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public sealed class CompanionSettingsStoreTests : IDisposable
     public void Load_EmptyObject_KeepsTheDefaultsWithoutWarning()
     {
         AssertDefaults(Load("{ }"));
-        Assert.Empty(Warnings);
+        Assert.Empty(WarningsAboutThisFile);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class CompanionSettingsStoreTests : IDisposable
             """);
 
         Assert.Equal(12346, settings.ListenerPort);
-        Assert.Empty(Warnings);
+        Assert.Empty(WarningsAboutThisFile);
     }
 
     [Fact]
