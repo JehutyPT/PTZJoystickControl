@@ -104,6 +104,8 @@ public class SdlGamepadsService : IGamepadsService
     {
         if (ActiveGamepads.Remove(gamepad))
         {
+            // A camera left moving by this gamepad would otherwise keep going (live-safety).
+            gamepad.DrivenCameras.StopAll();
             gamepad.Unacquire();
             gamepad.PersistentPropertyChanged -= GamepadPersistentPropertyChanged;
         }

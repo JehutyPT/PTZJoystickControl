@@ -42,3 +42,11 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Tray menu → **Show log**: the Log window opens and shows the same startup entries. Close it: the app keeps running and the joystick still drives the cameras. Open it again: it reappears.
 - [ ] With the Log window open, stop Companion, select a camera from the joystick and pan it: a `WARN [BitfocusCompanionClient]` line appears in the window and in the file, and the camera moves and stops normally.
 - [ ] Start Companion again. Quit the app from the tray: the file ends with `PTZJoystickControl stopped`.
+
+### #3: Cameras stop when a controller disconnects
+
+- [ ] Pan a camera with the joystick and, while still holding the stick, unplug the joystick's USB cable: the camera stops within a fraction of a second.
+- [ ] Repeat while zooming, and while focusing manually: the camera stops.
+- [ ] Select camera 1 and start it panning, select camera 2 and start it panning, then unplug while holding the stick: both cameras stop.
+- [ ] Hold the stick deflected and deactivate the joystick in the app: the camera stops, and the app stays up.
+- [ ] Replug and reactivate the joystick: it drives the cameras normally again.

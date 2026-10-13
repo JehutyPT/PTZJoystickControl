@@ -6,7 +6,6 @@ Work is ordered so the app is safe for live use before new features land. Each i
 
 | Severity | Item |
 |---|---|
-| High | No stop command is sent to cameras when a controller disconnects. |
 | High | Companion camera selection hardcodes SDL instance id `0`; it stops working after a USB replug. |
 | High | Companion events call into gamepad input from the HTTP thread, concurrently with the SDL loop. |
 | Medium | Companion virtual buttons are only added when the gamepad already has saved settings. |

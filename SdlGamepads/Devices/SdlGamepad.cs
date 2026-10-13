@@ -87,12 +87,16 @@ public class SdlGamepad : IGamepad
 
     public IEnumerable<IInput> Inputs => inputs.Values;
 
+    /// <summary>Cameras this gamepad has had selected; stopped when it disconnects or is deactivated.</summary>
+    internal DrivenCameras DrivenCameras { get; }
+
     internal SdlGamepad(SdlGamepadInfo gamepadInfo, ICommandsService commandsService, ObservableCollection<ViscaDeviceBase> cameras)
     {
         Name = gamepadInfo.Name;
         Cameras = cameras;
 
         commands = commandsService.GetCommandsForGamepad(this).ToList();
+        DrivenCameras = new DrivenCameras(this);
 
         Id = gamepadInfo.Id;
         DeviceIndex = gamepadInfo.DeviceIndex;
