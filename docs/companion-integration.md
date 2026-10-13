@@ -16,7 +16,7 @@
 
 - Each camera has an optional Companion page/button number (`OnSelectedBitfocusPageNumber` / `OnSelectedBitfocusButtonNumber`, editable in the camera row in the UI, saved in `Cameras.json`).
 - When `SelectedCamera` changes, `SelectCameraCommand` calls `PressButton`, which sends `GET http://localhost:8000/press/bank/{page}/{button}`. This is Companion's legacy page/bank endpoint.
-- Outbound calls go through `BitfocusCompanionClient`: they run in the background, time out after 2 s, never throw, and log failures (path and reason) through `Trace` to the Log window. A failed press is dropped, not retried.
+- Outbound calls go through `BitfocusCompanionClient`: they run in the background, time out after 2 s, never throw, and log failures (path and reason) through `Trace`. A failed press is dropped, not retried.
 - `SetCustomVariable` exists but is unused.
 
 ### Known problems

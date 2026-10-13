@@ -86,6 +86,13 @@ public class BitfocusCompanionClient
 
     private void TraceFailure(string path, string reason)
     {
-        Trace.TraceWarning($"Companion request {_client.BaseAddress}{path} failed: {reason}");
+        try
+        {
+            Trace.TraceWarning($"Companion request {_client.BaseAddress}{path} failed: {reason}");
+        }
+        catch (Exception)
+        {
+            // A failing trace listener must not turn a dropped request into a fault.
+        }
     }
 }

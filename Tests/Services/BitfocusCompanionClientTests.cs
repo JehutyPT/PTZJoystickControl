@@ -210,6 +210,23 @@ public class BitfocusCompanionClientTests
         Assert.Same(sent.Task, await Task.WhenAny(sent.Task, Task.Delay(TimeSpan.FromSeconds(5))));
     }
 
+    [Fact]
+    public async Task PressButtonAsync_CompletesWhenATraceListenerThrows()
+    {
+        var handler = new StubHandler((_, _) => Task.FromException<HttpResponseMessage>(new HttpRequestException("Connection refused")));
+        var client = new BitfocusCompanionClient(handler, BaseAddress, TimeSpan.FromSeconds(2));
+        var listener = new ThrowingTraceListener();
+        Trace.Listeners.Add(listener);
+        try
+        {
+            await client.PressButtonAsync(3, 7);
+        }
+        finally
+        {
+            Trace.Listeners.Remove(listener);
+        }
+    }
+
     private static async Task<string> CaptureTrace(Func<Task> action)
     {
         var listener = new RecordingTraceListener();
@@ -234,6 +251,13 @@ public class BitfocusCompanionClientTests
         public override void Write(string? message) { lock (_text) _text.Append(message); }
 
         public override void WriteLine(string? message) { lock (_text) _text.AppendLine(message); }
+    }
+
+    private sealed class ThrowingTraceListener : TraceListener
+    {
+        public override void Write(string? message) => throw new InvalidOperationException("Call from invalid thread");
+
+        public override void WriteLine(string? message) => throw new InvalidOperationException("Call from invalid thread");
     }
 
     private static Task<HttpResponseMessage> NeverResponds(HttpRequestMessage _, CancellationToken cancellationToken)
