@@ -49,7 +49,7 @@ internal class Program
         var mutex = SingleInstance.CreateMutex();
         try
         {
-            if (!mutex.WaitOne(0, false))
+            if (!SingleInstance.TryAcquire(mutex, out bool abandoned))
             {
                 appBuilder.StartWithClassicDesktopLifetime(new string[] { "-r" }, Avalonia.Controls.ShutdownMode.OnMainWindowClose);
                 return;
@@ -59,6 +59,9 @@ internal class Program
             var logFile = new RollingLogFile(settingsDirectory);
             log.AttachFile(logFile);
             Trace.TraceInformation($"PTZJoystickControl {Assembly.GetExecutingAssembly().GetName().Version} started; log file {logFile.Path}");
+            // Logged after AttachFile so the warning reaches the log file.
+            if (abandoned)
+                Trace.TraceWarning("The previous PTZJoystickControl instance did not exit cleanly (crashed or was killed); starting normally");
 
             var companion = RegisterServices(log);
 
@@ -66,6 +69,10 @@ internal class Program
             // Also cancels a pending listener start retry.
             companion.StopListening();
             Trace.TraceInformation("PTZJoystickControl stopped");
+            // Release on this (owning) thread so a clean quit is not seen as abandoned by the next
+            // launch while another process still has the mutex open. Not in finally: a crash
+            // during startup should still read as abandoned.
+            mutex.ReleaseMutex();
         }
         finally
         {
