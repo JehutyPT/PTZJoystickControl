@@ -59,9 +59,11 @@ internal class Program
             log.AttachFile(logFile);
             Trace.TraceInformation($"PTZJoystickControl {Assembly.GetExecutingAssembly().GetName().Version} started; log file {logFile.Path}");
 
-            RegisterServices(log);
+            var companion = RegisterServices(log);
 
             appBuilder.StartWithClassicDesktopLifetime(args, Avalonia.Controls.ShutdownMode.OnExplicitShutdown);
+            // Also cancels a pending listener start retry.
+            companion.StopListening();
             Trace.TraceInformation("PTZJoystickControl stopped");
         }
         finally
@@ -77,7 +79,7 @@ internal class Program
             .LogToTrace()
             .UseReactiveUI();
 
-    private static void RegisterServices(AppLogListener log)
+    private static BitfocusCompanionService RegisterServices(AppLogListener log)
     {
         var services = Locator.CurrentMutable;
         var resolver = Locator.Current;
@@ -90,7 +92,8 @@ internal class Program
             "PTZJoystickControl",
             Assembly.GetExecutingAssembly().GetName().Version!));
 
-        services.RegisterConstant<IBitfocusCompanionService>(new BitfocusCompanionService(8000, 12345));
+        var companion = new BitfocusCompanionService(8000, 12345);
+        services.RegisterConstant<IBitfocusCompanionService>(companion);
         services.RegisterConstant<ICameraSettingsStore>(new CameraSettingsStore());
         services.RegisterConstant<IGamepadSettingsStore>(new GamepadSettingsStore());
         
@@ -116,6 +119,8 @@ internal class Program
             resolver.GetServiceOrThrow<AppLogListener>()));
         services.RegisterLazySingleton(() => new TrayIconHandler(
             avaloniaLocator.GetServiceOrThrow<IAssetLoader>()));
+
+        return companion;
     }
 }
 
