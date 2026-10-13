@@ -19,15 +19,23 @@ public sealed class SettingsStoreAtomicWriteTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_dir, recursive: true); }
+        try
+        {
+            File.SetAttributes(_dir, FileAttributes.Directory);
+            Directory.Delete(_dir, recursive: true);
+        }
         catch (IOException) { }
     }
 
     private string FilePath(string name) => Path.Combine(_dir, name);
 
-    // Occupying the sibling temp path with a directory makes creating the temp file fail,
-    // which simulates a save that dies before the replace step.
-    private void BlockTempFile(string filePath) => Directory.CreateDirectory(filePath + ".tmp");
+    // Removing write permission from the folder makes creating the temp file fail, which
+    // simulates a save that dies before the replace step. Windows ignores the read-only
+    // attribute on folders, so callers skip the failure-path tests there (CI runs on Linux).
+    private void BlockNewFilesInFolder() =>
+        File.SetAttributes(_dir, FileAttributes.Directory | FileAttributes.ReadOnly);
+
+    private static bool CanBlockNewFiles => !OperatingSystem.IsWindows();
 
     private string[] FolderEntries() =>
         Directory.EnumerateFileSystemEntries(_dir).Select(Path.GetFileName).OrderBy(n => n).ToArray()!;
@@ -52,14 +60,16 @@ public sealed class SettingsStoreAtomicWriteTests : IDisposable
     [Fact]
     public void GamepadSave_WhenWriteFailsBeforeReplace_ReturnsFalseAndKeepsPreviousFile()
     {
+        if (!CanBlockNewFiles) return;
         var path = FilePath("Gamepads.json");
         File.WriteAllText(path, PreviousContent);
-        BlockTempFile(path);
+        BlockNewFilesInFolder();
 
         var saved = new GamepadSettingsStore(path).SaveGamepadSettings(Gamepad("pad-1", "Joystick"));
 
         Assert.False(saved);
         Assert.Equal(PreviousContent, File.ReadAllText(path));
+        Assert.Equal(new[] { "Gamepads.json" }, FolderEntries());
     }
 
     [Fact]
@@ -78,14 +88,16 @@ public sealed class SettingsStoreAtomicWriteTests : IDisposable
     [Fact]
     public void CameraSave_WhenWriteFailsBeforeReplace_ReturnsFalseAndKeepsPreviousFile()
     {
+        if (!CanBlockNewFiles) return;
         var path = FilePath("Cameras.json");
         File.WriteAllText(path, PreviousContent);
-        BlockTempFile(path);
+        BlockNewFilesInFolder();
 
         var saved = new CameraSettingsStore(path).SaveCameras(Enumerable.Empty<ViscaDeviceBase>());
 
         Assert.False(saved);
         Assert.Equal(PreviousContent, File.ReadAllText(path));
+        Assert.Equal(new[] { "Cameras.json" }, FolderEntries());
     }
 
     [Fact]
@@ -102,6 +114,20 @@ public sealed class SettingsStoreAtomicWriteTests : IDisposable
     }
 
     [Fact]
+    public void CameraSave_OverlappingSaves_AllSucceedAndLeaveNoTempFile()
+    {
+        var path = FilePath("Cameras.json");
+        var store = new CameraSettingsStore(path);
+
+        var results = new bool[64];
+        Parallel.For(0, results.Length, i => results[i] = store.SaveCameras(Enumerable.Empty<ViscaDeviceBase>()));
+
+        Assert.All(results, Assert.True);
+        Assert.Equal("[]", File.ReadAllText(path));
+        Assert.Equal(new[] { "Cameras.json" }, FolderEntries());
+    }
+
+    [Fact]
     public void CompanionStoreSave_OverExistingFile_ReplacesContentAndLeavesNoTempFile()
     {
         var path = FilePath("Gamepads.json");
@@ -110,6 +136,21 @@ public sealed class SettingsStoreAtomicWriteTests : IDisposable
         Assert.True(new BitfocusCompanionSettingsStore(path).SaveGamepadSettings(Gamepad("pad-1", "Joystick")));
 
         Assert.Equal("Joystick", new BitfocusCompanionSettingsStore(path).GetGamepadSettingsById("pad-1")?.Name);
+        Assert.Equal(new[] { "Gamepads.json" }, FolderEntries());
+    }
+
+    [Fact]
+    public void CompanionStoreSave_WhenWriteFailsBeforeReplace_ReturnsFalseAndKeepsPreviousFile()
+    {
+        if (!CanBlockNewFiles) return;
+        var path = FilePath("Gamepads.json");
+        File.WriteAllText(path, PreviousContent);
+        BlockNewFilesInFolder();
+
+        var saved = new BitfocusCompanionSettingsStore(path).SaveGamepadSettings(Gamepad("pad-1", "Joystick"));
+
+        Assert.False(saved);
+        Assert.Equal(PreviousContent, File.ReadAllText(path));
         Assert.Equal(new[] { "Gamepads.json" }, FolderEntries());
     }
 }
