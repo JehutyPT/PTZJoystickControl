@@ -34,7 +34,7 @@
 			</Setter>
 		</Style>
 	</UserControl.Styles>
-	<Grid ColumnDefinitions="3,1*,2*,1*,4*,3" RowDefinitions="Auto, Auto" IsVisible="{Binding ShowAxisSettings}" >
+	<Grid ColumnDefinitions="3,1*,2*,1*,4*,3" RowDefinitions="Auto, Auto">
 		<StackPanel Orientation="Horizontal" Spacing="2" Margin="0,2">
 			<ToggleButton Padding="2,0" VerticalAlignment="Stretch" IsChecked="{Binding DefaultCenter}" IsVisible="{Binding IsAxis}" ToolTip.Tip="Centered">
 				<PathIcon Width="18" IsHitTestVisible="False" Grid.Column="0" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 18,12 V 9 h 4 V 7 h -4 V 4 L 14,8 Z M 4,4 V 7 H 0 v 2 h 4 v 3 L 8,8 Z m 6,12 h 2 V 0 h -2 z"/>
