@@ -24,7 +24,17 @@ public sealed class AppLogListenerWriterTests : IDisposable
         _gate.Set();
         foreach (var listener in _listeners)
             listener.Dispose();
-        Directory.Delete(_dir, recursive: true);
+        // A writer a test left blocked past its bounded wait may still hold the file open
+        // for a moment after the gate opens; Windows refuses to delete an open file.
+        for (var watch = Stopwatch.StartNew(); ; Thread.Sleep(20))
+        {
+            try
+            {
+                Directory.Delete(_dir, recursive: true);
+                return;
+            }
+            catch (Exception e) when ((e is IOException || e is UnauthorizedAccessException) && watch.Elapsed < TimeSpan.FromSeconds(2)) { }
+        }
     }
 
     private AppLogListener NewListener(int queueCapacity = AppLogListener.DefaultQueueCapacity,
