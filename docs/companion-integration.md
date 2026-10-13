@@ -4,9 +4,25 @@
 
 ## Current state
 
+### Settings: `Companion.json`
+
+Optional, hand-edited, next to `Cameras.json` (see [architecture.md](architecture.md#settings)). The app reads it once at startup and never writes it, so **restart the app after editing it**. There is no settings UI.
+
+```json
+{ "Host": "192.168.68.110", "Port": 8000, "ListenerPort": 12345 }
+```
+
+| Key | Meaning | Default |
+|---|---|---|
+| `Host` | Companion's host name or IP address (no `http://`, no port): app → Companion | `localhost` |
+| `Port` | Companion's HTTP port: app → Companion | `8000` |
+| `ListenerPort` | The app's listener port on localhost: Companion → app | `12345` |
+
+Keys are case-insensitive and each one is optional. With no file, the app uses the defaults (the values it always used). If the file is not valid JSON or not an object, every value uses its default; a value of the wrong type, a port outside 1–65535 or an invalid host uses that value's default. Either way the app starts and logs a `WARN` naming the file. At startup it logs an `INFO` line with the address it sends to and the one it listens on.
+
 ### Companion → app: camera selection
 
-- `BitfocusCompanionService` starts an `HttpListener` on `http://localhost:12345/` (port hardcoded in `Gui/Program.cs`).
+- `BitfocusCompanionService` starts an `HttpListener` on `http://localhost:12345/` (`ListenerPort` in `Companion.json`).
 - If the listener cannot start (port taken, URL ACL denied), the app still starts: the failure is logged as a warning, `InboundListenerError` holds the reason, and the main window shows a red notice. The service retries in the background (1 s, doubling, capped at 30 s; failed retries are logged only at attempts 1, 2, 4, 8, …). Once the port is free and a retry starts the listener, `InboundListenerError` clears, `InboundListenerErrorChanged` fires, the notice disappears and Companion → app requests work, with no restart. Joystick control and outbound feedback are unaffected throughout. Quitting the app (`StopListening`) cancels the retry.
 - Each camera has a **Companion number** (`ViscaDeviceBase.CompanionNumber`, the *Companion #* field in the camera row, saved in `Cameras.json`). Cameras saved before numbers existed get their 1-based list position on first load (or the lowest unused number if another camera already has that one); a camera added later gets its list position if free, otherwise the lowest unused number. The camera row rejects a number below 1 or one another camera already has. Duplicates in a hand-edited `Cameras.json` are kept and logged as a `WARN` at startup.
 - Companion (via its generic HTTP module) calls `http://localhost:12345/?SelectCamera=N` to select the camera whose Companion number is N. `?SetCameraPreview=N` is a legacy alias, kept so existing Companion buttons keep working.
@@ -18,7 +34,7 @@
 ### App → Companion: selection feedback
 
 - Each camera has an optional Companion page/button number (`OnSelectedBitfocusPageNumber` / `OnSelectedBitfocusButtonNumber`, editable in the camera row in the UI, saved in `Cameras.json`).
-- When `SelectedCamera` changes, `SelectCameraCommand` calls `PressButton`, which sends `GET http://localhost:8000/press/bank/{page}/{button}`. This is Companion's legacy page/bank endpoint.
+- When `SelectedCamera` changes, `SelectCameraCommand` calls `PressButton`, which sends `GET http://localhost:8000/press/bank/{page}/{button}` (`Host` and `Port` in `Companion.json`). This is Companion's legacy page/bank endpoint.
 - Outbound calls go through `BitfocusCompanionClient`: they run in the background, time out after 2 s, never throw, and log failures (path and reason) through `Trace`. A failed press is dropped, not retried.
 - `SetCustomVariable` exists but is unused.
 
@@ -32,7 +48,7 @@ See [roadmap.md](roadmap.md) for the tracked list. In short: the outbound call u
 
 Done (#14): an inbound command identifies a camera by its Companion number and selects it on every active controller (`IGamepad`), so a SKAARHOJ controller gets it too.
 
-Inbound transport stays HTTP on localhost (simple to trigger from Companion's HTTP module). Remaining: the port comes from settings, not hardcoded.
+Inbound transport stays HTTP on localhost (simple to trigger from Companion's HTTP module). The port comes from `Companion.json` (#16).
 
 ### Feedback
 

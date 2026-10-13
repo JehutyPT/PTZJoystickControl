@@ -13,6 +13,16 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Unplug and replug the joystick: it is detected again and still drives the cameras.
 - [ ] On Apple Silicon (osx-arm64), if used: the app starts and detects the joystick.
 
+### #16: Companion host and ports in `Companion.json`
+
+The Companion host and ports moved from code to an optional `Companion.json` next to `Cameras.json` (`%APPDATA%\PTZJoystickControl\` on the vMix PC). With no file nothing changes. The app reads it only at startup.
+
+- [ ] With no `Companion.json`, start the app: the log (tray menu → **Show log**) has an `INFO` "Companion: sending to http://localhost:8000/, listening on http://localhost:12345/" and no Companion settings `WARN`. Select each camera from Companion and with the joystick: the app follows, and Companion's feedback updates as before.
+- [ ] If Companion's feedback does not update with no file (production Companion is bound to 192.168.68.110:8000, which `localhost` may not reach), create `Companion.json` containing `{ "Host": "192.168.68.110" }` and restart the app: the `INFO` line shows `http://192.168.68.110:8000/` and selecting a camera updates Companion's feedback.
+- [ ] Set `"ListenerPort": 12346`, restart, and point Companion's HTTP module at `http://localhost:12346/`: selecting a camera from Companion switches the app's camera. Put both back afterwards (remove the key, restart, re-point Companion to 12345) and check selection again.
+- [ ] Replace the file's contents with `{ not json` and restart: the app starts, the log shows a `WARN` "Failed to load Companion settings" naming the file and the `INFO` line shows the defaults, and the joystick selects, moves and stops both cameras.
+- [ ] Set `{ "Host": "http://192.168.68.110", "Port": 70000 }` and restart: the app starts with two `WARN` lines (invalid Host, invalid Port) and the `INFO` line shows `http://localhost:8000/`. Delete or fix the file and restart before the show.
+
 ### #36: Relative input type (controller page regression)
 
 Nothing produces a relative input yet (the SKAARHOJ panel, #38, will), so its own checks come with #38. This change touched how an axis's second command and the command settings are shown, so check that axes and buttons are unchanged.

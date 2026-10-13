@@ -36,7 +36,7 @@ Installing is unzipping to a permanent folder and running `Gui.exe`; settings an
 
 Everything the app writes through `System.Diagnostics.Trace` (and `Debug`, in Debug builds only), plus any unhandled exception, goes through one listener (`Application/Logging/AppLogListener.cs`) to a log file and to the in-app Log window (tray menu → **Show log**, which shows the last 1000 entries since startup or since **Clear Log**; clearing never touches the file).
 
-The file sits next to the settings files (`Cameras.json`, `Gamepads.json`):
+The file sits next to the settings files (`Cameras.json`, `Gamepads.json`, `Companion.json`):
 
 | OS | Log file |
 |---|---|
