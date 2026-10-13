@@ -102,3 +102,11 @@ The app now runs on .NET 10 (bundled in the MSI) and the MSI is built with WiX 5
 - [ ] The joystick is detected, and pan, tilt, zoom, focus and presets drive both cameras; each camera stops on release.
 - [ ] Companion selects cameras and gets selection feedback as before.
 - [ ] Quit from the tray: the log ends with `PTZJoystickControl stopped`. Start it again: it starts normally.
+
+### #32: Update check sees prerelease builds
+
+Needs internet on the vMix PC. The check now considers every GitHub release, prereleases included (CI publishes only prereleases).
+
+- [ ] Once a release newer than the first one containing this fix exists on the [releases page](https://github.com/JehutyPT/PTZJoystickControl/releases), start that first fixed build (older builds still have the bug and never show the dialog): the update dialog opens and names the newest release's version.
+- [ ] Start the newest released build: no update dialog at startup, and tray → **Check for updates** shows "No Update Available".
+- [ ] With the PC offline, start the app: it starts normally with no dialog, and `PTZJoystickControl.log` has a `WARN` line saying `Update check failed, reporting no update`, not an `ERROR` or `CRITICAL`.
