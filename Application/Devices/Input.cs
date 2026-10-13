@@ -34,6 +34,7 @@ public class Input : IInput
     private bool buttonPressed { get; set; }
     private float deadZone { get; set; } = 0.05F;
     private float saturation { get; set; } = 0.05F;
+    private float expo;
     private bool inverted { get; set; }
     private bool defaultCenter { get; set; } = true;
 
@@ -80,6 +81,22 @@ public class Input : IInput
         set
         {
             saturation = value;
+            NotifyPersistentPropertyChanged();
+        }
+    }
+
+    public float Expo
+    {
+        get => expo;
+        set
+        {
+            // Settings are external data: reject anything that could bend the curve out of 0..1.
+            if (!float.IsFinite(value) || value < 0 || value > 1)
+            {
+                Trace.TraceWarning($"Input {logName}: expo {value} is not between 0 and 1; using 0 (linear)");
+                value = 0;
+            }
+            expo = value;
             NotifyPersistentPropertyChanged();
         }
     }
@@ -138,13 +155,30 @@ public class Input : IInput
 
             if (absVal <= DeadZone) inputValue = 0;
             else if (absVal >= 1 - Saturation) inputValue = 1;
-            else inputValue = Util.Map(absVal, DeadZone, 1 - Saturation, 0, 1);
+            else
+            {
+                inputValue = Util.Map(absVal, DeadZone, 1 - Saturation, 0, 1);
+                // Expo only bends speeds; static commands keep their trigger point.
+                if (expo != 0 && command is IDynamicCommand) inputValue = ApplyExpo(inputValue, expo);
+            }
 
             if (isNegative ^ inverted) inputValue = -inputValue;
 
             ExecuteCommand();
             NotifyPropertyChanged();
         }
+    }
+
+    /// <summary>
+    /// (1 - e)·x + e·x³ for x in 0..1, written so x = 1 gives exactly 1 (full deflection never
+    /// loses a speed step to rounding). Monotonic and within x³..x for e in 0..1. Computed in
+    /// double so a tiny x outside the deadzone never rounds to 0 (a stop).
+    /// </summary>
+    private static float ApplyExpo(float x, float e)
+    {
+        double xd = x;
+        double shaped = xd - e * xd * (1 - xd * xd);
+        return (float)Math.Clamp(shaped, 0, 1);
     }
 
     public float RawInputValue
@@ -280,6 +314,10 @@ public class Input : IInput
                 int range = maxValue - dynCommand.MinValue;
 
                 float mappedValue = Util.Map(InputValue, -1, 1, -range, range);
+                // Outside the deadzone the input always moves the camera: a value too small for
+                // Map's float precision (an expo curve just past the deadzone) runs at min speed.
+                if (mappedValue == 0 && InputValue != 0)
+                    mappedValue = InputValue > 0 ? float.Epsilon : -float.Epsilon;
 
                 CurrentDirection = Direction.Stop;
 
