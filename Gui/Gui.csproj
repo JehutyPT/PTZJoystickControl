@@ -37,5 +37,6 @@
     <ProjectReference Include="..\Application\Application.csproj" />
     <ProjectReference Include="..\Core\Core.csproj" />
     <ProjectReference Include="..\SdlGamepads\SdlGamepads.csproj" />
+    <ProjectReference Include="..\SkaarhojPanel\SkaarhojPanel.csproj" />
   </ItemGroup>
 </Project>

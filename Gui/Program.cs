@@ -10,6 +10,7 @@ using PtzJoystickControl.Application.Services;
 using PtzJoystickControl.Core.Db;
 using PtzJoystickControl.Core.Services;
 using PtzJoystickControl.SdlGamepads.Services;
+using PtzJoystickControl.SkaarhojPanel;
 using Splat;
 using System;
 using System.Diagnostics;
@@ -64,10 +65,13 @@ internal class Program
                 Trace.TraceWarning("The previous PTZJoystickControl instance did not exit cleanly (crashed or was killed); starting normally");
 
             var companion = RegisterServices(log);
+            // Null, and silent, when SkaarhojPanel.json names no panel.
+            var panel = SkaarhojPanelLink.StartIfConfigured(Path.Combine(settingsDirectory, SkaarhojPanelSettingsStore.FileName));
 
             appBuilder.StartWithClassicDesktopLifetime(args, Avalonia.Controls.ShutdownMode.OnExplicitShutdown);
             // Also cancels a pending listener start retry.
             companion.StopListening();
+            panel?.Dispose();
             Trace.TraceInformation("PTZJoystickControl stopped");
             // Release on this (owning) thread so a clean quit is not seen as abandoned by the next
             // launch while another process still has the mutex open. Not in finally: a crash
