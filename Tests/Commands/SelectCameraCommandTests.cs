@@ -54,6 +54,8 @@ public class SelectCameraCommandTests
         public void SetCustomVariable(string variableName, string value) { }
 
         public List<BitfocusCompanionEvent> SupportedEvents => new();
+
+        public string? InboundListenerError => null;
     }
 
     private sealed class TestGamepad : IGamepad

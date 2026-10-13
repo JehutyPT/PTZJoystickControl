@@ -78,6 +78,32 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
         await Assert.ThrowsAnyAsync<HttpRequestException>(() => StatusOf("?SetCameraPreview=1"));
     }
 
+    [Fact]
+    public void Listener_IsReportedAsListening_WhenThePortIsFree()
+    {
+        Assert.Null(_service.InboundListenerError);
+    }
+
+    [Fact]
+    public void PortInUse_DoesNotThrow_IsLoggedAndReported_AndTheServiceStaysUsable()
+    {
+        // _service already holds _port, as another process would.
+        var exception = Record.Exception(() =>
+        {
+            var service = new BitfocusCompanionService(GetFreePort(), _port);
+
+            Assert.NotNull(service.InboundListenerError);
+            Assert.Contains($"http://localhost:{_port}/", service.InboundListenerError);
+
+            service.PressButton(1, 1);
+            service.SetCustomVariable("ptz_selected_camera", "1");
+            service.StopListening();
+        });
+
+        Assert.Null(exception);
+        Assert.Contains(_trace.Messages, m => m.Contains("Companion listener: failed to start") && m.Contains($"http://localhost:{_port}/"));
+    }
+
     private async Task<HttpStatusCode> StatusOf(string pathAndQuery)
     {
         using var response = await _client.GetAsync(pathAndQuery);

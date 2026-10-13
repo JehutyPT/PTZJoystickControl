@@ -22,3 +22,9 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 - [ ] Send a Companion HTTP request with a misspelled parameter: Companion gets a 400 and the app stays up.
 - [ ] Trigger a valid `SetCameraPreview` from Companion: the app's camera selection follows it.
+
+### #23: Companion listener port in use no longer stops the app starting
+
+- [ ] Quit the app. Hold port 12345 with another program (for example a second copy of an old build, or `python -m http.server 12345` on the vMix PC), then start the app: it starts, the main window shows a red "Companion → app control is off" notice naming the port, and the joystick still selects, moves and stops both cameras.
+- [ ] Selecting a camera from the joystick still updates Companion's feedback.
+- [ ] Release port 12345 and restart the app: no notice is shown and selecting a camera from Companion works again.

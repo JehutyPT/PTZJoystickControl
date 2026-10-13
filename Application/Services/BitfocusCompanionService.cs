@@ -28,13 +28,24 @@ namespace PtzJoystickControl.Application.Services
             _outbound = new BitfocusCompanionClient(new Uri($"http://localhost:{outboundPort}/"));
 
             // Create a listener.
+            var prefix = $"http://localhost:{inboundPort}/";
             HttpListener listener = new HttpListener();
-            listener.Prefixes.Add($"http://localhost:{inboundPort}/");
+            listener.Prefixes.Add(prefix);
             _listener = listener;
 
-            listener.Start();
-
-            listener.BeginGetContext(new AsyncCallback(ListenerCallback), listener);
+            // A taken port or a denied URL ACL must not stop the app starting: joystick control
+            // and outbound feedback keep working, only Companion → app requests are lost.
+            try
+            {
+                listener.Start();
+                listener.BeginGetContext(new AsyncCallback(ListenerCallback), listener);
+            }
+            catch (Exception e)
+            {
+                InboundListenerError = $"Could not listen on {prefix}: {e.Message}";
+                Trace.WriteLine($"Companion listener: failed to start on {prefix}, Companion → app control is disabled: {e}");
+                StopListening();
+            }
         }
         #region Outbound
 
@@ -50,6 +61,8 @@ namespace PtzJoystickControl.Application.Services
 
         #region Inbound
         private readonly HttpListener _listener;
+
+        public string? InboundListenerError { get; private set; }
 
         /// <summary>
         /// Stops accepting requests from Companion. A pending accept completes and is logged.
