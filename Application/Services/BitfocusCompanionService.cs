@@ -15,7 +15,7 @@ namespace PtzJoystickControl.Application.Services
         
         public event EventHandler<BitfocusCompanionEvent>? ReceivedBitfocusCommand;
 
-        private readonly HttpClient _client;
+        private readonly BitfocusCompanionClient _outbound;
         
         /// <summary>
         /// Initializes http clients to communicate to and from a bitfocus companion instance
@@ -24,8 +24,7 @@ namespace PtzJoystickControl.Application.Services
         /// <param name="inboundPort">The port that the HTTP connection module in companion is pointed to for sending HTTP requests into the PTZ Joystick app</param>
         public BitfocusCompanionService(int outboundPort, int inboundPort)
         {
-            _client = new HttpClient();
-            _client.BaseAddress = new Uri($"http://localhost:{outboundPort}/");
+            _outbound = new BitfocusCompanionClient(new Uri($"http://localhost:{outboundPort}/"));
 
             // Create a listener.
             HttpListener listener = new HttpListener();
@@ -37,18 +36,11 @@ namespace PtzJoystickControl.Application.Services
         }
         #region Outbound
 
-        public async void PressButton(int? pageNumber, int? buttonNumber)
-        {
-            if (pageNumber == null || buttonNumber == null)
-                return;
+        public void PressButton(int? pageNumber, int? buttonNumber) =>
+            _outbound.PressButton(pageNumber, buttonNumber);
 
-            var reply = await _client.GetAsync($"press/bank/{pageNumber}/{buttonNumber}");
-        }
-
-        public async void SetCustomVariable(string variableName, string value)
-        {
-            var _ = _client.GetAsync($"set/custom-variable/{variableName}?value={value}");
-        }
+        public void SetCustomVariable(string variableName, string value) =>
+            _outbound.SetCustomVariable(variableName, value);
 
         public List<BitfocusCompanionEvent> SupportedEvents => BitfocusCompanionEvent.SupportedEvents;
 
