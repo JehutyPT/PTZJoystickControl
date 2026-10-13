@@ -146,7 +146,12 @@ public class SdlGamepad : IGamepad
         //SDL.SDL_JoystickNumBalls(j)
     }
 
-    public void AddInput(string id, IInput input) => inputs.Add(id, input);
+    public void AddInput(string id, IInput input)
+    {
+        // Same as the physical inputs, so a mapping set on a Companion virtual button is saved.
+        input.PersistentPropertyChanged += (sender, e) => NotifyPersistentPropertyChanged("");
+        inputs.Add(id, input);
+    }
 
     public void Acquire()
     {
