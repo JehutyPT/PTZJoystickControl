@@ -12,6 +12,10 @@ namespace PtzJoystickControl.Application.Db;
 /// </summary>
 public class CompanionSettingsStore
 {
+    // Keys that only configured the app's calls to Companion, removed in #15. Files written
+    // before then may still have them: they are ignored with an INFO, not warned about as typos.
+    private static readonly string[] RetiredKeys = { "Host", "Port" };
+
     // The file is edited by hand, often in Notepad: tolerate comments and a trailing comma.
     private static readonly JsonDocumentOptions ParseOptions = new()
     {
@@ -54,30 +58,19 @@ public class CompanionSettingsStore
                 return settings;
             }
 
+            var retired = new List<string>();
             foreach (var property in document.RootElement.EnumerateObject())
             {
-                if (Is(property, nameof(CompanionSettings.Host)))
-                {
-                    if (property.Value.ValueKind == JsonValueKind.String
-                        && property.Value.GetString() is { } host
-                        && IsValidHost(host))
-                        settings.Host = host;
-                    else
-                        WarnInvalid(property, CompanionSettings.DefaultHost);
-                }
-                else if (Is(property, nameof(CompanionSettings.Port)))
-                {
-                    if (TryGetPort(property.Value, out var port))
-                        settings.Port = port;
-                    else
-                        WarnInvalid(property, CompanionSettings.DefaultPort);
-                }
-                else if (Is(property, nameof(CompanionSettings.ListenerPort)))
+                if (Is(property, nameof(CompanionSettings.ListenerPort)))
                 {
                     if (TryGetPort(property.Value, out var port))
                         settings.ListenerPort = port;
                     else
                         WarnInvalid(property, CompanionSettings.DefaultListenerPort);
+                }
+                else if (RetiredKeys.Any(key => Is(property, key)))
+                {
+                    retired.Add(property.Name);
                 }
                 else
                 {
@@ -85,6 +78,9 @@ public class CompanionSettingsStore
                     Trace.TraceWarning($"Companion settings in {_filePath}: ignoring unknown key {property.Name}");
                 }
             }
+
+            if (retired.Count > 0)
+                Trace.TraceInformation($"Companion settings in {_filePath}: {string.Join(" and ", retired)} {(retired.Count == 1 ? "is" : "are")} no longer used (the app makes no calls to Companion) and ignored");
             return settings;
         }
         catch (Exception e)
@@ -96,23 +92,6 @@ public class CompanionSettingsStore
 
     private static bool Is(JsonProperty property, string name) =>
         string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase);
-
-    // Also builds the URI the client will use, so a host the URI parser rejects can never
-    // reach CompanionSettings.OutboundBaseAddress at startup.
-    private static bool IsValidHost(string host)
-    {
-        if (Uri.CheckHostName(host) == UriHostNameType.Unknown)
-            return false;
-        try
-        {
-            _ = new CompanionSettings { Host = host }.OutboundBaseAddress;
-            return true;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
-    }
 
     private static bool TryGetPort(JsonElement value, out int port)
     {

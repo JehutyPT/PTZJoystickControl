@@ -22,15 +22,6 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
     {
         if (e?.PropertyName == nameof(Gamepad.Cameras))
             Cameras = Gamepad.Cameras ?? new ObservableCollection<ViscaDeviceBase>();
-
-        if (e?.PropertyName == nameof(Gamepad.SelectedCamera))
-        {
-            var selectedCamera = Gamepad.SelectedCamera;
-            if (selectedCamera == null)
-                return;
-
-            CompanionService.PressButton(selectedCamera.OnSelectedBitfocusPageNumber, selectedCamera.OnSelectedBitfocusButtonNumber);
-        }
     }
 
     private ObservableCollection<ViscaDeviceBase> cameras = null!;
