@@ -29,7 +29,14 @@ public sealed class AppLogListenerTests : IDisposable
         Directory.Delete(_dir, recursive: true);
     }
 
-    private string[] FileLines() => SharedFile.ReadLines(Path.Combine(_dir, "PTZJoystickControl.log"));
+    // The file is written by a background writer: wait for it, except where the code under
+    // test must have waited itself.
+    private string[] FileLines(bool waitForWriter = true)
+    {
+        if (waitForWriter)
+            Assert.True(_listener.WaitForWriter(TimeSpan.FromSeconds(10)));
+        return SharedFile.ReadLines(Path.Combine(_dir, "PTZJoystickControl.log"));
+    }
 
     [Fact]
     public void WriteLine_IsOneInfoEntry_WithTimestampAndCallingType_InFileAndPublished()
@@ -157,7 +164,7 @@ public sealed class AppLogListenerTests : IDisposable
 
         _listener.OnUnhandledException(null, new UnhandledExceptionEventArgs(thrown, isTerminating: true));
 
-        var line = Assert.Single(FileLines());
+        var line = Assert.Single(FileLines(waitForWriter: false));
         Assert.StartsWith("2026-10-13T14:03:12.345+01:00 CRITICAL [AppDomain] Unhandled exception (terminating: true): System.InvalidOperationException: boom", line);
         Assert.Contains(@"\n   at ", line);
     }
@@ -172,7 +179,7 @@ public sealed class AppLogListenerTests : IDisposable
         {
             "2026-10-13T14:03:12.345+01:00 CRITICAL [AppDomain] Unhandled exception (terminating: false): not an exception",
             "2026-10-13T14:03:12.345+01:00 CRITICAL [AppDomain] Unhandled exception (terminating: false): (null)",
-        }, FileLines());
+        }, FileLines(waitForWriter: false));
     }
 
     [Fact]
@@ -258,9 +265,11 @@ public sealed class AppLogListenerTests : IDisposable
         using var listener = new AppLogListener(() => Now, capacity: 10);
 
         listener.AttachFile(new RollingLogFile(dir, maxBytes: 50, maxArchives: 1));
+        listener.WriteLine("first");
+        Assert.True(listener.WaitForWriter(TimeSpan.FromSeconds(10)));
 
         Assert.Equal(100, new FileInfo(Path.Combine(dir, "PTZJoystickControl.1.log")).Length);
-        Assert.False(File.Exists(Path.Combine(dir, "PTZJoystickControl.log")));
+        Assert.EndsWith("first", Assert.Single(SharedFile.ReadLines(Path.Combine(dir, "PTZJoystickControl.log"))));
     }
 
     [Fact]

@@ -43,6 +43,12 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] With the Log window open, stop Companion, select a camera from the joystick and pan it: a `WARN [BitfocusCompanionClient]` line appears in the window and in the file, and the camera moves and stops normally.
 - [ ] Start Companion again. Quit the app from the tray: the file ends with `PTZJoystickControl stopped`.
 
+### #26: Log file written on a background thread
+
+- [ ] Start the installed (Release) build, then pan, tilt and zoom each camera from the joystick and release: control feels as responsive as before, and each camera moves and stops.
+- [ ] With the Log window open, stop Companion and select a camera from the joystick: the `WARN [BitfocusCompanionClient]` line appears in the window and, within a second, at the end of `%APPDATA%\PTZJoystickControl\PTZJoystickControl.log`. Start Companion again.
+- [ ] Quit the app from the tray: the file ends with `PTZJoystickControl stopped`, and contains no `Dropped ... log entries` line.
+
 ### #3: Cameras stop when a controller disconnects
 
 - [ ] Pan a camera with the joystick and, while still holding the stick, unplug the joystick's USB cable: the camera stops within a fraction of a second.
