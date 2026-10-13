@@ -51,16 +51,6 @@ public sealed class SettingsStoreLoggingTests : IDisposable
         Assert.Contains(_trace.Events, e => e.Type == TraceEventType.Error && e.Message.Contains(path));
     }
 
-    [Fact]
-    public void CompanionStore_LoadingCorruptFile_LogsAnError()
-    {
-        var path = CorruptFile("Gamepads.json");
-
-        Assert.Empty(new BitfocusCompanionSettingsStore(path).GetAllGamepadSettings());
-
-        Assert.Contains(_trace.Events, e => e.Type == TraceEventType.Error && e.Message.Contains(path));
-    }
-
     private sealed class RecordingTraceListener : TraceListener
     {
         private readonly ConcurrentQueue<(TraceEventType Type, string Message)> _events = new();

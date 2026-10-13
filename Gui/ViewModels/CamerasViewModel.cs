@@ -17,11 +17,6 @@ public class CamerasViewModel : ViewModelBase, INotifyPropertyChanged
     private readonly ICamerasService _camerasService;
     private readonly GamepadsViewModel _gamepadsViewModel;
 
-    //TODO: implement this properly when we want to support more complex hooks
-    //private readonly IBitfocusCompanionSettingsStore _companionSettingsStore;
-
-
-
     public CamerasViewModel(ICamerasService camerasService, GamepadsViewModel gamepadsViewModel)
     {
         _camerasService = camerasService;
