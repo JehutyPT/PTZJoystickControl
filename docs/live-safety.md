@@ -5,7 +5,7 @@ This app moves physical cameras during live shows. These rules apply to all inpu
 ## 1. Cameras stop when anything fails
 
 - ⚠️ **Stop on controller loss.** When a controller disconnects (USB unplug, SKAARHOJ connection drop, heartbeat timeout), send pan/tilt/zoom/focus stop to every camera it was driving. Today the gamepad is dropped without any stop.
-- **Repeat stops.** VISCA over UDP has no delivery guarantee and commands are only sent on change. Whenever pan/tilt, zoom or focus goes to stop, the camera device sends the stop packet 3× over ~100 ms. A single lost stop packet must not leave a camera drifting. `ViscaDeviceBase.Stop()` force-stops every axis with the same repetition, regardless of the state the app believes the camera is in.
+- **Repeat stops.** VISCA over UDP has no delivery guarantee and commands are only sent on change. Whenever pan/tilt, zoom or focus goes to stop, the camera device sends the stop packet 3×, at least 50 ms apart (roughly 100–200 ms in all, depending on timer resolution: ~15.6 ms on Windows). A single lost stop packet must not leave a camera drifting. `ViscaDeviceBase.Stop()` force-stops every axis with the same repetition, regardless of the state the app believes the camera is in.
 - **Dead-man timeout for network controllers.** Any controller whose input arrives over the network (SKAARHOJ) must stop its cameras if no data or heartbeat arrives within a short window (target ~200–300 ms; tune on real hardware).
 - **Stop on camera switch.** When `SelectedCamera` changes while an axis is deflected, stop the previous camera before driving the new one.
 

@@ -22,8 +22,17 @@ public class ViscaIpDeviceStopRepeatTests
     // Long enough for the whole repeat window (~100 ms) plus scheduling jitter on a busy CI host.
     private static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(600);
 
-    // Upper bound for a single axis's repeated stops to all arrive (target ~100 ms).
+    // How long to collect after a single-axis stop. Deliberately looser than the spread bound
+    // below so a slow start on CI cannot drop a packet; the spread assertion carries the timing.
     private static readonly TimeSpan SingleAxisStopWindow = TimeSpan.FromMilliseconds(300);
+
+    // Max time from an axis's first stop packet to its third. Nominally 2 x 50 ms plus timer
+    // resolution (~15.6 ms per wait on Windows) and the 30 ms send throttle.
+    private static readonly TimeSpan SingleAxisStopSpread = TimeSpan.FromMilliseconds(200);
+
+    // Stop() queues all three axes behind the 30 ms send throttle, so each axis's stops
+    // interleave with the others' and can spread further.
+    private static readonly TimeSpan ForceStopSpread = TimeSpan.FromMilliseconds(300);
 
     [Fact]
     public async Task PanTiltStop_IsSentAtLeastThreeTimes()
@@ -35,7 +44,7 @@ public class ViscaIpDeviceStopRepeatTests
         camera.Device.PanTilt(10, 10, PanDir.Stop, TiltDir.Stop);
         var packets = await camera.CollectAsync(SingleAxisStopWindow);
 
-        Assert.True(packets.Count(IsPanTiltStop) >= MinStopSends, Describe(packets));
+        AssertStopsWithin(packets, IsPanTiltStop, SingleAxisStopSpread);
     }
 
     [Fact]
@@ -48,7 +57,7 @@ public class ViscaIpDeviceStopRepeatTests
         camera.Device.Zoom(0, ZoomDir.Stop);
         var packets = await camera.CollectAsync(SingleAxisStopWindow);
 
-        Assert.True(packets.Count(IsZoomStop) >= MinStopSends, Describe(packets));
+        AssertStopsWithin(packets, IsZoomStop, SingleAxisStopSpread);
     }
 
     [Fact]
@@ -61,7 +70,7 @@ public class ViscaIpDeviceStopRepeatTests
         camera.Device.Focus(0, FocusDir.Stop);
         var packets = await camera.CollectAsync(SingleAxisStopWindow);
 
-        Assert.True(packets.Count(IsFocusStop) >= MinStopSends, Describe(packets));
+        AssertStopsWithin(packets, IsFocusStop, SingleAxisStopSpread);
     }
 
     [Fact]
@@ -76,7 +85,7 @@ public class ViscaIpDeviceStopRepeatTests
         var packets = await camera.CollectAsync();
 
         Assert.Single(packets);
-        Assert.Equal(new byte[] { 0x81, 0x01, 0x06, 0x01, 12, 10, (byte)PanDir.Left, (byte)TiltDir.Stop, 0xFF }, packets[0]);
+        Assert.Equal(new byte[] { 0x81, 0x01, 0x06, 0x01, 12, 10, (byte)PanDir.Left, (byte)TiltDir.Stop, 0xFF }, packets[0].Payload);
     }
 
     [Fact]
@@ -91,7 +100,7 @@ public class ViscaIpDeviceStopRepeatTests
         camera.Device.PanTilt(8, 10, PanDir.Right, TiltDir.Stop);
         var packets = await camera.CollectAsync();
 
-        Assert.Equal(new byte[] { 0x81, 0x01, 0x06, 0x01, 8, 10, (byte)PanDir.Right, (byte)TiltDir.Stop, 0xFF }, packets.Last());
+        Assert.Equal(new byte[] { 0x81, 0x01, 0x06, 0x01, 8, 10, (byte)PanDir.Right, (byte)TiltDir.Stop, 0xFF }, packets.Last().Payload);
     }
 
     [Fact]
@@ -102,9 +111,46 @@ public class ViscaIpDeviceStopRepeatTests
         camera.Device.Stop();
         var packets = await camera.CollectAsync();
 
-        Assert.True(packets.Count(IsPanTiltStop) >= MinStopSends, Describe(packets));
-        Assert.True(packets.Count(IsZoomStop) >= MinStopSends, Describe(packets));
-        Assert.True(packets.Count(IsFocusStop) >= MinStopSends, Describe(packets));
+        AssertStopsWithin(packets, IsPanTiltStop, ForceStopSpread);
+        AssertStopsWithin(packets, IsZoomStop, ForceStopSpread);
+        AssertStopsWithin(packets, IsFocusStop, ForceStopSpread);
+    }
+
+    [Fact]
+    public async Task PanStoppingWhileTiltMoves_RepeatsTheStopAndKeepsTilting()
+    {
+        using var camera = new LoopbackCamera();
+        camera.Device.PanTilt(10, 10, PanDir.Left, TiltDir.Up);
+        await camera.WaitForPacketsAsync(1);
+        await camera.CollectAsync();
+
+        camera.Device.PanTilt(10, 10, PanDir.Stop, TiltDir.Up);
+        var packets = await camera.CollectAsync(SingleAxisStopWindow);
+
+        AssertStopsWithin(packets, IsPanStopTiltUp, SingleAxisStopSpread);
+        Assert.DoesNotContain(packets, p => IsPanTilt(p.Payload) && p.Payload[7] == (byte)TiltDir.Stop);
+        Assert.True(IsPanStopTiltUp(packets.Last().Payload), Describe(packets));
+    }
+
+    [Fact]
+    public async Task Dispose_CancelsPendingRepeatsWithoutReopeningTheSocket()
+    {
+        var camera = new LoopbackCamera();
+        var endpoint = camera.Endpoint;
+        camera.Device.Stop();
+        camera.Device.Dispose();
+        var packets = await camera.CollectAsync();
+        camera.Dispose();
+
+        // Only the initial, immediate stops can have gone out; repeats are cancelled.
+        Assert.True(packets.Count(p => IsPanTiltStop(p.Payload)) < MinStopSends, Describe(packets));
+        Assert.True(packets.Count(p => IsZoomStop(p.Payload)) < MinStopSends, Describe(packets));
+        Assert.True(packets.Count(p => IsFocusStop(p.Payload)) < MinStopSends, Describe(packets));
+        Assert.False(camera.Device.Connected);
+        // A repeat that reopened the socket would have re-registered this endpoint's listener,
+        // and registering another device on it would throw.
+        using var successor = new ViscaIpDevice("Successor", endpoint);
+        successor.BeginSocket();
     }
 
     [Fact]
@@ -120,10 +166,10 @@ public class ViscaIpDeviceStopRepeatTests
         camera.Device.Stop();
         var packets = await camera.CollectAsync();
 
-        Assert.True(packets.Count(IsPanTiltStop) >= MinStopSends, Describe(packets));
-        Assert.True(packets.Count(IsZoomStop) >= MinStopSends, Describe(packets));
-        Assert.True(packets.Count(IsFocusStop) >= MinStopSends, Describe(packets));
-        Assert.DoesNotContain(packets, p => !IsPanTiltStop(p) && !IsZoomStop(p) && !IsFocusStop(p));
+        AssertStopsWithin(packets, IsPanTiltStop, ForceStopSpread);
+        AssertStopsWithin(packets, IsZoomStop, ForceStopSpread);
+        AssertStopsWithin(packets, IsFocusStop, ForceStopSpread);
+        Assert.DoesNotContain(packets, p => !IsPanTiltStop(p.Payload) && !IsZoomStop(p.Payload) && !IsFocusStop(p.Payload));
     }
 
     [Fact]
@@ -140,25 +186,42 @@ public class ViscaIpDeviceStopRepeatTests
         axis.InputValue = 0.01f;
         var packets = await camera.CollectAsync();
 
-        Assert.True(packets.Count(IsPanTiltStop) >= MinStopSends, Describe(packets));
+        Assert.True(packets.Count(p => IsPanTiltStop(p.Payload)) >= MinStopSends, Describe(packets));
     }
 
+    /// <summary>Asserts at least 3 packets match, and the first 3 arrived within <paramref name="spread"/> of each other.</summary>
+    private static void AssertStopsWithin(List<Packet> packets, Func<byte[], bool> isStop, TimeSpan spread)
+    {
+        var stops = packets.Where(p => isStop(p.Payload)).ToList();
+        Assert.True(stops.Count >= MinStopSends, Describe(packets));
+        var actual = stops[MinStopSends - 1].ReceivedAt - stops[0].ReceivedAt;
+        Assert.True(actual <= spread, $"Stops spread over {actual.TotalMilliseconds:F0} ms (max {spread.TotalMilliseconds:F0} ms). {Describe(packets)}");
+    }
+
+    private static bool IsPanTilt(byte[] p) =>
+        p.Length == 9 && p[0] == 0x81 && p[1] == 0x01 && p[2] == 0x06 && p[3] == 0x01;
+
     private static bool IsPanTiltStop(byte[] p) =>
-        p.Length == 9 && p[0] == 0x81 && p[1] == 0x01 && p[2] == 0x06 && p[3] == 0x01
-        && p[6] == (byte)PanDir.Stop && p[7] == (byte)TiltDir.Stop;
+        IsPanTilt(p) && p[6] == (byte)PanDir.Stop && p[7] == (byte)TiltDir.Stop;
+
+    private static bool IsPanStopTiltUp(byte[] p) =>
+        IsPanTilt(p) && p[6] == (byte)PanDir.Stop && p[7] == (byte)TiltDir.Up;
 
     private static bool IsZoomStop(byte[] p) => p.SequenceEqual(new byte[] { 0x81, 0x01, 0x04, 0x07, 0x00, 0xFF });
 
     private static bool IsFocusStop(byte[] p) => p.SequenceEqual(new byte[] { 0x81, 0x01, 0x04, 0x08, 0x00, 0xFF });
 
-    private static string Describe(IEnumerable<byte[]> packets) =>
-        "Received: " + string.Join(" | ", packets.Select(p => BitConverter.ToString(p)));
+    private static string Describe(IEnumerable<Packet> packets) =>
+        "Received: " + string.Join(" | ", packets.Select(p => BitConverter.ToString(p.Payload)));
+
+    private sealed record Packet(byte[] Payload, TimeSpan ReceivedAt);
 
     /// <summary>A ViscaIpDevice pointed at a loopback UDP receiver that records VISCA payloads.</summary>
     private sealed class LoopbackCamera : IDisposable
     {
         private readonly UdpClient receiver = new(new IPEndPoint(IPAddress.Loopback, 0));
-        private readonly List<byte[]> received = new();
+        private readonly List<Packet> received = new();
+        private readonly System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
         private readonly CancellationTokenSource cts = new();
         private readonly Task receiveLoop;
         private int consumed;
@@ -166,6 +229,7 @@ public class ViscaIpDeviceStopRepeatTests
         public LoopbackCamera()
         {
             var port = ((IPEndPoint)receiver.Client.LocalEndPoint!).Port;
+            Endpoint = new IPEndPoint(IPAddress.Loopback, port);
             Device = new ViscaIpDevice("Test camera", new IPEndPoint(IPAddress.Loopback, port));
             // The first send after construction only opens the socket; open it up front.
             Device.BeginSocket();
@@ -173,6 +237,8 @@ public class ViscaIpDeviceStopRepeatTests
         }
 
         public ViscaIpDevice Device { get; }
+
+        public IPEndPoint Endpoint { get; }
 
         private async Task ReceiveLoop()
         {
@@ -183,7 +249,7 @@ public class ViscaIpDeviceStopRepeatTests
                     var result = await receiver.ReceiveAsync(cts.Token);
                     // Strip the 8-byte VISCA-over-IP header.
                     var payload = result.Buffer.Skip(8).ToArray();
-                    lock (received) received.Add(payload);
+                    lock (received) received.Add(new Packet(payload, clock.Elapsed));
                 }
                 catch (OperationCanceledException) { return; }
                 catch (ObjectDisposedException) { return; }
@@ -202,7 +268,7 @@ public class ViscaIpDeviceStopRepeatTests
         }
 
         /// <summary>Waits for the window (default: the full repeat window) and returns packets received since the last call.</summary>
-        public async Task<List<byte[]>> CollectAsync(TimeSpan? window = null)
+        public async Task<List<Packet>> CollectAsync(TimeSpan? window = null)
         {
             await Task.Delay(window ?? SettleTime);
             lock (received)
@@ -215,7 +281,9 @@ public class ViscaIpDeviceStopRepeatTests
 
         public void Dispose()
         {
-            Device.EndSocket();
+            // Cancels the device's pending stop repeats, so none outlive this test and touch the
+            // static UdpSocket listener registry while the next test runs.
+            Device.Dispose();
             cts.Cancel();
             receiver.Dispose();
             try { receiveLoop.Wait(TimeSpan.FromSeconds(1)); } catch { }

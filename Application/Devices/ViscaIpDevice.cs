@@ -7,7 +7,7 @@ using System.Net.Sockets;
 
 namespace PtzJoystickControl.Application.Devices;
 
-public class ViscaIpDevice : ViscaIPDeviceBase
+public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
 {
     private readonly object sendRecieveLock = new();
     private readonly HashSet<Func<ViscaIPHeaderType>> commandsToSend = new();
@@ -20,11 +20,18 @@ public class ViscaIpDevice : ViscaIPDeviceBase
     // VISCA over UDP has no delivery guarantee and commands are only sent on change, so a single
     // lost stop would leave the camera drifting. Each stop is sent once immediately and then
     // StopRepeatCount more times, StopRepeatInterval after the previous send of it went out
-    // (3 sends over ~100 ms for a single axis).
+    // (3 sends over roughly 100–200 ms for a single axis: timer resolution, ~15.6 ms on Windows,
+    // and the send throttle stretch each interval).
     internal const int StopRepeatCount = 2;
     internal static readonly TimeSpan StopRepeatInterval = TimeSpan.FromMilliseconds(50);
     private static readonly TimeSpan PendingPollInterval = TimeSpan.FromMilliseconds(5);
     private static readonly TimeSpan MaxPendingWait = TimeSpan.FromSeconds(1);
+
+    // Cancelled by Dispose so pending stop repeats end and cannot reopen the socket. EndSocket
+    // deliberately does not cancel them: it also runs on send/TCP errors, and SendCommand
+    // reconnects, which is exactly when a repeated stop matters. Never disposed itself, so
+    // reading its Token after Dispose stays safe; it holds no timer or other resource.
+    private readonly CancellationTokenSource disposeCancellation = new();
 
     public ViscaIpDevice(string name) : this(name, null) { }
 
@@ -32,6 +39,9 @@ public class ViscaIpDevice : ViscaIPDeviceBase
 
     public override void BeginSocket()
     {
+        if (disposeCancellation.IsCancellationRequested)
+            return;
+
         if (socket == null)
         {
             if (protocol == Protocol.Udp)
@@ -167,9 +177,10 @@ public class ViscaIpDevice : ViscaIPDeviceBase
 
         if (panTiltChanged)
         {
-            AddCommand(AddPanTiltCommand);
             if (enteredStop)
-                RepeatCommand(AddPanTiltCommand);
+                SendStop(AddPanTiltCommand);
+            else
+                AddCommand(AddPanTiltCommand);
         }
     }
 
@@ -190,9 +201,10 @@ public class ViscaIpDevice : ViscaIPDeviceBase
 
         if (zoomChanged)
         {
-            AddCommand(AddZoomCommand);
             if (zoomDir == ZoomDir.Stop)
-                RepeatCommand(AddZoomCommand);
+                SendStop(AddZoomCommand);
+            else
+                AddCommand(AddZoomCommand);
         }
     }
 
@@ -212,9 +224,10 @@ public class ViscaIpDevice : ViscaIPDeviceBase
 
         if (focusChanged)
         {
-            AddCommand(AddFocusCommand);
             if (focusDir == FocusDir.Stop)
-                RepeatCommand(AddFocusCommand);
+                SendStop(AddFocusCommand);
+            else
+                AddCommand(AddFocusCommand);
         }
     }
 
@@ -252,12 +265,25 @@ public class ViscaIpDevice : ViscaIPDeviceBase
         zoomCmd = (byte)ZoomDir.Stop;
         focusCmd = (byte)FocusDir.Stop;
 
-        AddCommand(AddPanTiltCommand);
-        AddCommand(AddZoomCommand);
-        AddCommand(AddFocusCommand);
-        RepeatCommand(AddPanTiltCommand);
-        RepeatCommand(AddZoomCommand);
-        RepeatCommand(AddFocusCommand);
+        SendStop(AddPanTiltCommand);
+        SendStop(AddZoomCommand);
+        SendStop(AddFocusCommand);
+    }
+
+    /// <summary>
+    /// Cancels pending stop repeats and closes the socket. A disposed device never reopens its
+    /// socket, so a repeat that was already sending cannot re-register the UDP listener.
+    /// </summary>
+    public void Dispose()
+    {
+        disposeCancellation.Cancel();
+        EndSocket();
+    }
+
+    private void SendStop(Func<ViscaIPHeaderType> commandFunction)
+    {
+        AddCommand(commandFunction);
+        RepeatCommand(commandFunction);
     }
 
     /// <summary>
@@ -274,17 +300,24 @@ public class ViscaIpDevice : ViscaIPDeviceBase
 
     private async Task RepeatCommandAsync(Func<ViscaIPHeaderType> commandFunction)
     {
+        var cancellation = disposeCancellation.Token;
         try
         {
             for (int i = 0; i < StopRepeatCount; i++)
             {
                 var waitUntil = DateTime.UtcNow + MaxPendingWait;
                 while (IsPending(commandFunction) && DateTime.UtcNow < waitUntil)
-                    await Task.Delay(PendingPollInterval).ConfigureAwait(false);
+                    await Task.Delay(PendingPollInterval, cancellation).ConfigureAwait(false);
 
-                await Task.Delay(StopRepeatInterval).ConfigureAwait(false);
+                await Task.Delay(StopRepeatInterval, cancellation).ConfigureAwait(false);
+                if (cancellation.IsCancellationRequested)
+                    return;
                 AddCommand(commandFunction);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Device disposed: drop the remaining repeats.
         }
         catch (Exception e)
         {
@@ -427,21 +460,29 @@ public class ViscaIpDevice : ViscaIPDeviceBase
 
     private async void AddCommand(Func<ViscaIPHeaderType> commandFunction)
     {
-        lock (commandsToSend)
-        {
-            commandsToSend.Add(commandFunction);
-        }
-
-        while (await Task.Run(() => trySendCommandsWithLock()))
+        // async void: an exception escaping here would crash the process.
+        try
         {
             lock (commandsToSend)
             {
-                if (commandsToSend.Count == 0)
-                {
-                    break;
-                }
+                commandsToSend.Add(commandFunction);
             }
-        };
+
+            while (await Task.Run(() => trySendCommandsWithLock()))
+            {
+                lock (commandsToSend)
+                {
+                    if (commandsToSend.Count == 0)
+                    {
+                        break;
+                    }
+                }
+            };
+        }
+        catch (Exception e)
+        {
+            Debug.WriteLine($"AddCommand {name}: {e}");
+        }
     }
 
     private bool trySendCommandsWithLock()
@@ -451,7 +492,7 @@ public class ViscaIpDevice : ViscaIPDeviceBase
         {
             if (Monitor.TryEnter(sendRecieveLock))
             {
-                if ((DateTime.UtcNow - lastSendTime).Milliseconds >= SendWaitTime)
+                if ((DateTime.UtcNow - lastSendTime).TotalMilliseconds >= SendWaitTime)
                 {
                     buildCommand();
                     SendCommand();

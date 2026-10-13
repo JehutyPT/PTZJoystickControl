@@ -19,7 +19,7 @@ Gui ──► SdlGamepads ──► Application ──► Core
 4. **Command.** The input's mapped `ICommand` runs. Dynamic commands (`IDynamicCommand`: pan, tilt, zoom, focus) take a speed and direction; static commands (`IStaticCommand`: select camera, preset, power…) take a fixed value.
 5. **Device.** The command calls the gamepad's `SelectedCamera` (`ViscaDeviceBase`), which builds a VISCA packet and sends it via `ViscaIpDevice` over UDP (shared socket in `Core/Utils/UdpSocket.cs`) or TCP.
 
-Commands are **event-driven**: a packet is only sent when the shaped input value changes. The one exception is stops: when pan/tilt, zoom or focus goes to stop, `ViscaIpDevice` repeats that packet 3× over ~100 ms, built from the camera's current state at send time. Motion is not re-sent periodically. See [live-safety.md](live-safety.md) for why this matters.
+Commands are **event-driven**: a packet is only sent when the shaped input value changes. The one exception is stops: when pan/tilt, zoom or focus goes to stop, `ViscaIpDevice` repeats that packet 3×, at least 50 ms apart (roughly 100–200 ms in all), built from the camera's current state at send time. Motion is not re-sent periodically. See [live-safety.md](live-safety.md) for why this matters.
 
 ## Key abstractions
 
