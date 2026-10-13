@@ -89,6 +89,30 @@ public class SingleInstanceTests
     }
 
     [Fact]
+    public void TryAcquire_AfterOwnerReleasedAndExited_AcquiresWithoutAbandonment()
+    {
+        // A clean quit: the owner releases before its thread ends, so the next launch must not warn.
+        var name = $"PTZJoystickControlTests_{Guid.NewGuid():N}";
+        using var holder = SingleInstance.CreateMutex(name);
+        bool ownerAcquired = false;
+        var owner = new Thread(() =>
+        {
+            using var clean = SingleInstance.CreateMutex(name);
+            ownerAcquired = clean.WaitOne(0, false);
+            if (ownerAcquired)
+                clean.ReleaseMutex();
+        });
+        owner.Start();
+        owner.Join();
+        Assert.True(ownerAcquired);
+
+        using var next = SingleInstance.CreateMutex(name);
+        Assert.True(SingleInstance.TryAcquire(next, out bool abandoned));
+        Assert.False(abandoned);
+        next.ReleaseMutex();
+    }
+
+    [Fact]
     public void TryAcquire_AfterOwnerExitedWithoutReleasing_AcquiresAndReportsAbandonment()
     {
         // The previous instance dying while it owns the mutex: on Windows, and for .NET named

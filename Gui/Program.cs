@@ -69,6 +69,10 @@ internal class Program
             // Also cancels a pending listener start retry.
             companion.StopListening();
             Trace.TraceInformation("PTZJoystickControl stopped");
+            // Release on this (owning) thread so a clean quit is not seen as abandoned by the next
+            // launch while another process still has the mutex open. Not in finally: a crash
+            // during startup should still read as abandoned.
+            mutex.ReleaseMutex();
         }
         finally
         {
