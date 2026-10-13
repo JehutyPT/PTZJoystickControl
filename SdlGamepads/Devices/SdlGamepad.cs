@@ -6,6 +6,7 @@ using PtzJoystickControl.SdlGamepads.Models;
 using SDL2;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace PtzJoystickControl.SdlGamepads.Devices;
@@ -154,6 +155,21 @@ public class SdlGamepad : IGamepad
     public void Unacquire()
     {
         SDL.SDL_JoystickClose(sdlJoystickPointer);
+
+        // A gamepad is never reused after Unacquire (reconnecting or reactivating loads a new
+        // one), so detach its commands from shared state such as the camera list. Unacquire runs
+        // on the disconnect path, so a failure here is logged rather than thrown.
+        foreach (var command in commands)
+        {
+            try
+            {
+                (command as IDisposable)?.Dispose();
+            }
+            catch (Exception e)
+            {
+                Trace.WriteLine($"Gamepad '{Name}': failed to dispose command '{command.CommandName}': {e}");
+            }
+        }
     }
 
     public void Update()

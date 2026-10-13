@@ -50,3 +50,10 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Select camera 1 and start it panning, select camera 2 and start it panning, then unplug while holding the stick: both cameras stop.
 - [ ] Hold the stick deflected and deactivate the joystick in the app: the camera stops, and the app stays up.
 - [ ] Replug and reactivate the joystick: it drives the cameras normally again.
+
+### #5: Companion camera selection survives a USB replug
+
+- [ ] Trigger `SetCameraPreview` for each camera from Companion: the app's camera selection follows and Companion's feedback updates.
+- [ ] Unplug the joystick and plug it back in (no app restart). Trigger `SetCameraPreview` for each camera from Companion again: the selection still follows, and the joystick drives the newly selected camera.
+- [ ] Deactivate the joystick in the app, activate it again, and repeat the Companion selection: it still follows.
+- [ ] Rename a camera and add or remove a camera in the app after a replug: the joystick's camera-select options update and the app stays up.
