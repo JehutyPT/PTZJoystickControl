@@ -12,11 +12,11 @@ public class CameraStatusTemplateSelector : IDataTemplate
 
     public bool SupportsRecycling => false;
 
-    public IControl Build(object param)
+    public Control? Build(object? param)
     {
         IDataTemplate? returnTemplate;
 
-        var connected = (bool)param;
+        var connected = param is true;
 
         if (connected)
             returnTemplate = Templates["true"];
@@ -26,7 +26,7 @@ public class CameraStatusTemplateSelector : IDataTemplate
         return returnTemplate.Build(param);
     }
 
-    public bool Match(object data)
+    public bool Match(object? data)
     {
         return data is bool;
     }

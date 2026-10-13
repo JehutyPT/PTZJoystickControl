@@ -45,7 +45,7 @@
 
 		<StackPanel Orientation="Horizontal" Grid.Row="2" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="5" Spacing="5">
 			<Button Command="{Binding Download}" IsVisible="{Binding IsAvailable}">Download</Button>
-			<Button Command="{Binding Close, ElementName=Window }">OK</Button>
+			<Button Click="OnOkClick">OK</Button>
 		</StackPanel>
 	</Grid>
 </Window>

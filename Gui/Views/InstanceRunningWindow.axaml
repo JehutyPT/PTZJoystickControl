@@ -7,7 +7,7 @@
 		Height="120"
 		Width="400"
 		CanResize="False"
-		SystemDecorations="None"
+		WindowDecorations="None"
         WindowStartupLocation="CenterScreen"
 		x:Class="PtzJoystickControl.Gui.Views.InstanceRunningWindow"
 		TransparencyLevelHint="AcrylicBlur"
@@ -35,7 +35,7 @@
 		</StackPanel>
 
 		<Label Grid.Row="1" VerticalAlignment="Center" Margin="5">PTZ Joystick Control is already running.</Label>
-		<Button Command="{Binding Close, ElementName=Window}" IsEnabled="True" Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="5">OK</Button>
+		<Button Click="OnOkClick" IsEnabled="True" Grid.Row="1" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="5">OK</Button>
 	</Grid>
 
 </Window>

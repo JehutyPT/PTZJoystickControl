@@ -6,7 +6,7 @@
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="PtzJoystickControl.Gui.Views.InputCommandView">
 	<Grid ColumnDefinitions="170,3,25,*" RowDefinitions="25">
-		<ComboBox Items="{Binding Commands}" SelectedItem="{Binding SelectedCommand}" Grid.Column="0" HorizontalAlignment="Stretch">
+		<ComboBox ItemsSource="{Binding Commands}" SelectedItem="{Binding SelectedCommand}" Grid.Column="0" HorizontalAlignment="Stretch">
 			<ComboBox.ItemTemplate>
 				<DataTemplate>
 					<TextBlock Text="{Binding CommandName}"/>
@@ -29,7 +29,7 @@
 					<DataTemplate x:Key="AxisWithDynamicCommand">
 						<Grid ColumnDefinitions="110,3,140,15,70,3,140,*">
 							<TextBlock Text="{Binding SelectedCommand.AxisParameterName}" Grid.Column="0" VerticalAlignment="Center"/>
-							<ComboBox Items="{Binding Values}" SelectedItem="{Binding CommandValue}" Grid.Column="2" HorizontalAlignment="Stretch">
+							<ComboBox ItemsSource="{Binding Values}" SelectedItem="{Binding CommandValue}" Grid.Column="2" HorizontalAlignment="Stretch">
 								<ComboBox.ItemTemplate>
 									<DataTemplate>
 										<TextBlock Text="{Binding Name}"></TextBlock>
@@ -41,7 +41,7 @@
 					<DataTemplate x:Key="AxisWithStaticCommand">
 						<Grid ColumnDefinitions="110,3,140,15,70,3,140,*">
 							<TextBlock Text="Trigger direction" Grid.Column="0" VerticalAlignment="Center"/>
-							<ComboBox Items="{Binding Directions}" SelectedItem="{Binding CommandDirection}" Grid.Column="2" HorizontalAlignment="Stretch" IsEnabled="{Binding !DisableDirection}">
+							<ComboBox ItemsSource="{Binding Directions}" SelectedItem="{Binding CommandDirection}" Grid.Column="2" HorizontalAlignment="Stretch" IsEnabled="{Binding !DisableDirection}">
 								<ComboBox.ItemTemplate>
 									<DataTemplate>
 										<TextBlock Text="{Binding Name}"></TextBlock>
@@ -49,7 +49,7 @@
 								</ComboBox.ItemTemplate>
 							</ComboBox>
 							<TextBlock Text="{Binding SelectedCommand.AxisParameterName}" Grid.Column="4" TextAlignment="Right" VerticalAlignment="Center"/>
-							<ComboBox Items="{Binding Values}" SelectedItem="{Binding CommandValue}" Grid.Column="6" HorizontalAlignment="Stretch">
+							<ComboBox ItemsSource="{Binding Values}" SelectedItem="{Binding CommandValue}" Grid.Column="6" HorizontalAlignment="Stretch">
 								<ComboBox.ItemTemplate>
 									<DataTemplate>
 										<TextBlock Text="{Binding Name}"></TextBlock>
@@ -63,7 +63,7 @@
 						<Grid ColumnDefinitions="110,3,140,15,70,3,140,*">
 							<TextBlock Text="Direction" Grid.Column="0"
 										VerticalAlignment="Center"/>
-							<ComboBox Items="{Binding Directions}" SelectedItem="{Binding CommandDirection}" Grid.Column="2" HorizontalAlignment="Stretch" IsEnabled="{Binding !DisableDirection}">
+							<ComboBox ItemsSource="{Binding Directions}" SelectedItem="{Binding CommandDirection}" Grid.Column="2" HorizontalAlignment="Stretch" IsEnabled="{Binding !DisableDirection}">
 								<ComboBox.ItemTemplate>
 									<DataTemplate>
 										<TextBlock Text="{Binding Name}"></TextBlock>
@@ -71,7 +71,7 @@
 								</ComboBox.ItemTemplate>
 							</ComboBox>
 							<TextBlock Text="{Binding SelectedCommand.ButtonParameterName}" Grid.Column="4" TextAlignment="Right" VerticalAlignment="Center"/>
-							<ComboBox Items="{Binding Values}" SelectedItem="{Binding CommandValue}" Grid.Column="6" HorizontalAlignment="Stretch">
+							<ComboBox ItemsSource="{Binding Values}" SelectedItem="{Binding CommandValue}" Grid.Column="6" HorizontalAlignment="Stretch">
 								<ComboBox.ItemTemplate>
 									<DataTemplate>
 										<TextBlock Text="{Binding Name}"></TextBlock>
@@ -84,7 +84,7 @@
 					<DataTemplate x:Key="ButtonWithStaticCommand">
 						<Grid ColumnDefinitions="110,3,140,15,70,3,140,*">
 							<TextBlock Text="{Binding SelectedCommand.ButtonParameterName}" Grid.Column="0" VerticalAlignment="Center"/>
-							<ComboBox Items="{Binding Values}" SelectedItem="{Binding CommandValue}" Grid.Column="2" HorizontalAlignment="Stretch">
+							<ComboBox ItemsSource="{Binding Values}" SelectedItem="{Binding CommandValue}" Grid.Column="2" HorizontalAlignment="Stretch">
 								<ComboBox.ItemTemplate>
 									<DataTemplate>
 										<TextBlock Text="{Binding Name}"></TextBlock>
@@ -97,7 +97,7 @@
 					<DataTemplate x:Key="RelativeWithStaticCommand">
 						<Grid ColumnDefinitions="110,3,140,15,70,3,140,*">
 							<TextBlock Text="Step direction" Grid.Column="0" VerticalAlignment="Center"/>
-							<ComboBox Items="{Binding Directions}" SelectedItem="{Binding CommandDirection}" Grid.Column="2" HorizontalAlignment="Stretch" IsEnabled="{Binding !DisableDirection}">
+							<ComboBox ItemsSource="{Binding Directions}" SelectedItem="{Binding CommandDirection}" Grid.Column="2" HorizontalAlignment="Stretch" IsEnabled="{Binding !DisableDirection}">
 								<ComboBox.ItemTemplate>
 									<DataTemplate>
 										<TextBlock Text="{Binding Name}"></TextBlock>
@@ -105,7 +105,7 @@
 								</ComboBox.ItemTemplate>
 							</ComboBox>
 							<TextBlock Text="{Binding SelectedCommand.ButtonParameterName}" Grid.Column="4" TextAlignment="Right" VerticalAlignment="Center"/>
-							<ComboBox Items="{Binding Values}" SelectedItem="{Binding CommandValue}" Grid.Column="6" HorizontalAlignment="Stretch">
+							<ComboBox ItemsSource="{Binding Values}" SelectedItem="{Binding CommandValue}" Grid.Column="6" HorizontalAlignment="Stretch">
 								<ComboBox.ItemTemplate>
 									<DataTemplate>
 										<TextBlock Text="{Binding Name}"></TextBlock>

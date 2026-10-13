@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Interactivity;
 
 namespace PtzJoystickControl.Gui.Views
 {
@@ -8,5 +9,9 @@ namespace PtzJoystickControl.Gui.Views
         {
             InitializeComponent();
         }
+
+        // A click handler rather than a binding to Close: Window.Close has overloads, which method
+        // bindings do not resolve reliably.
+        private void OnOkClick(object? sender, RoutedEventArgs e) => Close();
     }
 }

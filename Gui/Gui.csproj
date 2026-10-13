@@ -8,8 +8,9 @@
 	<ApplicationIcon>./Assets/icon.ico</ApplicationIcon>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
-    <!--Avalonia doesen't support TrimMode=link currently,but we are working on that https://github.com/AvaloniaUI/Avalonia/issues/6892 -->
-    <TrimMode>copyused</TrimMode>
+    <!-- Bindings in XAML stay reflection bindings, as before Avalonia 12 (which compiles them by
+         default and would need x:DataType on every view). -->
+    <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <RootNamespace>PtzJoystickControl.Gui</RootNamespace>
     <Platforms>AnyCPU;x64</Platforms>
@@ -19,20 +20,19 @@
     <None Remove=".gitignore" />
   </ItemGroup>
   <ItemGroup>
-    <!--This helps with theme dll-s trimming.
-    If you will publish your application in self-contained mode with p:PublishTrimmed=true and it will use Fluent theme Default theme will be trimmed from the output and vice versa.
-    https://github.com/AvaloniaUI/Avalonia/issues/5593 -->
-    <TrimmableAssembly Include="Avalonia.Themes.Fluent" />
-    <!--<TrimmableAssembly Include="Avalonia.Themes.Default" />-->
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <!-- Service locator (Locator.Current); came with Avalonia.ReactiveUI before Avalonia 12. -->
+    <PackageReference Include="Splat" Version="21.0.0" />
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Avalonia" Version="0.10.19" />
-    <PackageReference Include="Avalonia.Desktop" Version="0.10.19" />
-    <!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
-    <PackageReference Condition="'$(Configuration)' == 'Debug'" Include="Avalonia.Diagnostics" Version="0.10.19" />
-    <PackageReference Include="Avalonia.ReactiveUI" Version="0.10.19" />
-    <PackageReference Include="XamlNameReferenceGenerator" Version="1.6.1" />
-  </ItemGroup>
+  <!-- SkiaSharp 3 and HarfBuzzSharp 8 ship the native libraries' pdbs (about 105 MB). They are
+       not needed for the logged managed stack traces, so they stay out of the published folder. -->
+  <Target Name="ExcludeNativePdbsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'libSkiaSharp.pdb' Or '%(Filename)%(Extension)' == 'libHarfBuzzSharp.pdb'" />
+    </ItemGroup>
+  </Target>
   <ItemGroup>
     <ProjectReference Include="..\Application\Application.csproj" />
     <ProjectReference Include="..\Core\Core.csproj" />

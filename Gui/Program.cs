@@ -1,6 +1,4 @@
 using Avalonia;
-using Avalonia.Platform;
-using Avalonia.ReactiveUI;
 using PtzJoystickControl.Gui.ViewModels;
 using PtzJoystickControl.Gui.TrayIcon;
 using PtzJoystickControl.Application;
@@ -88,14 +86,12 @@ internal class Program
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
-            .LogToTrace()
-            .UseReactiveUI();
+            .LogToTrace();
 
     private static BitfocusCompanionService RegisterServices(AppLogListener log)
     {
         var services = Locator.CurrentMutable;
         var resolver = Locator.Current;
-        var avaloniaLocator = AvaloniaLocator.Current;
 
         services.Register<IGitHubClient>(() => new GitHubClient(new ProductHeaderValue("PTZJoystickControl-UpdateChecker")));
         services.Register<IUpdateService>(() => new UpdateService(
@@ -134,8 +130,7 @@ internal class Program
         services.RegisterConstant(log);
         services.RegisterLazySingleton(() => new LogWindowViewModel(
             resolver.GetServiceOrThrow<AppLogListener>()));
-        services.RegisterLazySingleton(() => new TrayIconHandler(
-            avaloniaLocator.GetServiceOrThrow<IAssetLoader>()));
+        services.RegisterLazySingleton(() => new TrayIconHandler());
 
         return companion;
     }
@@ -144,12 +139,6 @@ internal class Program
 internal static class ResolverExtension
 {
     internal static T GetServiceOrThrow<T>(this IReadonlyDependencyResolver resolver)
-    {
-        return resolver.GetService<T>()
-            ?? throw new Exception("Resolved dependency cannot be null");
-    }
-
-    internal static T GetServiceOrThrow<T>(this IAvaloniaDependencyResolver resolver)
     {
         return resolver.GetService<T>()
             ?? throw new Exception("Resolved dependency cannot be null");

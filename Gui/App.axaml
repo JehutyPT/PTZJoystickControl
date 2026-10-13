@@ -1,12 +1,12 @@
 <Application xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:PtzJoystickControl.Gui" Name="PTZ Joystick Control" x:Class="PtzJoystickControl.Gui.App">
+    xmlns:local="using:PtzJoystickControl.Gui" Name="PTZ Joystick Control" RequestedThemeVariant="Dark" x:Class="PtzJoystickControl.Gui.App">
     <Application.DataTemplates>
         <local:ViewLocator/>
     </Application.DataTemplates>
 
     <Application.Styles>
-        <FluentTheme Mode="Dark" DensityStyle="Compact"/>
+        <FluentTheme DensityStyle="Compact"/>
         <Style>
             <Style.Resources>
                 <x:Double x:Key="ComboBoxMinHeight">24</x:Double>
