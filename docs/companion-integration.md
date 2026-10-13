@@ -11,6 +11,7 @@
 - `BitfocusCompanionEvent.FindMatchingEvent` maps the query parameter to an event. `SupportedEvents` is hardcoded to two cameras ("Vmix Cam 1/2 Preview").
 - `SdlGamepadsService.AddBitfocusCompanionButtons` adds one **virtual button input** per event to the SDL gamepad, numbered after the physical buttons. The user maps each virtual button to the *Select Camera* command in the UI.
 - When an event arrives, `onReceivedBitfocusCommand` simulates a press and release of that virtual button on the gamepad with SDL instance id `0`.
+- Every request is validated in full before anything runs (`BitfocusCompanionEvent.ParseRequest`): parameter names must match a defined command exactly (case-sensitive) and values must be a supported camera. Anything else, including an empty query or a request mixing valid and invalid parameters, gets `400` and runs nothing. A failure while handling a valid command gets `500`. Every response is closed, every rejection or failure is logged through `Trace`, and the listener keeps serving.
 
 ### App → Companion: selection feedback
 
@@ -20,7 +21,7 @@
 
 ### Known problems
 
-See [roadmap.md](roadmap.md) for the tracked list. In short: two paths can crash the app, HTTP responses are never closed, camera selection breaks after a USB replug, virtual buttons only appear once the gamepad has saved settings, and the outbound call uses a legacy endpoint and page/button numbering instead of Companion's page/row/column model.
+See [roadmap.md](roadmap.md) for the tracked list. In short: one path can crash the app, camera selection breaks after a USB replug, virtual buttons only appear once the gamepad has saved settings, and the outbound call uses a legacy endpoint and page/button numbering instead of Companion's page/row/column model.
 
 ## Target design
 
