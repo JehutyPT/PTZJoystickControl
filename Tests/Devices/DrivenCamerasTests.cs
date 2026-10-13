@@ -21,10 +21,12 @@ public class DrivenCamerasTests
         gamepad.SelectedCamera = camA;
         gamepad.SelectedCamera = camB;
         gamepad.SelectedCamera = camA;
+        var camAStopsBefore = camA.StopCalls;
+        var camBStopsBefore = camB.StopCalls;
         driven.StopAll();
 
-        Assert.Equal(1, camA.StopCalls);
-        Assert.Equal(1, camB.StopCalls);
+        Assert.Equal(1, camA.StopCalls - camAStopsBefore);
+        Assert.Equal(1, camB.StopCalls - camBStopsBefore);
         Assert.Equal(0, unused.StopCalls);
     }
 
@@ -49,9 +51,10 @@ public class DrivenCamerasTests
 
         gamepad.SelectedCamera = camA;
         gamepad.SelectedCamera = null;
+        var stopsBefore = camA.StopCalls;
         driven.StopAll();
 
-        Assert.Equal(1, camA.StopCalls);
+        Assert.Equal(1, camA.StopCalls - stopsBefore);
     }
 
     [Fact]
@@ -74,11 +77,12 @@ public class DrivenCamerasTests
         var driven = new DrivenCameras(gamepad);
         gamepad.SelectedCamera = failing;
         gamepad.SelectedCamera = camB;
+        var failingStopsBefore = failing.StopCalls;
 
         var exception = Record.Exception(driven.StopAll);
 
         Assert.Null(exception);
-        Assert.Equal(1, failing.StopCalls);
+        Assert.Equal(1, failing.StopCalls - failingStopsBefore);
         Assert.Equal(1, camB.StopCalls);
     }
 
@@ -99,6 +103,171 @@ public class DrivenCamerasTests
         Assert.False(gamepad.HasPropertyChangedSubscribers);
     }
 
+    [Fact]
+    public void SwitchingAwayFromAPanningCamera_StopsItOnce_AndNotTheNewOne()
+    {
+        var camA = new RecordingCamera("A");
+        var camB = new RecordingCamera("B");
+        var gamepad = new TestGamepad { SelectedCamera = camA };
+        _ = new DrivenCameras(gamepad);
+        camA.Pan(10, PanDir.Left);
+
+        gamepad.SelectedCamera = camB;
+
+        Assert.Equal(1, camA.StopCalls);
+        Assert.Equal(0, camB.StopCalls);
+    }
+
+    [Fact]
+    public void SwitchingAwayFromAZoomingCamera_StopsIt()
+    {
+        var camA = new RecordingCamera("A");
+        var gamepad = new TestGamepad { SelectedCamera = camA };
+        _ = new DrivenCameras(gamepad);
+        camA.Zoom(5, ZoomDir.Tele);
+
+        gamepad.SelectedCamera = new RecordingCamera("B");
+
+        Assert.Equal(1, camA.StopCalls);
+    }
+
+    [Fact]
+    public void SwitchingAwayFromAFocusingCamera_StopsIt()
+    {
+        var camA = new RecordingCamera("A");
+        var gamepad = new TestGamepad { SelectedCamera = camA };
+        _ = new DrivenCameras(gamepad);
+        camA.Focus(5, FocusDir.Near);
+
+        gamepad.SelectedCamera = new RecordingCamera("B");
+
+        Assert.Equal(1, camA.StopCalls);
+    }
+
+    [Fact]
+    public void SwitchingAwayFromAnIdleCamera_StopsNothing()
+    {
+        var camA = new RecordingCamera("A");
+        var camB = new RecordingCamera("B");
+        var gamepad = new TestGamepad { SelectedCamera = camA };
+        _ = new DrivenCameras(gamepad);
+        camA.Pan(10, PanDir.Left);
+        camA.Pan(0, PanDir.Stop);
+
+        gamepad.SelectedCamera = camB;
+
+        Assert.Equal(0, camA.StopCalls);
+        Assert.Equal(0, camB.StopCalls);
+    }
+
+    [Fact]
+    public void SwitchingCamera_EachSwitchStopsTheMovingCameraBeingLeft()
+    {
+        var camA = new RecordingCamera("A");
+        var camB = new RecordingCamera("B");
+        var gamepad = new TestGamepad();
+        _ = new DrivenCameras(gamepad);
+
+        gamepad.SelectedCamera = camA;
+        camA.Pan(10, PanDir.Left);
+        gamepad.SelectedCamera = camB;
+        camB.Tilt(10, TiltDir.Up);
+        gamepad.SelectedCamera = camA;
+
+        Assert.Equal(1, camA.StopCalls);
+        Assert.Equal(1, camB.StopCalls);
+    }
+
+    [Fact]
+    public void ClearingTheSelection_StopsThePreviousCameraWhenMoving()
+    {
+        var camA = new RecordingCamera("A");
+        var gamepad = new TestGamepad { SelectedCamera = camA };
+        _ = new DrivenCameras(gamepad);
+        camA.Pan(10, PanDir.Right);
+
+        gamepad.SelectedCamera = null;
+
+        Assert.Equal(1, camA.StopCalls);
+    }
+
+    [Fact]
+    public void SelectingWithNothingPreviouslySelected_StopsNothing()
+    {
+        var camA = new RecordingCamera("A");
+        var gamepad = new TestGamepad();
+        _ = new DrivenCameras(gamepad);
+
+        gamepad.SelectedCamera = camA;
+
+        Assert.Equal(0, camA.StopCalls);
+    }
+
+    [Fact]
+    public void ReselectingTheSameCamera_StopsNothing()
+    {
+        var camA = new RecordingCamera("A");
+        var gamepad = new TestGamepad { SelectedCamera = camA };
+        _ = new DrivenCameras(gamepad);
+        camA.Pan(10, PanDir.Left);
+
+        // TestGamepad raises PropertyChanged on every set, even when the value is unchanged.
+        gamepad.SelectedCamera = camA;
+
+        Assert.Equal(0, camA.StopCalls);
+    }
+
+    [Fact]
+    public void SwitchingAwayFromACameraThatThrowsOnStop_DoesNotThrow_AndLaterSwitchesStillStop()
+    {
+        var failing = new RecordingCamera("A") { ThrowOnStop = true };
+        var camB = new RecordingCamera("B");
+        var camC = new RecordingCamera("C");
+        var gamepad = new TestGamepad { SelectedCamera = failing };
+        _ = new DrivenCameras(gamepad);
+        failing.Pan(10, PanDir.Left);
+
+        var exception = Record.Exception(() => gamepad.SelectedCamera = camB);
+        camB.Pan(10, PanDir.Left);
+        gamepad.SelectedCamera = camC;
+
+        Assert.Null(exception);
+        Assert.Equal(1, failing.StopCalls);
+        Assert.Equal(1, camB.StopCalls);
+        Assert.Equal(0, camC.StopCalls);
+    }
+
+    [Fact]
+    public void SwitchingCamera_AfterStopAll_StopsNothing()
+    {
+        var camA = new RecordingCamera("A");
+        var camB = new RecordingCamera("B");
+        var gamepad = new TestGamepad { SelectedCamera = camA };
+        var driven = new DrivenCameras(gamepad);
+        driven.StopAll();
+        camA.Pan(10, PanDir.Left);
+
+        gamepad.SelectedCamera = camB;
+
+        Assert.Equal(1, camA.StopCalls);
+        Assert.Equal(0, camB.StopCalls);
+    }
+
+    [Fact]
+    public void StopAll_StopsIdleCamerasToo()
+    {
+        var camA = new RecordingCamera("A");
+        var camB = new RecordingCamera("B");
+        var gamepad = new TestGamepad { SelectedCamera = camA };
+        var driven = new DrivenCameras(gamepad);
+        gamepad.SelectedCamera = camB;
+
+        driven.StopAll();
+
+        Assert.Equal(1, camA.StopCalls);
+        Assert.Equal(1, camB.StopCalls);
+    }
+
     private sealed class RecordingCamera : ViscaDeviceBase
     {
         public RecordingCamera(string name) : base(name) { }
@@ -106,19 +275,31 @@ public class DrivenCamerasTests
         public int StopCalls { get; private set; }
         public bool ThrowOnStop { get; set; }
 
+        // Keeps the base class's last-sent motion state the way ViscaIpDevice does, so
+        // IsMoving reflects what the test drove.
         public override void Stop()
         {
             StopCalls++;
+            panDir = PanDir.Stop;
+            tiltDir = TiltDir.Stop;
+            zoomCmd = (byte)ZoomDir.Stop;
+            focusCmd = (byte)FocusDir.Stop;
             if (ThrowOnStop)
                 throw new InvalidOperationException("Simulated camera failure");
         }
 
         public override void Power(Power byteVal) { }
-        public override void Pan(byte panSpeed, PanDir panDir) { }
-        public override void Tilt(byte tiltSpeed, TiltDir tiltDir) { }
-        public override void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir) { }
-        public override void Zoom(byte zoomSpeed, ZoomDir zoomDir) { }
-        public override void Focus(byte focusSpeed, FocusDir focusDir) { }
+        public override void Pan(byte panSpeed, PanDir panDir) => this.panDir = panDir;
+        public override void Tilt(byte tiltSpeed, TiltDir tiltDir) => this.tiltDir = tiltDir;
+        public override void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir)
+        {
+            this.panDir = panDir;
+            this.tiltDir = tiltDir;
+        }
+        public override void Zoom(byte zoomSpeed, ZoomDir zoomDir) =>
+            zoomCmd = zoomDir == ZoomDir.Stop ? (byte)0x00 : (byte)((byte)zoomDir | zoomSpeed & 0x0f);
+        public override void Focus(byte focusSpeed, FocusDir focusDir) =>
+            focusCmd = focusDir == FocusDir.Stop ? (byte)0x00 : (byte)((byte)focusDir | focusSpeed & 0x0f);
         public override void FocusMode(FocusMode focusMode) { }
         public override void FocusLock(FocusLock focusMode) { }
         public override void Preset(Preset preset, byte presetNumber) { }

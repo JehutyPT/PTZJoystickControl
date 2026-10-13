@@ -196,6 +196,76 @@ public class ViscaIpDeviceStopRepeatTests
     }
 
     [Fact]
+    public async Task SwitchingAwayFromAPanningCamera_SendsItRepeatedStops()
+    {
+        using var camera1 = new LoopbackCamera();
+        using var camera2 = new LoopbackCamera();
+        var gamepad = new TestGamepad { SelectedCamera = camera1.Device };
+        _ = new DrivenCameras(gamepad);
+        var pan = new PanCommand(gamepad, new NullCompanionService());
+        var axis = new Input("axis-0", "X", InputType.Axis, new ICommand[] { pan });
+        axis.SelectedCommand = pan;
+        axis.InputValue = 0.8f;
+        await camera1.WaitForPacketsAsync(1);
+        await camera1.CollectAsync();
+
+        // The stick is still deflected: only the switch can stop camera 1.
+        gamepad.SelectedCamera = camera2.Device;
+        var packets = await camera1.CollectAsync();
+
+        AssertStopsWithin(packets, IsPanTiltStop, ForceStopSpread);
+    }
+
+    [Fact]
+    public async Task SwitchingAwayDuringAPresetRecall_SendsNothing()
+    {
+        using var camera1 = new LoopbackCamera();
+        using var camera2 = new LoopbackCamera();
+        var gamepad = new TestGamepad { SelectedCamera = camera1.Device };
+        _ = new DrivenCameras(gamepad);
+        camera1.Device.Preset(Preset.Recall, 3);
+        await camera1.WaitForPacketsAsync(1);
+        await camera1.CollectAsync();
+
+        gamepad.SelectedCamera = camera2.Device;
+        var packets = await camera1.CollectAsync();
+
+        Assert.Empty(packets);
+    }
+
+    [Fact]
+    public async Task IsMoving_FollowsTheLastSentPanTiltZoomAndFocus()
+    {
+        using var camera = new LoopbackCamera();
+        var device = camera.Device;
+        Assert.False(device.IsMoving);
+
+        device.PanTilt(10, 10, PanDir.Left, TiltDir.Stop);
+        Assert.True(device.IsMoving);
+        device.PanTilt(10, 10, PanDir.Stop, TiltDir.Stop);
+        Assert.False(device.IsMoving);
+
+        device.Tilt(10, TiltDir.Down);
+        Assert.True(device.IsMoving);
+        device.Tilt(0, TiltDir.Stop);
+        Assert.False(device.IsMoving);
+
+        device.Zoom(5, ZoomDir.Wide);
+        Assert.True(device.IsMoving);
+        device.Zoom(0, ZoomDir.Stop);
+        Assert.False(device.IsMoving);
+
+        device.Focus(5, FocusDir.Far);
+        Assert.True(device.IsMoving);
+        device.Stop();
+        Assert.False(device.IsMoving);
+
+        device.Preset(Preset.Recall, 1);
+        Assert.False(device.IsMoving);
+        await camera.CollectAsync();
+    }
+
+    [Fact]
     public async Task AxisReturningToDeadzone_SendsRepeatedPanStops()
     {
         using var camera = new LoopbackCamera();
@@ -324,7 +394,9 @@ public class ViscaIpDeviceStopRepeatTests
 
     private sealed class TestGamepad : IGamepad
     {
-        public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+        private ViscaDeviceBase? selectedCamera;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
         public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }
 
         public string Id => "test-gamepad";
@@ -335,7 +407,15 @@ public class ViscaIpDeviceStopRepeatTests
         public IReadOnlyList<ICommand> Commands => Array.Empty<ICommand>();
         public bool DetectInput { get; set; }
         public IEnumerable<IInput> Inputs => Array.Empty<IInput>();
-        public ViscaDeviceBase? SelectedCamera { get; set; }
+        public ViscaDeviceBase? SelectedCamera
+        {
+            get => selectedCamera;
+            set
+            {
+                selectedCamera = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedCamera)));
+            }
+        }
 
         public void Acquire() { }
         public void Unacquire() { }
