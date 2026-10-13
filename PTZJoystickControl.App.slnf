@@ -1,0 +1,11 @@
+{
+  "solution": {
+    "path": "PTZJoystickControl.sln",
+    "projects": [
+      "Application\\Application.csproj",
+      "Core\\Core.csproj",
+      "Gui\\Gui.csproj",
+      "SdlGamepads\\SdlGamepads.csproj"
+    ]
+  }
+}

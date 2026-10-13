@@ -13,7 +13,7 @@ dotnet build PTZJoystickControl.sln
 dotnet run --project Gui
 ```
 
-On macOS/Linux the solution build fails in `Packaging/Windows` (WiX is Windows-only); build the app projects instead, e.g. `dotnet build Gui/Gui.csproj`.
+On macOS/Linux the solution build fails in `Packaging/Windows` (WiX is Windows-only); use `dotnet build PTZJoystickControl.App.slnf`, which builds only the app projects. Making the full solution build cross-platform is part of the .NET LTS upgrade (see roadmap).
 
 Only one instance can run at a time (named mutex in `Gui/Program.cs`).
 

@@ -29,7 +29,8 @@ Planned work: hardening for live use, a cleaner Companion integration, and suppo
 ## Build and test
 
 ```
-dotnet build PTZJoystickControl.sln
+dotnet build PTZJoystickControl.sln      # Windows
+dotnet build PTZJoystickControl.App.slnf # macOS/Linux (skips the WiX installer)
 dotnet test   # no test project yet; see docs/development.md
 ```
 
