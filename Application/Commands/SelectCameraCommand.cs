@@ -25,10 +25,11 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
 
         if (e?.PropertyName == nameof(Gamepad.SelectedCamera))
         {
-            var pageNumber = Gamepad.SelectedCamera!.OnSelectedBitfocusPageNumber;
-            var buttonNumber = Gamepad.SelectedCamera!.OnSelectedBitfocusButtonNumber;
-            
-            CompanionService.PressButton(pageNumber, buttonNumber);
+            var selectedCamera = Gamepad.SelectedCamera;
+            if (selectedCamera == null)
+                return;
+
+            CompanionService.PressButton(selectedCamera.OnSelectedBitfocusPageNumber, selectedCamera.OnSelectedBitfocusButtonNumber);
         }
     }
 
