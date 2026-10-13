@@ -6,6 +6,23 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #37: SKAARHOJ joystick drives cameras
+
+Needs the SKAARHOJ PTZ Extreme at 192.168.1.163 with `SkaarhojPanel.json` set up as in the #35 entry, both CR-N500s, and no other Raw Panel client connected (close SKAARHOJ's updater app and any test tool). The app only reads the panel: its buttons, knobs, lights and displays do nothing, and a dark panel is expected. Camera selection comes from Companion.
+
+- [ ] Start the app. The controller list shows **SKAARHOJ panel (192.168.1.163)** beside the USB joystick, connected once the log shows "link up".
+- [ ] Select the panel in the list. The USB joystick is deactivated: its axes move nothing. Map `LR` to *Pan*, `UD` to *Tilt* and `Rotate` to *Zoom* (and `Zoom`, the rocker, if wanted).
+- [ ] Select camera 1 from Companion. Push the stick left/right and up/down, and twist it: camera 1 pans, tilts and zooms. Release each one: the camera stops. Repeat on camera 2 after selecting it from Companion.
+- [ ] Hold the stick at full deflection for a few seconds, then twist it fully and hold: the camera keeps moving at a steady speed, with no stutter or stop, until released.
+- [ ] Pan camera 1 and, while holding the stick, select camera 2 from Companion: camera 1 stops, and the stick now drives camera 2.
+- [ ] Quit and restart the app: the panel is still the selected controller, with the same mappings.
+- [ ] Pan a camera and, while holding the stick, pull the panel's Ethernet cable: the camera stops within about half a second, the log shows "link down", and the panel shows disconnected in the list.
+- [ ] Plug the cable back in without touching the stick: after "link up" (within about 30 s) nothing moves. Then move the stick: the camera follows again.
+- [ ] Sleep. Beforehand, with the app quit, use a test tool to send `SleepTimer=60000` to the panel, then disconnect the tool. Start the app and leave the stick alone until the log shows `INFO … asleep`. Deflect the stick: nothing moves, and the panel shows disconnected in the list. Press any panel button: the log shows `INFO … awake`, and the stick drives the cameras again (wait out the wake stall; a single "link down/up" at that moment is #39). The timer runs from the last activity, so it expires a minute after the app connects even if connecting wakes the panel; if the panel never sleeps, note it on #39. Afterwards, set `SleepTimer=` back (4 hours is `14400000`), or power-cycle the panel.
+- [ ] Select the USB joystick in the list: the panel's stick moves nothing, and the USB joystick drives both cameras and stops on release. Select the panel again: the USB joystick moves nothing.
+- [ ] With the panel selected, unplug the USB joystick and plug it back in: the panel keeps working, and the USB joystick does not become active. With the USB joystick selected, pull the panel's cable: the USB joystick keeps working.
+- [ ] Set `"Address": ""` in `SkaarhojPanel.json` and restart: the controller list shows only the USB joystick, and it works as before. Put the address back.
+
 ### #30: Avalonia 12 UI framework
 
 The UI framework moved from Avalonia 0.10 to 12, so every window, the tray icon and the tray menu are drawn by new code. The look should be unchanged (dark Fluent theme, compact). The Windows zip is now published for the `win-x64`/`win-x86` RIDs and still has the same four native DLLs beside `Gui.exe`. Back up `%APPDATA%\PTZJoystickControl\Cameras.json` and `Gamepads.json` before starting the new build.
@@ -46,7 +63,7 @@ Companion owns camera selection. The app no longer presses a Companion button wh
 
 ### #35: SKAARHOJ panel link
 
-Needs the SKAARHOJ PTZ Extreme at 192.168.1.163, with no other Raw Panel client connected (close SKAARHOJ's updater app and any test tool). This build only connects to the panel: the panel's joystick and buttons do nothing yet. **While the app is connected, the panel switches off all its LEDs and displays** and leaves them to the app, which sends none yet, so a dark panel is expected; it lights up again when the app quits.
+Needs the SKAARHOJ PTZ Extreme at 192.168.1.163, with no other Raw Panel client connected (close SKAARHOJ's updater app and any test tool). The link alone moves nothing: the panel's joystick drives cameras only once the panel is selected as the controller (#37), and its buttons do nothing yet. **While the app is connected, the panel switches off all its LEDs and displays** and leaves them to the app, which sends none yet, so a dark panel is expected; it lights up again when the app quits.
 
 - [ ] Quit the app. In the settings folder (`%APPDATA%\PTZJoystickControl`), open `SkaarhojPanel.json` (start and quit the app once if it is missing) and set `"Address": "192.168.1.163"`, keeping `"Port": 9923`. Start the app.
 - [ ] Tray menu → **Show log**: an `INFO [SkaarhojPanelLink]` "link up to 192.168.1.163:9923" line, then `_model=SK_PTZEXTREMEV2` and `_version=…`. No "link down" in the first few seconds (the ~0.5 s post-connect stall must not trip it).

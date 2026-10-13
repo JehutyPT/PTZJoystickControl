@@ -2,7 +2,7 @@
 
 Hardware: SKAARHOJ PTZ Extreme running UniSketch firmware (pre-Blue Pill). Goal: use its joystick to drive the cameras through this app, and use its buttons and displays as a Bitfocus Companion surface.
 
-> **Status: link built, no control yet.** The [Raw Panel protocol](#raw-panel-verified-on-hardware) (input, LED/display output, sleep, reconnect) was checked against a real panel on 2026-10-13. The app's [panel link](#the-panel-link-in-this-app) (#35) connects, parses the panel's messages, detects loss and reconnects; it does not drive cameras yet (#37). The [Satellite API](#satellite-api-companion-side) and the [mapping](#mapping) are still design and unverified; check them against Companion's Satellite API documentation and real hardware before relying on them.
+> **Status: joystick drives cameras; buttons do nothing yet.** The [Raw Panel protocol](#raw-panel-verified-on-hardware) (input, LED/display output, sleep, reconnect) was checked against a real panel on 2026-10-13. The app's [panel link](#the-panel-link-in-this-app) (#35) connects, parses the panel's messages, detects loss and reconnects. The [panel controller](#the-panel-as-a-controller) (#37) drives the selected camera from the joystick and zoom rocker; it is not yet checked on hardware. Buttons, encoders, LEDs and displays belong to the bridge (#18). The [Satellite API](#satellite-api-companion-side) and the [mapping](#mapping) are still design and unverified; check them against Companion's Satellite API documentation and real hardware before relying on them.
 
 ## Vendor references
 
@@ -27,7 +27,7 @@ New code lives in its own project, `SkaarhojPanel/`, mirroring `SdlGamepads/`.
 
 ## The panel link in this app
 
-`SkaarhojPanel/SkaarhojPanelLink.cs` owns the one TCP connection to the panel (#35). It moves no camera; the gamepad (#37), sleep handling (#37/#39), LEDs and displays (#19) and Companion (#18) build on it.
+`SkaarhojPanel/SkaarhojPanelLink.cs` owns the one TCP connection to the panel (#35). It moves no camera itself; the [panel controller](#the-panel-as-a-controller) (#37), the asleep UI state (#39), and the bridge for buttons, LEDs, displays and Companion (#18) build on it.
 
 **Settings.** `SkaarhojPanel.json`, next to `Cameras.json` and `Gamepads.json` (see [architecture.md](architecture.md#settings)), holds the panel's address and port. There is no GUI for it yet: the app writes an empty template on first start, and you fill in the address by hand and restart the app.
 
@@ -52,6 +52,20 @@ With `Address` empty or missing, the app makes no connection and logs nothing ab
 **Log lines** (source `SkaarhojPanelLink`): `INFO` link up, and the `_model`, `_version` and `_connections` replies; `WARN` link down with the reason (no ack, panel closed the connection, read or send failed); `WARN` connect failures, at the 1st, 2nd, 4th, 8th, … consecutive attempt. Input events are never logged.
 
 **Threading.** The link runs on one background task. Its `LinkUp`, `LinkDown` and `MessageReceived` events are raised there; a subscriber that throws is logged and the link carries on. Anything that drives cameras from these events must queue onto `InputQueue` (live-safety §4). Quitting the app disposes the link, which cancels pings and reconnects and closes the socket.
+
+### The panel as a controller
+
+`SkaarhojPanel/SkaarhojGamepadsService.cs` turns the link into one entry in the controller list (#37). The entry is named `SKAARHOJ panel (<address>)`, and its id is `skaarhoj:<address>`, so keep the panel's address fixed with a DHCP reservation. It is shown connected while the link is up and the panel is awake. As with the USB joystick, select it in the list to activate it. Selecting it deactivates the USB joystick, and the reverse, so the two are never active together (`CompositeGamepadsService`).
+
+- **Inputs.** `SkaarhojGamepad` has four axes with the usual deadzone, saturation, inversion and command mapping: `LR` (HWC 60), `UD` (61), `Rotate` (62) and `Zoom` (58, the rocker). `Speed:<n>` becomes `n / 500`, clamped to −1…1. The default saturation (5 %) absorbs the 498–500 jitter at full deflection. Every other HWC is ignored, the top button (63) included.
+- **Mappings** are saved by gamepad id in `SkaarhojGamepads.json`, next to `Gamepads.json`.
+- **Camera selection** follows Companion: a Companion camera select reaches the panel like any other active controller.
+- **Read-only.** The app never writes to the panel: no LEDs, display text, `SleepTimer=` or other settings. It sends only the link's own `list`, `Connections?` and `ping`. The panel may stay dark until the bridge (#18) exists.
+- **Threading.** Link events are only queued on the shared `InputQueue`. Axis input, link up/down and sleep/wake run on the input loop, in the order received.
+- **Link down** (no `ack` for 300 ms, panel closed, read or send failed) and **`_isSleeping=1`** both stop every camera the panel's gamepad has driven (`DrivenCameras.StopAll()`), remove it from the active controllers and show it disconnected. A held-still stick sends nothing, so without the stop on sleep a camera could keep moving with no release ever arriving. An `INFO` line logs each sleep and wake.
+- **Link up** and **`_isSleeping=0`** activate a fresh `SkaarhojGamepad` (if the panel is the selected controller). Every axis starts at 0, and nothing moves until the next `Speed` message. The panel does not report its sleep state on connect, so a new connection counts as awake: an asleep joystick sends nothing anyway.
+
+Not yet: the UI shows an asleep panel only as disconnected, and the wake-stall grace is not in place (#39). Buttons, encoders, LEDs and the sleep timer belong to the bridge (#18).
 
 ## Raw Panel (verified on hardware)
 
@@ -210,7 +224,7 @@ The encoders (Iris 57, Focus 59, Knobs A–H 46–53) send relative steps (`Enc:
 
 ## Failure behavior
 
-- Panel connection lost or `ping` unanswered within the dead-man window → stop all cameras driven by `SkaarhojGamepad`, mark it disconnected, reconnect with backoff. On reconnect, axes start at 0, and the dead-man timeout applies only after ~1 s of grace.
-- Panel falls asleep (`_isSleeping=1`) → stop all cameras driven by `SkaarhojGamepad` and show the panel as asleep. On `_isSleeping=0`, re-send LED and display state.
+- Panel connection lost or `ping` unanswered within the dead-man window → stop all cameras driven by `SkaarhojGamepad`, mark it disconnected, reconnect with backoff. On reconnect, axes start at 0, and the dead-man timeout applies only after ~1 s of grace. (Built, #35/#37.)
+- Panel falls asleep (`_isSleeping=1`) → stop all cameras driven by `SkaarhojGamepad` and mark it unavailable (built, #37); show it as asleep rather than disconnected (#39). On `_isSleeping=0`, re-send LED and display state (bridge, #18).
 - Companion connection lost → panel joystick keeps working; panel buttons show an "offline" state; reconnect with backoff.
 - On reconnect to Companion, re-register the device and let Companion resend all key states.
