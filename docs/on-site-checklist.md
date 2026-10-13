@@ -28,3 +28,10 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Quit the app. Hold port 12345 with another program (for example a second copy of an old build, or `python -m http.server 12345` on the vMix PC), then start the app: it starts, the main window shows a red "Companion → app control is off" notice naming the port, and the joystick still selects, moves and stops both cameras.
 - [ ] Selecting a camera from the joystick still updates Companion's feedback.
 - [ ] Release port 12345 and restart the app: no notice is shown and selecting a camera from Companion works again.
+
+### #4: Stop commands are repeated
+
+- [ ] On each camera, pan, tilt, zoom and focus fully and release: the camera stops promptly every time, with no lurch or late stop.
+- [ ] Release the stick and immediately push it the other way: the camera follows the new direction and does not stop.
+- [ ] Pan and tilt together, release only pan: tilt keeps moving at the same speed until released, then stops.
+- [ ] Optional, with Wireshark on the vMix PC filtered to the camera's VISCA port (normally `udp.port == 52381`): releasing an axis shows 3 identical stop packets roughly 50–65 ms apart.
