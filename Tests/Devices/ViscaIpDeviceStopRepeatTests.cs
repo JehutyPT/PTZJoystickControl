@@ -296,6 +296,7 @@ public class ViscaIpDeviceStopRepeatTests
         public void PressButton(int? pageNumber, int? buttonNumber) { }
         public void SetCustomVariable(string variableName, string value) { }
         public List<BitfocusCompanionEvent> SupportedEvents => new();
+        public string? InboundListenerError => null;
     }
 
     private sealed class TestGamepad : IGamepad
