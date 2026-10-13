@@ -71,7 +71,7 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
             }
             catch (Exception e)
             {
-                Console.WriteLine($"TCP BeginSocket {name}: {e.Message}");
+                Trace.TraceWarning($"TCP BeginSocket {name}: {e.Message}");
                 EndSocket();
             }
         }
@@ -87,7 +87,7 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         }
         catch (Exception e)
         {
-            Debug.WriteLine($"TCP OnConnected {name}: {eventArgs?.SocketError} {e.Message}");
+            Trace.TraceWarning($"TCP OnConnected {name}: {eventArgs?.SocketError} {e.Message}");
             EndSocket();
         }
     }
@@ -107,7 +107,7 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         }
         catch (Exception e)
         {
-            Debug.WriteLine($"TCP OnReceive {name}: {e.Message}");
+            Trace.TraceWarning($"TCP OnReceive {name}: connection lost: {e.Message}");
             NotifyPropertyChanged(nameof(Connected));
             EndSocket();
         }
@@ -321,7 +321,7 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         }
         catch (Exception e)
         {
-            Debug.WriteLine($"Repeat command {name}: {e}");
+            Trace.TraceError($"Repeat command {name}: {e}");
         }
     }
 
@@ -481,7 +481,7 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         }
         catch (Exception e)
         {
-            Debug.WriteLine($"AddCommand {name}: {e}");
+            Trace.TraceError($"AddCommand {name}: {e}");
         }
     }
 
@@ -553,7 +553,7 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
     {
         if (socket == null)
         {
-            Debug.WriteLine("No socket: " + ViscaIpEndpont);
+            Trace.TraceInformation($"Camera {name}: no socket, connecting to {ViscaIpEndpont}");
             BeginSocket();
             return;
         }
@@ -561,7 +561,7 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
 
         if (protocol == Protocol.Tcp && !socket.Connected)
         {
-            Debug.WriteLine("Reconnecting to client: " + ViscaIpEndpont);
+            Trace.TraceWarning($"Camera {name}: TCP not connected, reconnecting to {ViscaIpEndpont}");
             BeginSocket();
             return;
         }
@@ -572,7 +572,7 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         }
         catch (Exception e)
         {
-            Debug.WriteLine(e);
+            Trace.TraceError($"Camera {name}: send to {ViscaIpEndpont} failed, closing socket: {e}");
             EndSocket();
         }
     }

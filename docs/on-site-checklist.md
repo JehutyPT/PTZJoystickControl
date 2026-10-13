@@ -64,3 +64,9 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Map each of them to *Select Camera* with the matching camera. Trigger `SetCameraPreview` for each camera from Companion: the app's camera selection follows, and the joystick drives the selected camera.
 - [ ] Quit and restart the app: both virtual buttons keep their mapping, and `SetCameraPreview` from Companion still selects the cameras.
 - [ ] Quit the app and restore the original `Gamepads.json` (delete the new one, rename `Gamepads.json.bak` back). Start the app: the joystick's usual mappings, including its virtual buttons, are back and drive the cameras.
+
+### #24: log lines appear for camera connect/disconnect
+
+- [ ] Start the installed (Release) build and open the Log window. Unplug the vMix PC's network cable (or disable its adapter), then pan a camera: an `ERROR` line `Camera <name>: send to <ip:port> failed, closing socket` appears in the window and in the log file, and the app stays up. Repeated `ERROR`/`INFO` lines while you keep panning are expected.
+- [ ] Plug the network back in and pan again: an `INFO` line `Camera <name>: no socket, connecting to <ip:port>` appears, and the camera moves and stops.
+- [ ] Unplug only one camera's network cable and pan it: note on #24 whether any `WARN`/`ERROR` line appears (over UDP there may be none). Plug it back in: it moves and stops again, and the other camera works throughout.

@@ -64,7 +64,7 @@ public class IPCameraViewModel : ViewModelBase, INotifyPropertyChanged
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e);
+                Trace.TraceInformation($"Camera {Name}: invalid SendWaitTime '{value}': {e.Message}");
                 throw new DataValidationException(e.Message);
             }
         }
@@ -81,7 +81,7 @@ public class IPCameraViewModel : ViewModelBase, INotifyPropertyChanged
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e);
+                Trace.TraceInformation($"Camera {Name}: invalid IPAddress '{value}': {e.Message}");
                 throw new DataValidationException("Invalid IP");
             }
         }
@@ -98,7 +98,7 @@ public class IPCameraViewModel : ViewModelBase, INotifyPropertyChanged
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e);
+                Trace.TraceInformation($"Camera {Name}: invalid Port '{value}': {e.Message}");
                 throw new DataValidationException("1-65535");
             }
         }
@@ -117,7 +117,7 @@ public class IPCameraViewModel : ViewModelBase, INotifyPropertyChanged
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e);
+                Trace.TraceInformation($"Camera {Name}: invalid BitfocusPage '{value}': {e.Message}");
                 throw new DataValidationException("Must be an integer");
             }
         }
@@ -135,7 +135,7 @@ public class IPCameraViewModel : ViewModelBase, INotifyPropertyChanged
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e);
+                Trace.TraceInformation($"Camera {Name}: invalid BitfocusButton '{value}': {e.Message}");
                 throw new DataValidationException("Must be an integer");
             }
         }

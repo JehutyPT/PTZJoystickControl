@@ -61,7 +61,7 @@ namespace PtzJoystickControl.Application.Db
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e);
+                Trace.TraceError($"Failed to load camera settings from {_cameratFilePath}, starting with none: {e}");
                 return new List<ViscaIPDeviceBase>();
             }
         }
@@ -77,7 +77,7 @@ namespace PtzJoystickControl.Application.Db
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e);
+                Trace.TraceError($"Failed to save camera settings to {_cameratFilePath}: {e}");
                 return false;
             }
         }

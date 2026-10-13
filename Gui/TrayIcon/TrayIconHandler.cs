@@ -76,7 +76,7 @@ namespace PtzJoystickControl.Gui.TrayIcon
             }
             catch (Exception e)
             {
-                Debug.WriteLine(e);
+                Trace.TraceWarning($"Tray icon: failed to set icon: {e}");
             }
         }
 

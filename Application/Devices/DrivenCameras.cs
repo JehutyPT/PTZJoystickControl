@@ -46,7 +46,7 @@ public sealed class DrivenCameras
             }
             catch (Exception e)
             {
-                Debug.WriteLine($"Stopping camera {camera.Name} after controller {gamepad.Name} went away: {e}");
+                Trace.TraceError($"Stopping camera {camera.Name} after controller {gamepad.Name} went away: {e}");
             }
         }
     }
