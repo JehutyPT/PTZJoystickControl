@@ -141,6 +141,7 @@ public sealed class CompanionSettingsStoreTests : IDisposable
     [InlineData("""{ "Host": "", "Port": 8001, "ListenerPort": 12346 }""", "Host")]
     [InlineData("""{ "Host": "two words", "Port": 8001, "ListenerPort": 12346 }""", "Host")]
     [InlineData("""{ "Host": 42, "Port": 8001, "ListenerPort": 12346 }""", "Host")]
+    [InlineData("""{ "Host": "192.168.68.110/", "Port": 8001, "ListenerPort": 12346 }""", "Host")]
     public void Load_InvalidValue_FallsBackForThatValueOnlyAndWarns(string contents, string invalid)
     {
         var settings = Load(contents);
@@ -149,6 +150,7 @@ public sealed class CompanionSettingsStoreTests : IDisposable
         Assert.Equal(invalid == "Port" ? 8000 : 8001, settings.Port);
         Assert.Equal(invalid == "ListenerPort" ? 12345 : 12346, settings.ListenerPort);
         Assert.Contains(Warnings, m => m.Contains(_path) && m.Contains(invalid));
+        Assert.Null(Record.Exception(() => settings.OutboundBaseAddress));
     }
 
     [Fact]

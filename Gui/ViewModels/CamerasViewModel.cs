@@ -8,7 +8,6 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using PtzJoystickControl.Core.Db;
 
 namespace PtzJoystickControl.Gui.ViewModels;
 

@@ -60,7 +60,7 @@ public class CompanionSettingsStore
                 {
                     if (property.Value.ValueKind == JsonValueKind.String
                         && property.Value.GetString() is { } host
-                        && Uri.CheckHostName(host) != UriHostNameType.Unknown)
+                        && IsValidHost(host))
                         settings.Host = host;
                     else
                         WarnInvalid(property, CompanionSettings.DefaultHost);
@@ -96,6 +96,23 @@ public class CompanionSettingsStore
 
     private static bool Is(JsonProperty property, string name) =>
         string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase);
+
+    // Also builds the URI the client will use, so a host the URI parser rejects can never
+    // reach CompanionSettings.OutboundBaseAddress at startup.
+    private static bool IsValidHost(string host)
+    {
+        if (Uri.CheckHostName(host) == UriHostNameType.Unknown)
+            return false;
+        try
+        {
+            _ = new CompanionSettings { Host = host }.OutboundBaseAddress;
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
 
     private static bool TryGetPort(JsonElement value, out int port)
     {
