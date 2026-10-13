@@ -388,7 +388,6 @@ public class ViscaIpDeviceStopRepeatTests
         public event EventHandler<BitfocusCompanionEvent>? ReceivedBitfocusCommand { add { } remove { } }
         public void PressButton(int? pageNumber, int? buttonNumber) { }
         public void SetCustomVariable(string variableName, string value) { }
-        public List<BitfocusCompanionEvent> SupportedEvents => new();
         public string? InboundListenerError => null;
         public event EventHandler? InboundListenerErrorChanged { add { } remove { } }
     }

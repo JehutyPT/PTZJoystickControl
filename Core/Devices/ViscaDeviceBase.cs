@@ -33,6 +33,28 @@ public abstract class ViscaDeviceBase : INotifyPropertyChanged
     protected byte presetRecallSpeed = 0x04;
     protected int? _onSelectedBitfocusButtonNumber;
     protected int? _onSelectedBitfocusPageNumber;
+    protected int? _companionNumber;
+
+    /// <summary>
+    /// The number Companion uses to select this camera (<c>?SelectCamera=N</c>, or the legacy
+    /// <c>?SetCameraPreview=N</c>). Null only until <c>CamerasService</c> assigns one; never below 1.
+    /// </summary>
+    public int? CompanionNumber
+    {
+        get => _companionNumber;
+        set
+        {
+            if (_companionNumber == value)
+                return;
+
+            if (value < 1)
+                throw new ArgumentOutOfRangeException(nameof(value), value, "A Companion number must be 1 or more.");
+
+            _companionNumber = value;
+            NotifyPropertyChanged();
+            NotifyPersistentPropertyChanged();
+        }
+    }
 
     public int? OnSelectedBitfocusPageNumber
     {

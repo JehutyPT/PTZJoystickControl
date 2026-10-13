@@ -1,5 +1,6 @@
 ﻿using Avalonia.Data;
 using Avalonia.Utilities;
+using PtzJoystickControl.Application.Services;
 using PtzJoystickControl.Core.Devices;
 using System;
 using System.Collections.Generic;
@@ -12,12 +13,15 @@ namespace PtzJoystickControl.Gui.ViewModels;
 public class IPCameraViewModel : ViewModelBase, INotifyPropertyChanged
 {
     private readonly ViscaIPDeviceBase _camera;
+    private readonly IEnumerable<ViscaDeviceBase> _allCameras;
 
     public static IEnumerable<Protocol> Protocols { get; } = Enum.GetValues<Protocol>();
 
-    public IPCameraViewModel(ViscaDeviceBase camera)
+    /// <param name="allCameras">Every camera, to reject a Companion number another camera already has.</param>
+    public IPCameraViewModel(ViscaDeviceBase camera, IEnumerable<ViscaDeviceBase> allCameras)
     {
         _camera = (ViscaIPDeviceBase)camera;
+        _allCameras = allCameras;
         WeakEventHandlerManager.Subscribe<INotifyPropertyChanged, PropertyChangedEventArgs, IPCameraViewModel>(camera, nameof(camera.PropertyChanged), OnCameraPropertyCahnged);
     }
 
@@ -105,6 +109,29 @@ public class IPCameraViewModel : ViewModelBase, INotifyPropertyChanged
     }
 
     public bool Connected { get => _camera.Connected; }
+
+    // Validated against every camera so Companion never sees two cameras with one number.
+    public int? CompanionNumber
+    {
+        get => _camera.CompanionNumber;
+        set
+        {
+            if (value == null || value < 1)
+            {
+                Trace.TraceInformation($"Camera {Name}: invalid Companion number '{value}'");
+                throw new DataValidationException("1 or more");
+            }
+
+            var other = CompanionNumbers.UsedByAnotherCamera(_allCameras, _camera, value.Value);
+            if (other != null)
+            {
+                Trace.TraceInformation($"Camera {Name}: Companion number {value} rejected, already used by {other.Name}");
+                throw new DataValidationException($"Used by {other.Name}");
+            }
+
+            _camera.CompanionNumber = value;
+        }
+    }
 
     public int? BitfocusPage
     {

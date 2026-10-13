@@ -1,44 +1,22 @@
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
-using PtzJoystickControl.Core.Services;
 
 namespace PtzJoystickControl.Application.Devices;
 
 /// <summary>
-/// Sets up a freshly loaded gamepad's inputs: the Companion virtual buttons, then its saved settings.
+/// Sets up a freshly loaded gamepad's inputs from its saved settings.
 /// </summary>
 public static class GamepadInputSetup
 {
     /// <summary>
-    /// Adds one virtual button input per Companion event, numbered after the gamepad's physical
-    /// buttons, then applies <paramref name="settings"/> (if any) to every input, virtual ones included.
+    /// Applies <paramref name="settings"/> (if any) to the gamepad's inputs. Stored entries for
+    /// inputs the gamepad does not have (such as the removed Companion virtual buttons) are
+    /// ignored, and dropped the next time the gamepad's settings are saved.
     /// </summary>
-    /// <param name="addInput">Adds an input to the gamepad under the given id.</param>
-    /// <param name="buttonIdFormat">Format of a button input's id from its button number; a Companion press looks the virtual button up by it.</param>
-    public static void Configure(IGamepad gamepad, Action<string, IInput> addInput, string buttonIdFormat,
-        IEnumerable<BitfocusCompanionEvent> companionEvents, GamepadSettings? settings)
+    public static void Configure(IGamepad gamepad, GamepadSettings? settings)
     {
-        // Before the saved-settings check: a gamepad seen for the first time needs them too.
-        AddCompanionButtons(gamepad, addInput, buttonIdFormat, companionEvents);
-
         if (settings != null)
             ApplySettings(gamepad, settings);
-    }
-
-    private static void AddCompanionButtons(IGamepad gamepad, Action<string, IInput> addInput, string buttonIdFormat,
-        IEnumerable<BitfocusCompanionEvent> companionEvents)
-    {
-        var buttonCount = gamepad.Inputs.Count(i => i.InputType == InputType.Button);
-
-        IBitfocusCompanionService.SetJoystickButtonCount(buttonCount);
-
-        foreach (var companionEvent in companionEvents)
-        {
-            var id = string.Format(buttonIdFormat, companionEvent.Button);
-            var name = string.Format(companionEvent.EventNameFormatString, companionEvent.Value);
-
-            addInput(id, new Input(id, name, InputType.Button, gamepad.Commands));
-        }
     }
 
     private static void ApplySettings(IGamepad gamepad, GamepadSettings settings)

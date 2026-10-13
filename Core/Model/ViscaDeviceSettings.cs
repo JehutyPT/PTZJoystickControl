@@ -16,6 +16,9 @@ public class ViscaDeviceSettings
     public int? OnSelectedBitfocusButtonNumber { get; set; }
     public int? OnSelectedBitfocusPageNumber { get; set; }
 
+    // Absent in files saved before Companion numbers existed; CamerasService assigns one on load.
+    public int? CompanionNumber { get; set; }
+
     public ViscaDeviceSettings()
     {
     }
@@ -24,6 +27,7 @@ public class ViscaDeviceSettings
     {
         OnSelectedBitfocusPageNumber = viscaDevice.OnSelectedBitfocusPageNumber;
         OnSelectedBitfocusButtonNumber = viscaDevice.OnSelectedBitfocusButtonNumber;
+        CompanionNumber = viscaDevice.CompanionNumber;
         IViscaDeveiceTypeAssemblyQualifiedName = viscaDevice.GetType().AssemblyQualifiedName!;
         Name = viscaDevice.Name;
         if(viscaDevice is ViscaIPDeviceBase viscaIPDevice)

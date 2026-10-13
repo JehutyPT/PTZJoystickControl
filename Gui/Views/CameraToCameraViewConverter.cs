@@ -1,7 +1,10 @@
 ﻿using Avalonia.Data.Converters;
 using PtzJoystickControl.Gui.ViewModels;
 using PtzJoystickControl.Core.Devices;
+using PtzJoystickControl.Core.Services;
+using Splat;
 using System;
+using System.Linq;
 using System.Globalization;
 
 namespace PtzJoystickControl.Gui.Views;
@@ -22,7 +25,8 @@ public class CameraToCameraViewConverter : IValueConverter
 
         var type = value.GetType();
         if (type.IsAssignableTo(typeof(ViscaIPDeviceBase)))
-            return new IPCameraViewModel((ViscaIPDeviceBase)value);
+            return new IPCameraViewModel((ViscaIPDeviceBase)value,
+                Locator.Current.GetService<ICamerasService>()?.Cameras ?? Enumerable.Empty<ViscaDeviceBase>());
 
         return null;
     }

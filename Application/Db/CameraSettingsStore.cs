@@ -54,6 +54,14 @@ namespace PtzJoystickControl.Application.Db
                             viscaIPDevice.OnSelectedBitfocusPageNumber = viscaDeviceSettings.OnSelectedBitfocusPageNumber;
                             viscaIPDevice.OnSelectedBitfocusButtonNumber = viscaDeviceSettings.OnSelectedBitfocusButtonNumber;
                         }
+                        if (viscaDevice != null)
+                        {
+                            // A hand-edited invalid number must not fail the whole camera load: CamerasService assigns a new one.
+                            if (viscaDeviceSettings.CompanionNumber >= 1)
+                                viscaDevice.CompanionNumber = viscaDeviceSettings.CompanionNumber;
+                            else if (viscaDeviceSettings.CompanionNumber != null)
+                                Trace.TraceWarning($"Camera {viscaDevice.Name}: ignoring invalid Companion number {viscaDeviceSettings.CompanionNumber} in {_cameratFilePath}; a new one is assigned");
+                        }
                         return viscaDevice;
                     })
                     .Where(viscaDevice => viscaDevice != null)
