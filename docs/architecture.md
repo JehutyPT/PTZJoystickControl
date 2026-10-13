@@ -19,6 +19,8 @@ Gui ──► SdlGamepads ──► Application ──► Core
 4. **Command.** The input's mapped `ICommand` runs. Dynamic commands (`IDynamicCommand`: pan, tilt, zoom, focus) take a speed and direction; static commands (`IStaticCommand`: select camera, preset, power…) take a fixed value.
 5. **Device.** The command calls the gamepad's `SelectedCamera` (`ViscaDeviceBase`), which builds a VISCA packet and sends it via `ViscaIpDevice` over UDP (shared socket in `Core/Utils/UdpSocket.cs`) or TCP.
 
+**Relative inputs** (`InputType.Relative`, for encoders such as the SKAARHOJ panel's knobs) carry signed step counts, not a position: clockwise is positive. The controller calls `IInput.Step(steps)` instead of setting `InputValue`. A relative input takes static commands only, like an axis with a static command: each step in the configured direction (High = clockwise, Low = anticlockwise) runs the command once, and the second command runs once per step the other way. Nothing stays pressed or moving. Dynamic commands are not offered; one mapped from saved settings is refused with a `WARN` and the input is left unmapped. More than 100 steps in one event are capped (with a `WARN`) so a faulty device cannot tie up the input loop.
+
 Commands are **event-driven**: a packet is only sent when the shaped input value changes. The one exception is stops: when pan/tilt, zoom or focus goes to stop, `ViscaIpDevice` repeats that packet 3×, at least 50 ms apart (roughly 100–200 ms in all), built from the camera's current state at send time. Motion is not re-sent periodically. When a controller's selected camera changes while the app is driving the previous one (`ViscaDeviceBase.IsMoving`), `DrivenCameras` force-stops it. When a controller is unplugged or deactivated, `SdlGamepadsService` calls `DrivenCameras.StopAll()`, which force-stops every camera that controller has had selected. See [live-safety.md](live-safety.md) for why this matters.
 
 ## Key abstractions
@@ -26,7 +28,7 @@ Commands are **event-driven**: a packet is only sent when the shaped input value
 | Type | Purpose |
 |---|---|
 | `IGamepad` | A controller: its inputs, available commands, camera list, and `SelectedCamera`. Any new controller type (e.g. SKAARHOJ) implements this. |
-| `IInput` | One axis or button, with its mapped command and shaping settings. |
+| `IInput` | One axis, button or relative input (encoder), with its mapped command and shaping settings. |
 | `ICommand` | An action on the selected camera. Created per gamepad by `CommandsService`. |
 | `ViscaDeviceBase` | A camera: VISCA command builders, connection settings, its Companion number (what a Companion request selects it by), and the Companion page/button to press when it is selected. |
 | `IGamepadsService` | Discovers controllers, activates/deactivates them, owns the polling loop. |

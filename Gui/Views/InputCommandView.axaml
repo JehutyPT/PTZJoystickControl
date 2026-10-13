@@ -94,6 +94,33 @@
 						</Grid>
 					</DataTemplate>
 
+					<DataTemplate x:Key="RelativeWithStaticCommand">
+						<Grid ColumnDefinitions="110,3,140,15,70,3,140,*">
+							<TextBlock Text="Step direction" Grid.Column="0" VerticalAlignment="Center"/>
+							<ComboBox Items="{Binding Directions}" SelectedItem="{Binding CommandDirection}" Grid.Column="2" HorizontalAlignment="Stretch" IsEnabled="{Binding !DisableDirection}">
+								<ComboBox.ItemTemplate>
+									<DataTemplate>
+										<TextBlock Text="{Binding Name}"></TextBlock>
+									</DataTemplate>
+								</ComboBox.ItemTemplate>
+							</ComboBox>
+							<TextBlock Text="{Binding SelectedCommand.ButtonParameterName}" Grid.Column="4" TextAlignment="Right" VerticalAlignment="Center"/>
+							<ComboBox Items="{Binding Values}" SelectedItem="{Binding CommandValue}" Grid.Column="6" HorizontalAlignment="Stretch">
+								<ComboBox.ItemTemplate>
+									<DataTemplate>
+										<TextBlock Text="{Binding Name}"></TextBlock>
+									</DataTemplate>
+								</ComboBox.ItemTemplate>
+							</ComboBox>
+						</Grid>
+					</DataTemplate>
+
+					<DataTemplate x:Key="NoSettings">
+						<Grid>
+							<TextBlock Text="No settings for this input" VerticalAlignment="Center"/>
+						</Grid>
+					</DataTemplate>
+
 					<DataTemplate x:Key="NoCommandSelected">
 						<Grid>
 							<TextBlock Text="Select a command" VerticalAlignment="Center"/>

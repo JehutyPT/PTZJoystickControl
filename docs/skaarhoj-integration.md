@@ -178,7 +178,7 @@ Unverified design.
 
 Unverified design. A settings file maps HWC ids to either a gamepad input (axis or button) or a Satellite key index. The joystick axes (60–62) and the zoom rocker (58) are reserved for the gamepad path and never go through Companion. Each axis is a separate input; what it drives (pan, tilt, zoom, …) is the app's configuration, not fixed here. The current operator uses the twist (62) for zoom, clockwise in.
 
-The app's input model has only `Axis` and `Button` ([InputType.cs](../Core/Devices/InputType.cs)). The encoders (Iris 57, Focus 59, Knobs A–H 46–53) send relative steps (`Enc:±1`), not a position, so they fit neither as-is. Decision: add a relative input type for them, carrying signed step counts, rather than faking them as buttons or axis pulses. Use the HWC ids and message formats in [HWC map](#hwc-map).
+The encoders (Iris 57, Focus 59, Knobs A–H 46–53) send relative steps (`Enc:±1`), not a position, so they fit neither `Axis` nor `Button`. Decision: they are relative inputs (`InputType.Relative` in [InputType.cs](../Core/Devices/InputType.cs), fed through `IInput.Step`; see [architecture.md](architecture.md#from-stick-movement-to-camera-movement)), carrying signed step counts, rather than buttons or axis pulses. Use the HWC ids and message formats in [HWC map](#hwc-map).
 
 ## Failure behavior
 
