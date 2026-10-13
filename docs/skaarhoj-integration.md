@@ -2,11 +2,12 @@
 
 Hardware: SKAARHOJ PTZ Extreme running UniSketch firmware (pre-Blue Pill). Goal: use its joystick to drive the cameras through this app, and use its buttons and displays as a Bitfocus Companion surface.
 
-> **Status: design only, panel input side verified.** The [Raw Panel input protocol](#raw-panel-verified-on-hardware) was checked against a real panel on 2026-10-13. LED/display output, the [Satellite API](#satellite-api-companion-side) and the [mapping](#mapping) are still design and unverified; check them against SKAARHOJ's Raw Panel documentation, Companion's Satellite API documentation and real hardware before relying on them.
+> **Status: design only, panel side verified.** The [Raw Panel protocol](#raw-panel-verified-on-hardware) (input, LED/display output, sleep, reconnect) was checked against a real panel on 2026-10-13. The [Satellite API](#satellite-api-companion-side) and the [mapping](#mapping) are still design and unverified; check them against Companion's Satellite API documentation and real hardware before relying on them.
 
 ## Vendor references
 
-- [SKAARHOJ Raw Panel manual](https://github.com/SKAARHOJ/Support/blob/master/Manuals/SKAARHOJ/SKAARHOJ_RawPanel_V2.pdf): protocol commands, including LED and display output.
+- [SKAARHOJ Raw Panel manual](https://github.com/SKAARHOJ/Support/blob/master/Manuals/SKAARHOJ/SKAARHOJ_RawPanel_V2.pdf): protocol commands, including LED and display output. Commands marked V1 are the ones UniSketch supports.
+- [SKAARHOJ Raw Panel device core manual](https://github.com/SKAARHOJ/Support/blob/master/Manuals/DC_SKAARHOJ_RawPanel.pdf): the older UniSketch-specific Raw Panel document; has the full `HWCt` field table and server-mode notes.
 - [SKAARHOJ installation and operation manual](https://github.com/SKAARHOJ/Support/blob/master/Manuals/SKAARHOJ/SKAARHOJ_Manual.pdf): firmware updater, online and local configuration, enabling WebConfig (pages 17 and 45).
 
 ## Overview
@@ -32,7 +33,7 @@ Verified 2026-10-13 against one panel:
 |---|---|
 | Model (`_model`) | `SK_PTZEXTREMEV2` |
 | Firmware (`_version`) | `v2.5.27` (UniSketch; `_bluePillReady=0`) |
-| Address | DHCP on the LAN; TCP 9923 |
+| Address | Fixed by a router DHCP reservation; TCP 9923 |
 
 ### Panel setup
 
@@ -40,37 +41,67 @@ In the panel's UniSketch configuration, under **Devices**:
 
 1. Enable **UniSketch Raw Panel**.
 2. Set its mode to **server**. It shipped in **client** mode, in which port 9923 is closed and the panel tries to connect out instead.
-3. Set the device's IP field to the app host's address. Whether server mode ignores this field or uses it as a filter is unverified.
+3. The device's IP field is required by the form but is **not a connection filter** in server mode: with it set to `192.168.1.10`, a client at `192.168.1.11` connected normally.
 
-This was done in SKAARHOJ's firmware updater app, which lists the panel (`SK_PTZEXTREMEV2`, features `Unisketch, rawpanel`) and edits its configuration. The panel's own web config (the updater's **Configure** button) needs WebConfig enabled on the panel; it was off, and is not needed for Raw Panel.
+This was first done in SKAARHOJ's firmware updater app, which lists the panel (`SK_PTZEXTREMEV2`, features `Unisketch, rawpanel`) and edits its configuration. WebConfig, the panel's own web page on port 80 (the updater's **Configure** button), was off at first and has since been enabled permanently. It is not needed for Raw Panel. Saving in the updater's advanced configuration mode failed with "Could not save configuration!" even though the HTTP request returned 200; simple mode saved normally. The cause is unknown.
 
-No firmware update was needed. The panel's own address (**Network configuration**, DHCP/Static) is a separate setting. Because the app connects to the panel, give the panel a stable address before relying on it in a show: a DHCP reservation on the router or a static IP.
+No firmware update was needed. The panel's own address (**Network configuration**, DHCP/Static) is a separate setting. The panel uses DHCP, with a reservation on the router so its address never changes; the app connects to it by that address.
 
-This panel had a locally administered MAC address (`92:a1:…`) and port 80 closed (WebConfig off), so neither identifies it on the network. Use the updater app's device list, or probe TCP 9923.
+This panel has a locally administered MAC address (`92:a1:…`), so the MAC doesn't identify it on the network. Use the updater app's device list, the WebConfig page, or probe TCP 9923.
 
 ### Connection
 
 - The panel is a TCP server on port 9923; the app connects as a client.
 - Lines are ASCII, terminated by a bare `\n` (no `\r`).
-- On connect the panel sends `RDY`, then one `map=<id>:<id>` line per input HWC, unprompted.
-- The panel accepts **several clients at once**. A second client receives the `map=` lines but no `RDY`, and each new connection makes the panel **re-send the `map=` lines to the clients already connected**. A parser must accept `map=` at any time and must not wait for `RDY` before treating the link as up. Whether input events go to every client or only one is unverified, so the app should keep a single connection and close any stale one before reconnecting.
+- On connect the panel sends `RDY` and one `map=<id>:<id>` line per input HWC, unprompted. `RDY` is not always first: a command sent right after connecting can be answered before it.
+- The panel accepts **several clients at once** (the manual says up to 7–8, meant for redundancy). A second client receives the `map=` lines but no `RDY`, and each new connection makes the panel **re-send the `map=` lines to the clients already connected**. A parser must accept `map=` at any time and must not wait for `RDY` before treating the link as up.
+- **Every client receives every input event**, at the same moment. Replies to queries and `ping` go only to the client that asked. All clients share the panel's LEDs and displays, so whichever writes last wins. `Connections?` lists the connected client addresses (`_connections=192.168.1.10;`).
+- **The app must hold exactly one connection.** The panel doesn't enforce it. A client sending `ping` as fast as it can delayed another client's `ack`s past 300 ms, so a second client (a test tool, a second app instance) can trip the app's dead-man timeout.
 - When a client connects, the panel **switches off all its LEDs and displays** and leaves them to the client. A client that sends no output commands leaves the panel dark. When the client disconnects, the panel restores its own lights.
 - The panel does **not report current control state on connect**. A joystick held deflected while the app connects reports nothing until it moves. Initialise every axis to 0 on connect (the safe value).
+- **The panel stops answering for about 0.4–0.5 s after every connect.** A `ping` sent within the first few milliseconds may still be answered at once (5–19 ms seen), but `ping`s sent during the stall are answered 420–530 ms after connecting. A 300 ms dead-man timeout armed at connect, or at that first quick `ack`, drops the new connection. Give every new connection about 1 s of grace before the dead-man timeout applies.
 
 ### Heartbeat and disconnect
 
 - The panel sends **nothing while idle**: no keepalive, no repeats (30 s idle observed). Silence on the socket says nothing about link health.
 - Send `ping`; the panel replies `ack`. Round trip on the LAN: 1.4–18 ms, median 12.5 ms (144 samples, 1 ping/s, light input load).
 - With the panel's Ethernet cable pulled, `ack`s stopped immediately, but the OS reported no error on the socket for ~10 s (macOS returned `EHOSTDOWN` on send, driven by ARP). A blocking read would wait forever. **Detect loss with a `ping`/`ack` timeout**, not with socket errors or input silence; this is the dead-man timeout in [live-safety.md](live-safety.md). A 100 ms ping interval and a ~300 ms timeout fit the measured latency; not yet tested under heavy input load.
-- The panel also reports `_isSleeping=0` (seen in a `list` reply). The manual describes a display sleep timer; whether a sleeping panel still sends joystick input is unverified.
-- After the cable was replugged, the panel accepted new connections normally. How soon it re-accepts, and whether it keeps the old half-open socket, were not measured.
+- In a second cable pull, a 100 ms `ping` with a 300 ms timeout detected the loss 300 ms after the last `ack`. The test client's reconnect attempts (0.5 s connect timeout, retried every 0.2 s) succeeded 26 s after the loss; that includes the time the cable was out, which wasn't timed separately. The first `ack` took 424 ms (see the stall above), and the connection dropped once more before settling. Afterwards `Connections?` listed only the new connection: the panel had not kept the old socket. Joystick input arrived normally on the new connection.
+
+### Sleep
+
+The panel has a global sleep timer. It is shared by all clients, set over Raw Panel, and survives the client disconnecting (whether it survives a power cycle is unverified). It was 4 hours (`14400000`) as shipped; it is now set to 30 minutes, the operator's choice.
+
+| Send | Effect |
+|---|---|
+| `SleepTimer=<ms>` | Idle time before sleep; `0` never sleeps. The panel echoes `_sleepTimer=<ms>`. |
+| `SleepTimer?` | Replies `_sleepTimer=<ms>`. |
+| `WakeUp!` | Wakes the panel (from the manual; not tested). |
+| `SleepMode=`, `SleepScreenSaver=` | Choose the sleep animation, e.g. `SleepScreenSaver=3` only dims and keeps content (from the manual; not tested). |
+
+The panel sends `_isSleeping=1` when it falls asleep and `_isSleeping=0` when it wakes, unprompted. Setting a timer shorter than the current idle time sleeps it at once. `ping` traffic does not count as activity: the panel fell asleep with a client pinging every 100 ms, so staying connected does not keep it awake. Asleep, it shows an animation on one display at a time with a sleep counter.
+
+Verified while asleep:
+
+- **The joystick sends nothing and does not wake the panel.** A 2 s deflection produced no messages; the panel stayed asleep.
+- **A button press wakes it, and the `Down` can be lost.** Only `HWC#1.2=Up` arrived, with no matching `Down`. The test client's 300 ms timeout dropped the connection during the wake stall and reconnected, so whether the panel swallows the `Down` or sent it to the closed connection is unverified. Either way, parsers must accept an `Up` with no `Down`.
+- **The joystick keeps the panel awake.** With a 15 s timer, 35 s of continuous joystick movement (about 1,200 messages, no buttons) did not put it to sleep. Joystick movement counts as activity; `ping` does not.
+- **Waking stalls the panel by more than 300 ms**, enough to trip a 300 ms dead-man timeout. Changing `SleepTimer` while asleep also wakes it.
+
+The manual warns that the OLED displays burn in and that burn-in is not covered by warranty, which is why the panel sleeps by default. Consequences for the app:
+
+- Treat `_isSleeping=1` as "panel joystick inactive": stop any camera moved by `SkaarhojGamepad` and show the state in the UI, so an operator knows to press a button before using the joystick.
+- On `_isSleeping=0`, re-send all LED and display state, and allow the wake stall before the dead-man timer counts.
+- Keeping the panel awake while it is in use (for example with `WakeUp!` when a show starts, or `SleepTimer=0` for its duration) is a design choice, weighed against burn-in.
 
 ### Queries
 
 | Send | Reply |
 |---|---|
 | `ping` | `ack` |
-| `list` | `_model=SK_PTZEXTREMEV2`, `_serial=…`, `_version=v2.5.27`, `_bluePillReady=0` |
+| `list` | `_model=SK_PTZEXTREMEV2`, `_serial=…`, `_version=v2.5.27`, `_bluePillReady=0` (no `_serverModeLockToIP`/`_serverModeMaxClients`, though the manual lists them) |
+| `Connections?` | `_connections=<ip>;<ip>;…`, one entry per connected client |
+| `SleepTimer?` | `_sleepTimer=<ms>` (see [Sleep](#sleep)) |
 | `PanelTopology?` | `_panelTopology_svgbase=<svg …>` (panel drawing), then `_panelTopology_HWC={…}` (JSON: `typeIndex` plus one `HWc` entry per control with `id`, `x`, `y`, `txt`, `type`) |
 
 `list` does **not** return the HWC map on this firmware; the map arrives as `map=` lines on connect. Use `PanelTopology?` for control names and types.
@@ -99,7 +130,7 @@ Tested: HWC 1, 46, 57–63. The rest are taken from the topology.
 
 **Joystick axes (60–62) and zoom rocker (58):** `HWC#<id>=Speed:<n>`, integer −500…500, 0 at rest.
 
-- Signs: left −, right +; up (away from operator) +, down −; rotate clockwise +, counter-clockwise −. Zoom direction relative to tele/wide is unverified.
+- Signs: left −, right +; up (away from operator) +, down −; rotate clockwise +, counter-clockwise −. The zoom rocker's sign relative to its printed tele/wide markings was not checked; what each axis does is set in the app's mapping.
 - Sent **only on change**, at most every ~50 ms (20 Hz) while moving. **Nothing is sent while held still**, including at full deflection (1–2 s gaps at ±500 observed). The last value stands until the next message.
 - Returning to rest always ends with an explicit `Speed:0`.
 - At the limit, rotate jittered between 498 and 500 for a couple of seconds; other axes held steady. Saturation must absorb this.
@@ -112,9 +143,27 @@ Tested: HWC 1, 46, 57–63. The rest are taken from the topology.
 
 **Encoders:** `HWC#<id>=Enc:1` or `Enc:-1` per step, clockwise +. One message per step, never aggregated: ~3–4 steps/s turned slowly, steps as close as ~17 ms when spun fast. Push sends a single `HWC#<id>=Press`, with no `Down`/`Up` pair.
 
-### Output (unverified)
+### Output
 
-- The app sets LED colors and display text per HWC. Commands not yet tested.
+The panel accepts output per HWC with no reply. The commands below are from the Raw Panel manual; the examples were checked on the panel.
+
+**LED state:** `HWC#<id>=<n>`, where bits 0–3 are 0 = off, 4 = on, 5 = dimmed (1–3 are legacy fixed colours; avoid). Bits 8–11 add blinking (`0b0001` ≈ 4 Hz up to `0b1000` ≈ 0.5 Hz; full table in the manual). Bit 5 (32) drives an output relay where one exists; the manual suggests sending 36 for on, 5 for dimmed, 0 for off.
+
+**LED colour:** `HWCc#<id>=<n>`, used by the on and dimmed states. 128 + a colour index: 2 white, 3 warm white, 4 red, 5 rose, 6 pink, 7 purple, 8 amber, 9 yellow, 10 dark blue, 11 blue, 12 ice, 13 cyan, 14 spring, 15 green, 16 mint (0 default, 1 off). Or 128 + 64 + `rrggbb` (2 bits per channel) for any other colour.
+
+**Display text:** `HWCt#<id>=<fields>`, pipe-separated: value | format | fine/icon | title | isLabel | label1 | label2 | … (full table in the device core manual). An empty value renders nothing. Keep fields to about 24 characters.
+
+| Sent | Seen on the panel |
+|---|---|
+| `HWCc#1=132`, `HWC#1=4` | `Cam1` bright red |
+| `HWCc#2=143`, `HWC#2=5` | `Cam2` dimmed green |
+| `HWCc#3=139`, `HWC#3=260` (4 + 256) | `Cam3` blue, blinking fast |
+| `HWCc#46=136`, `HWC#46=4` | `Knob A` amber |
+| `HWCt#1=1\|10\|\|CAM 1` | `Cam1` display: "CAM 1" (format 10, one text line, size 1) |
+| `HWCt#2=1234\|0\|\|Value\|0` | `Cam2` display: 1234 with title "Value" |
+| `HWCt#46=1\|11\|\|\|1\|Line one\|Line two` | `Knob A` display: two text lines |
+
+Nothing else changed. Also in the manual and not tested: `Clear`, `ClearLEDs`, `ClearDisplays`, `PanelBrightness=<leds>,<oleds>` (0–8), `DimmedGain=`, and bitmap graphics (`HWCg#`). UniSketch may send `BSY` while receiving graphics; wait for `RDY` before sending more.
 
 ## Satellite API (Companion side)
 
@@ -127,10 +176,13 @@ Unverified design.
 
 ## Mapping
 
-Unverified design. A settings file maps HWC ids to either a gamepad input (axis or button) or a Satellite key index. The joystick axes (60–62) and the zoom rocker (58) are reserved for the gamepad path and never go through Companion. Use the HWC ids and message formats in [HWC map](#hwc-map).
+Unverified design. A settings file maps HWC ids to either a gamepad input (axis or button) or a Satellite key index. The joystick axes (60–62) and the zoom rocker (58) are reserved for the gamepad path and never go through Companion. Each axis is a separate input; what it drives (pan, tilt, zoom, …) is the app's configuration, not fixed here. The current operator uses the twist (62) for zoom, clockwise in.
+
+The app's input model has only `Axis` and `Button` ([InputType.cs](../Core/Devices/InputType.cs)). The encoders (Iris 57, Focus 59, Knobs A–H 46–53) send relative steps (`Enc:±1`), not a position, so they fit neither as-is. Decision: add a relative input type for them, carrying signed step counts, rather than faking them as buttons or axis pulses. Use the HWC ids and message formats in [HWC map](#hwc-map).
 
 ## Failure behavior
 
-- Panel connection lost or `ping` unanswered within the dead-man window → stop all cameras driven by `SkaarhojGamepad`, mark it disconnected, reconnect with backoff. On reconnect, axes start at 0.
+- Panel connection lost or `ping` unanswered within the dead-man window → stop all cameras driven by `SkaarhojGamepad`, mark it disconnected, reconnect with backoff. On reconnect, axes start at 0, and the dead-man timeout applies only after ~1 s of grace.
+- Panel falls asleep (`_isSleeping=1`) → stop all cameras driven by `SkaarhojGamepad` and show the panel as asleep. On `_isSleeping=0`, re-send LED and display state.
 - Companion connection lost → panel joystick keeps working; panel buttons show an "offline" state; reconnect with backoff.
 - On reconnect to Companion, re-register the device and let Companion resend all key states.
