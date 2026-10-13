@@ -38,7 +38,6 @@ jobs:
     - name: Show .NET SDK
       run: dotnet --version
 
-    # The WiX packaging project in the solution skips itself off Windows.
     - name: Run tests
       run: dotnet test PTZJoystickControl.sln
 
@@ -150,46 +149,41 @@ jobs:
     # Runners may ship newer SDKs than the LTS. Pin this run to the SDK just
     # installed so packages are built with the .NET 10 SDK. CI only: the repo
     # has no global.json so local builds use any SDK that supports net10.0.
-    # The win7-* RIDs below and in Packaging/Windows/MainProgram.wxs need the
-    # legacy RID graph, which Directory.Build.props turns on (UseRidGraph).
+    # The win7-* RIDs below need the legacy RID graph, which
+    # Directory.Build.props turns on (UseRidGraph).
     - name: Pin .NET SDK for this run
       shell: bash
       run: printf '{"sdk":{"version":"%s"}}\n' "${{ steps.setup-dotnet.outputs.dotnet-version }}" > global.json
 
-    - name: Setup MSBuild.exe
-      uses: microsoft/setup-msbuild@v3
-
     - name: Show .NET SDK
       run: dotnet --version
 
+    # Single file: Gui.exe bundles the .NET runtime and every managed assembly.
+    # The native DLLs (av_libglesv2, SDL2, libSkiaSharp, libHarfBuzzSharp) stay
+    # beside the exe and load from the app folder, as they did from the MSI's
+    # install folder. IncludeNativeLibrariesForSelfExtract is left off on
+    # purpose: it unpacks them to %TEMP% on first run, one more thing that can
+    # fail on the show PC (antivirus, temp clean-up).
     - name: Publish application
-      run: dotnet publish Gui/Gui.csproj -c PublishRelease -r $env:Runtime --self-contained
+      run: dotnet publish Gui/Gui.csproj -c PublishRelease -r $env:Runtime --self-contained -p:PublishSingleFile=true -o publish
       env:
         Runtime: ${{ format('win7-{0}', matrix.arch) }}
 
-    ## Decode the base 64 encoded pfx and save the Signing_Certificate
-    #- name: Decode the pfx
-    #  run: |
-    #    $pfx_cert_byte = [System.Convert]::FromBase64String("${{ secrets.Base64_Encoded_Pfx }}")
-    #    $certificatePath = Join-Path -Path $env:Wap_Project_Directory -ChildPath GitHubActionsWorkflow.pfx
-    #    [IO.File]::WriteAllBytes("$certificatePath", $pfx_cert_byte)
+    - name: List published files
+      run: Get-ChildItem publish
 
-    # Create the app package by building and packaging the Windows Application Packaging project
-    - name: Create msi package
-      run: dotnet build Packaging/Windows/Windows.wixproj -c PublishRelease -p:OutputName=$env:OutputName -o Packaging/Windows/Packages -p:platform=$env:Arch #-p:PackageCertificateKeyFile=GitHubActionsWorkflow.pfx -p:PackageCertificatePassword=${{ secrets.Pfx_Key }}
+    # The zip holds the publish folder's files at its root (Gui.exe, the native
+    # DLLs and the pdbs, which keep line numbers in logged stack traces).
+    - name: Create zip package
+      run: Compress-Archive -Path publish\* -DestinationPath "$env:OutputName.zip"
       env:
-        Arch: ${{ matrix.arch }}
         OutputName: ${{ format('PTZJoystickControl_v{0}_win_{1}', needs.bump-version.outputs.VERSION, matrix.arch) }}
 
-    ## Remove the pfx
-    #- name: Remove the pfx
-    #  run: Remove-Item -path $env:Wap_Project_Directory\GitHubActionsWorkflow.pfx
-
-    - name: Upload build artifacts (msi package)
+    - name: Upload build artifacts (zip package)
       uses: actions/upload-artifact@v7
       with:
-        name: ${{ format('msi-win-{0}', matrix.arch) }}
-        path: Packaging/Windows/Packages/**/*.msi
+        name: ${{ format('zip-win-{0}', matrix.arch) }}
+        path: "*.zip"
         if-no-files-found: error
 
   build-macos-packeges:
@@ -289,6 +283,6 @@ jobs:
         tag_name: v${{ needs.bump-version.outputs.VERSION }}
         fail_on_unmatched_files: true
         files: |
-          packages/**/*_win_x86.msi
-          packages/**/*_win_x64.msi
+          packages/**/*_win_x86.zip
+          packages/**/*_win_x64.zip
           packages/**/*.dmg

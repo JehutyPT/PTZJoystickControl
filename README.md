@@ -14,8 +14,9 @@ PTZ Joystick Control simply lets you use any joystick or gamepad to control PTZ 
 
 ## Installation
   1. Download the latest release of PTZ Joystick Control from the releases page.
-  2. Double-click on the the downloaded installer to install the application.
-  3. Double-click on the PTZ Joystick Control executable to launch the application.
+  2. Windows: unzip `PTZJoystickControl_v<version>_win_x64.zip` (or `_win_x86.zip` on 32-bit Windows) into a folder you keep, e.g. `C:\PTZJoystickControl`, and keep all its files together. To update, replace the folder's contents with the new zip; settings are kept. If you installed an older MSI version, uninstall it from Settings → Apps first.
+  3. macOS: open the `.dmg` and drag the app into Applications.
+  4. Double-click `Gui.exe` (Windows) or the PTZ Joystick Control app (macOS) to launch the application.
     
 ## Usage
   1. Launch the application by double-clicking on the PTZ Joystick Control executable.

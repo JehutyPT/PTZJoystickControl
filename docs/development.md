@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - .NET 10 SDK (the projects target `net10.0`, the current LTS).
-- Windows for the MSI package (WiX 5, restored from NuGet as an MSBuild SDK); macOS for the DMG.
+- Any OS for the Windows zip (the cross-RID publish below works on macOS and Linux too); macOS for the DMG.
 - The packaged app runs only where .NET 10 does: no Windows 7/8.1 or older macOS (see .NET 10's [supported OS list](https://github.com/dotnet/core/blob/main/release-notes/10.0/supported-os.md)).
 - SDL2 comes from the `ppy.SDL2-CS` NuGet package; Linux ARM needs a self-built `libSDL2`.
 
@@ -14,11 +14,23 @@ dotnet build PTZJoystickControl.sln
 dotnet run --project Gui
 ```
 
-The solution builds on Windows, macOS and Linux. Off Windows, `Packaging/Windows` (WiX is Windows-only) builds nothing and prints `Skipping Windows: the MSI is built on Windows only.` On Windows it builds the MSI from the `PublishRelease` publish output, so publish `Gui` first as the CI Windows job does.
-
-`Directory.Build.props` turns on the legacy RID graph (`UseRidGraph`) so the Windows package can still be published for `win7-x64`/`win7-x86`: Avalonia 0.10 ships its Windows renderer (`av_libglesv2.dll`) only for those RIDs. Remove it when Avalonia is upgraded.
+The solution builds on Windows, macOS and Linux.
 
 Only one instance can run at a time (named mutex in `Gui/Program.cs`).
+
+## Windows package
+
+Windows releases are a zip per architecture (`PTZJoystickControl_v<version>_win_x86.zip` / `_win_x64.zip`), not an installer. Build one locally, on any OS, the way the CI Windows job does:
+
+```
+dotnet publish Gui/Gui.csproj -c PublishRelease -r win7-x64 --self-contained -p:PublishSingleFile=true -o publish
+```
+
+`publish/` then holds `Gui.exe` (single file: the .NET runtime and every managed assembly), the native DLLs it loads (`av_libglesv2.dll`, `SDL2.dll`, `libSkiaSharp.dll`, `libHarfBuzzSharp.dll`), the pdbs (line numbers in logged stack traces) and `SdlGamepads.dll.config`. CI zips that folder as is. The native DLLs stay beside the exe on purpose: `IncludeNativeLibrariesForSelfExtract` would unpack them to `%TEMP%` on first run, which can fail on the show PC (antivirus, temp clean-up), while beside the exe they load from the app folder as they did from the old MSI's install folder.
+
+Installing is unzipping to a permanent folder and running `Gui.exe`; settings and logs live in `%APPDATA%\PTZJoystickControl`, so replacing the folder with a newer zip keeps them. There are no shortcuts, Apps entry or uninstaller. The zip and exe are unsigned (so was the old MSI), so Windows SmartScreen may ask on first run.
+
+`Directory.Build.props` turns on the legacy RID graph (`UseRidGraph`) so the Windows package can still be published for `win7-x64`/`win7-x86`: Avalonia 0.10 ships its Windows renderer (`av_libglesv2.dll`) only for those RIDs. Remove it when Avalonia is upgraded.
 
 ## Logs
 
@@ -94,7 +106,7 @@ New behavior and fixes land test-first. Priority coverage, each added with its o
 
 ## CI
 
-`.github/workflows/build-release.yml` runs the tests, then builds and packages releases. The test and package jobs install the latest .NET 10 SDK and pin the run to it with a generated `global.json` (the repo has none), so a newer SDK on the runner image is never used. Packaging and releasing only start once the `test` job passes. The build jobs only upload their packages as workflow artifacts; on `main`, a single `release` job runs after all of them succeed and publishes the GitHub prerelease with every package at once. If any build fails, no release is created or updated.
+`.github/workflows/build-release.yml` runs the tests, then builds and packages releases. The test and package jobs install the latest .NET 10 SDK and pin the run to it with a generated `global.json` (the repo has none), so a newer SDK on the runner image is never used. Packaging and releasing only start once the `test` job passes. The Windows job (x86 and x64) publishes the single-file build and zips it (see [Windows package](#windows-package)); the macOS job builds the DMG. The build jobs only upload their packages as workflow artifacts; on `main`, a single `release` job runs after all of them succeed and publishes the GitHub prerelease with every package at once. If any build fails, no release is created or updated.
 
 A failed release run on `main` can be retried with "Re-run failed jobs" or "Re-run all jobs". The re-run reuses the bump commit and tag the first attempt pushed (same run number, same version), so it builds and releases that version again rather than bumping twice. If the tag already exists on a different commit, the run stops instead of overwriting another release.
 
