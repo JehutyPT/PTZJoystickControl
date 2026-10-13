@@ -2,8 +2,9 @@
 
 ## Prerequisites
 
-- .NET SDK matching the projects' `TargetFramework` (currently `net6.0`; moving to the current .NET LTS is on the [roadmap](roadmap.md)).
-- Windows for the MSI package (WiX); macOS for the DMG.
+- .NET 10 SDK (the projects target `net10.0`, the current LTS).
+- Windows for the MSI package (WiX 5, restored from NuGet as an MSBuild SDK); macOS for the DMG.
+- The packaged app runs only where .NET 10 does: no Windows 7/8.1 or older macOS (see .NET 10's [supported OS list](https://github.com/dotnet/core/blob/main/release-notes/10.0/supported-os.md)).
 - SDL2 comes from the `ppy.SDL2-CS` NuGet package; Linux ARM needs a self-built `libSDL2`.
 
 ## Build and run
@@ -13,7 +14,9 @@ dotnet build PTZJoystickControl.sln
 dotnet run --project Gui
 ```
 
-On macOS/Linux the solution build fails in `Packaging/Windows` (WiX is Windows-only); use `dotnet build PTZJoystickControl.App.slnf`, which builds only the app projects. Making the full solution build cross-platform is part of the .NET LTS upgrade (see roadmap).
+The solution builds on Windows, macOS and Linux. Off Windows, `Packaging/Windows` (WiX is Windows-only) builds nothing and prints `Skipping Windows: the MSI is built on Windows only.`
+
+`Directory.Build.props` turns on the legacy RID graph (`UseRidGraph`) so the Windows package can still be published for `win7-x64`/`win7-x86`: Avalonia 0.10 ships its Windows renderer (`av_libglesv2.dll`) only for those RIDs. Remove it when Avalonia is upgraded.
 
 Only one instance can run at a time (named mutex in `Gui/Program.cs`).
 
@@ -26,7 +29,7 @@ The file sits next to the settings files (`Cameras.json`, `Gamepads.json`):
 | OS | Log file |
 |---|---|
 | Windows | `%APPDATA%\PTZJoystickControl\PTZJoystickControl.log` |
-| macOS | `~/.config/PTZJoystickControl/PTZJoystickControl.log` |
+| macOS | `~/Library/Application Support/PTZJoystickControl/PTZJoystickControl.log` |
 | Linux | `~/.PTZJoystickControl/PTZJoystickControl.log` |
 
 One entry per line, UTF-8:
@@ -49,21 +52,17 @@ Reading after a show, e.g. on Windows:
 findstr /C:" ERROR " /C:" CRITICAL " "%APPDATA%\PTZJoystickControl\PTZJoystickControl*.log"
 ```
 
-or `grep -hE ' (ERROR|CRITICAL) ' ~/.config/PTZJoystickControl/PTZJoystickControl*.log` on macOS.
+or `grep -hE ' (ERROR|CRITICAL) ' ~/Library/Application\ Support/PTZJoystickControl/PTZJoystickControl*.log` on macOS.
 
 Log with `Trace.TraceError` / `TraceWarning` / `TraceInformation` so the level is right. `Debug.WriteLine` is compiled out of Release builds and `Console.WriteLine` goes nowhere in the packaged app, so neither is used for anything that must reach the log; `Debug.WriteLine` is kept only for per-packet VISCA reply dumps, which would flood the log. Even with the background writer, don't log per tick or per packet: a flood fills the queue and drops entries.
 
 ## Tests
 
-`Tests/` is an xUnit project (`PtzJoystickControl.Tests`) that references `Core` and `Application`. It is part of both `PTZJoystickControl.sln` and `PTZJoystickControl.App.slnf`. Run it with:
+`Tests/` is an xUnit project (`PtzJoystickControl.Tests`) that references `Core` and `Application`. It is part of `PTZJoystickControl.sln`. Run it with:
 
 ```
-dotnet test PTZJoystickControl.App.slnf
+dotnet test PTZJoystickControl.sln
 ```
-
-Use the solution filter, not bare `dotnet test` or the full `.sln`, which pulls in the Windows-only WiX project.
-
-The test project targets `net6.0` like the rest of the app but sets `RollForward` to `Major`, so its test host runs on a newer installed runtime when the .NET 6 runtime is absent. Any installed SDK (e.g. only .NET 10) can build and run the tests locally without installing .NET 6. CI still runs them under the pinned .NET 6 SDK.
 
 CI runs the tests in a `test` job before anything else: `bump-version` depends on it, so a failing test stops the version bump, the tag, the packages and the GitHub Release. See [CI](#ci).
 
@@ -79,7 +78,7 @@ New behavior and fixes land test-first. Priority coverage, each added with its o
 | Check | Command |
 |---|---|
 | Build | `dotnet build PTZJoystickControl.sln` succeeds with no new warnings |
-| Tests | `dotnet test PTZJoystickControl.App.slnf` passes |
+| Tests | `dotnet test PTZJoystickControl.sln` passes |
 | Hardware | Pre-show checklist in [live-safety.md](live-safety.md) on real cameras for any change to input, commands, networking or threading. When no cameras are available, merge and add the change's checks to [on-site-checklist.md](on-site-checklist.md) in the same merge |
 | Secrets | No credentials or tokens committed |
 
@@ -95,7 +94,7 @@ New behavior and fixes land test-first. Priority coverage, each added with its o
 
 ## CI
 
-`.github/workflows/build-release.yml` runs the tests, then builds and packages releases (currently pinned to .NET 6). Packaging and releasing only start once the `test` job passes. The build jobs only upload their packages as workflow artifacts; on `main`, a single `release` job runs after all of them succeed and publishes the GitHub prerelease with every package at once. If any build fails, no release is created or updated.
+`.github/workflows/build-release.yml` runs the tests, then builds and packages releases. Each job installs the latest .NET 10 SDK and pins the run to it with a generated `global.json` (the repo has none), so a newer SDK on the runner image is never used. Packaging and releasing only start once the `test` job passes. The build jobs only upload their packages as workflow artifacts; on `main`, a single `release` job runs after all of them succeed and publishes the GitHub prerelease with every package at once. If any build fails, no release is created or updated.
 
 A failed release run on `main` can be retried with "Re-run failed jobs" or "Re-run all jobs". The re-run reuses the bump commit and tag the first attempt pushed (same run number, same version), so it builds and releases that version again rather than bumping twice. If the tag already exists on a different commit, the run stops instead of overwriting another release.
 

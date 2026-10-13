@@ -4,9 +4,7 @@ Work is ordered so the app is safe for live use before new features land. Each i
 
 ## Phase 1: Hardening
 
-| Severity | Item |
-|---|---|
-| Medium | Projects and CI target .NET 6 (out of support); move to the current .NET LTS. Also upgrade WiX off `4.0.0-rc.4` and make `PTZJoystickControl.sln` build on macOS/Linux (skip the WiX project off Windows). |
+All phase 1 items are done.
 
 ## Phase 2: Companion integration cleanup
 
