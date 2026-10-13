@@ -70,3 +70,12 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Start the installed (Release) build and open the Log window. Unplug the vMix PC's network cable (or disable its adapter), then pan a camera: an `ERROR` line `Camera <name>: send to <ip:port> failed, closing socket` appears in the window and in the log file, and the app stays up. Repeated `ERROR`/`INFO` lines while you keep panning are expected.
 - [ ] Plug the network back in and pan again: an `INFO` line `Camera <name>: no socket, connecting to <ip:port>` appears, and the camera moves and stops.
 - [ ] Unplug only one camera's network cable and pan it: note on #24 whether any `WARN`/`ERROR` line appears (over UDP there may be none). Plug it back in: it moves and stops again, and the other camera works throughout.
+
+### #25: The previous camera stops when the selected camera changes
+
+- [ ] Select camera 1 with the joystick and start it panning. While still holding the stick, select camera 2 with the joystick: camera 1 stops within a fraction of a second.
+- [ ] Repeat while zooming, and while focusing manually: camera 1 stops.
+- [ ] Pan camera 1 with the joystick and, while holding the stick, trigger `SetCameraPreview` for camera 2 from Companion: camera 1 stops, and the app's selection and Companion's feedback follow camera 2.
+- [ ] Pan camera 2, then select camera 1 from the app's camera list while holding the stick: camera 2 stops.
+- [ ] Recall a preset on camera 1 that needs a long move, then select camera 2 (from the joystick, and again via Companion `SetCameraPreview`) before camera 1 arrives: camera 1 completes the recall and ends at the preset position.
+- [ ] Switch back and forth between the cameras several times without touching the stick: nothing moves, and the app stays responsive.

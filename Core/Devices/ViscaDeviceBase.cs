@@ -158,4 +158,15 @@ public abstract class ViscaDeviceBase : INotifyPropertyChanged
     /// already believed to be stopped (its real state may differ if packets were lost).
     /// </summary>
     public abstract void Stop();
+
+    /// <summary>
+    /// True when the last pan/tilt, zoom or focus command the app sent was a move rather than a
+    /// stop, i.e. the app believes it is driving the camera. Preset recalls are not app-driven
+    /// motion and do not count.
+    /// </summary>
+    public bool IsMoving =>
+        panDir != PanDir.Stop
+        || tiltDir != TiltDir.Stop
+        || (zoomCmd & 0xf0) != (byte)ZoomDir.Stop
+        || (focusCmd & 0xf0) != (byte)FocusDir.Stop;
 }
