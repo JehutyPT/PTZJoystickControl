@@ -18,13 +18,15 @@ public class SdlGamepadsService : IGamepadsService
     private readonly ICamerasService _camerasService;
     private readonly ICommandsService _commandsService;
     private readonly IBitfocusCompanionService _bitfocusCompanionService;
-    // Companion input arrives on HTTP listener threads; UpdateLoop runs it alongside SDL input.
-    private readonly InputQueue _inputQueue = new();
+    // Input from other threads (Companion's HTTP listener, the SKAARHOJ panel link) is queued here;
+    // UpdateLoop runs it alongside SDL input. Shared with every other controller source.
+    private readonly InputQueue _inputQueue;
     public ObservableCollection<IGamepadInfo> Gamepads { get; private set; } = new();
     public ObservableCollection<IGamepad> ActiveGamepads { get; private set; } = new();
 
-    public SdlGamepadsService(IGamepadSettingsStore gamppadSettingsDb, ICamerasService camerasService, ICommandsService commandsService, IBitfocusCompanionService bitfocusCompanionService)
+    public SdlGamepadsService(IGamepadSettingsStore gamppadSettingsDb, ICamerasService camerasService, ICommandsService commandsService, IBitfocusCompanionService bitfocusCompanionService, InputQueue inputQueue)
     {
+        _inputQueue = inputQueue;
         SDL.SDL_Init(SDL.SDL_INIT_JOYSTICK);
 
         _gamppadSettingsDb = gamppadSettingsDb;
@@ -76,14 +78,30 @@ public class SdlGamepadsService : IGamepadsService
     {
         if (gamepadInfo is SdlGamepadInfo sdlGamepadInfo)
         {
-            var gamepad = (SdlGamepad?)ActiveGamepads.FirstOrDefault(g => g.Id == sdlGamepadInfo.Id);
+            var gamepad = ActiveGamepads.OfType<SdlGamepad>().FirstOrDefault(g => g.Id == sdlGamepadInfo.Id);
             if (gamepad != null)
             {
                 gamepad.IsActivated = false;
                 DisconnectGamepad(gamepad);
             }
+            else
+            {
+                // Unplugged: no gamepad saves the flag, so save it here. Otherwise the joystick
+                // would be activated again on the next start alongside another controller.
+                PersistDeactivated(sdlGamepadInfo.Id);
+            }
 
             sdlGamepadInfo.IsActivated = false;
+        }
+    }
+
+    private void PersistDeactivated(string id)
+    {
+        var settings = _gamppadSettingsDb.GetGamepadSettingsById(id);
+        if (settings is { IsActivated: true })
+        {
+            settings.IsActivated = false;
+            _gamppadSettingsDb.SaveGamepadSettings(settings);
         }
     }
 
@@ -122,7 +140,7 @@ public class SdlGamepadsService : IGamepadsService
 
             try
             {
-                // Companion input queued since the last tick; a failing input is logged and skipped.
+                // Input queued since the last tick (Companion, SKAARHOJ panel); a failing input is logged and skipped.
                 _inputQueue.RunPending();
 
                 while (SDL.SDL_PollEvent(out var sdlEvent) > 0)
@@ -181,7 +199,7 @@ public class SdlGamepadsService : IGamepadsService
     private void OnJoystickAxisMotion(SDL.SDL_JoyAxisEvent jaxis)
     {
         var instanceId = jaxis.which;
-        ActiveGamepads.Cast<SdlGamepad>()
+        ActiveGamepads.OfType<SdlGamepad>()
             .FirstOrDefault(g => g.InstanceId == instanceId)
             ?.OnAxisEvent(jaxis);
     }
@@ -189,7 +207,7 @@ public class SdlGamepadsService : IGamepadsService
     private void OnJoystickButtonEvent(SDL.SDL_JoyButtonEvent jbutton)
     {
         var instanceId = jbutton.which;
-        ActiveGamepads.Cast<SdlGamepad>()
+        ActiveGamepads.OfType<SdlGamepad>()
             .FirstOrDefault(g => g.InstanceId == instanceId)
             ?.OnButtonEvent(jbutton);
     }
@@ -201,7 +219,7 @@ public class SdlGamepadsService : IGamepadsService
         var count = Gamepads.Count(g => g.Id.StartsWith(id) && g.IsConnected);
         id += $"#{count}";
 
-        var gamepadInfo = Gamepads.FirstOrDefault(g => g.Id == id);
+        var gamepadInfo = Gamepads.OfType<SdlGamepadInfo>().FirstOrDefault(g => g.Id == id);
         if (gamepadInfo == null)
         {
             var name = SDL.SDL_JoystickNameForIndex(deviceIndex);
@@ -214,8 +232,8 @@ public class SdlGamepadsService : IGamepadsService
             Gamepads.Add(gamepadInfo);
         }
 
-        ((SdlGamepadInfo)gamepadInfo).DeviceIndex = deviceIndex;
-        ((SdlGamepadInfo)gamepadInfo).InstanceId = SDL.SDL_JoystickGetDeviceInstanceID(deviceIndex);
+        gamepadInfo.DeviceIndex = deviceIndex;
+        gamepadInfo.InstanceId = SDL.SDL_JoystickGetDeviceInstanceID(deviceIndex);
         gamepadInfo.IsConnected = true;
         if (gamepadInfo.IsActivated)
             ActivateGamepad(gamepadInfo);
@@ -224,11 +242,11 @@ public class SdlGamepadsService : IGamepadsService
     private void OnJoystickRemoved(SDL.SDL_JoyDeviceEvent jdevice)
     {
         var instanceId = jdevice.which;
-        var gamepadInfo = Gamepads.FirstOrDefault(g => ((SdlGamepadInfo)g).InstanceId == instanceId);
+        var gamepadInfo = Gamepads.OfType<SdlGamepadInfo>().FirstOrDefault(g => g.InstanceId == instanceId);
         if (gamepadInfo == null)
             return;
 
-        var gamepad = (SdlGamepad?)ActiveGamepads.FirstOrDefault(g => g.Id == gamepadInfo.Id);
+        var gamepad = ActiveGamepads.OfType<SdlGamepad>().FirstOrDefault(g => g.Id == gamepadInfo.Id);
         if(gamepad != null) 
         {
             DisconnectGamepad(gamepad);

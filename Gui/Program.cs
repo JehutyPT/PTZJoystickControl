@@ -3,6 +3,7 @@ using PtzJoystickControl.Gui.ViewModels;
 using PtzJoystickControl.Gui.TrayIcon;
 using PtzJoystickControl.Application;
 using PtzJoystickControl.Application.Db;
+using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Application.Logging;
 using PtzJoystickControl.Application.Services;
 using PtzJoystickControl.Core.Db;
@@ -116,11 +117,14 @@ internal class Program
         services.RegisterConstant<ICommandsService>(new CommandsService(
             resolver.GetServiceOrThrow<IBitfocusCompanionService>()));
 
+        // The one input queue: input arriving on other threads is run by SdlGamepadsService's input loop.
+        var inputQueue = new InputQueue();
         services.RegisterConstant<IGamepadsService>(new SdlGamepadsService(
             resolver.GetServiceOrThrow<IGamepadSettingsStore>(),
             resolver.GetServiceOrThrow<ICamerasService>(),
             resolver.GetServiceOrThrow<ICommandsService>(),
-            resolver.GetServiceOrThrow<IBitfocusCompanionService>()));
+            resolver.GetServiceOrThrow<IBitfocusCompanionService>(),
+            inputQueue));
 
         services.RegisterLazySingleton(() => new GamepadsViewModel(
             resolver.GetServiceOrThrow<IGamepadsService>()));
