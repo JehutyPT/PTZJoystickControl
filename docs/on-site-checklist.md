@@ -13,6 +13,14 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 - [ ] Unplug and replug the joystick: it is detected again and still drives the cameras.
 - [ ] On Apple Silicon (osx-arm64), if used: the app starts and detects the joystick.
 
+### #34: App restarts after the previous instance was killed
+
+- [ ] Start `Gui.exe`, then double-click `Gui.exe` again and leave its "PTZ Joystick Control is already running." window open.
+- [ ] In Task Manager's **Processes** tab, expand each `Gui.exe` entry and **End task** on the one that does not list the "already running" window (the first instance). Leave the "already running" window open.
+- [ ] With the "already running" window still open, start `Gui.exe` again: it starts normally (tray icon appears, no crash dialog), and the joystick drives both cameras.
+- [ ] `PTZJoystickControl.log` (tray menu → **Show log**, or `%APPDATA%\PTZJoystickControl\PTZJoystickControl.log`) has a `WARN` line "The previous PTZJoystickControl instance did not exit cleanly" right after the new `started` line.
+- [ ] Click OK on the old "already running" window, then double-click `Gui.exe` once more: it only shows the "already running" window again, and Task Manager shows one running instance after you click OK.
+
 ### #29: Single-instance check uses a new mutex name
 
 The mutex name changed so the macOS build starts. A build from before this fix and one from after it do not detect each other, so two copies could run on the same joystick and cameras.
