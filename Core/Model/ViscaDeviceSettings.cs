@@ -13,8 +13,8 @@ public class ViscaDeviceSettings
     public bool UseHeader { get; set; }
     public bool SingleCommand { get; set; }
 
-    public int? OnSelectedBitfocusButtonNumber { get; set; }
-    public int? OnSelectedBitfocusPageNumber { get; set; }
+    // Files saved before #15 also hold OnSelectedBitfocusPageNumber / OnSelectedBitfocusButtonNumber
+    // (the Companion button pressed on selection). Deserialization skips them, so those files still load.
 
     // Absent in files saved before Companion numbers existed; CamerasService assigns one on load.
     public int? CompanionNumber { get; set; }
@@ -25,8 +25,6 @@ public class ViscaDeviceSettings
 
     public ViscaDeviceSettings(ViscaDeviceBase viscaDevice)
     {
-        OnSelectedBitfocusPageNumber = viscaDevice.OnSelectedBitfocusPageNumber;
-        OnSelectedBitfocusButtonNumber = viscaDevice.OnSelectedBitfocusButtonNumber;
         CompanionNumber = viscaDevice.CompanionNumber;
         IViscaDeveiceTypeAssemblyQualifiedName = viscaDevice.GetType().AssemblyQualifiedName!;
         Name = viscaDevice.Name;

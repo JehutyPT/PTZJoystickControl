@@ -11,7 +11,7 @@
 		<v:CameraViewToCameraConverter x:Key="CameraViewToCameraConverter"/>
 	</UserControl.Resources>
 	
-	<Grid RowDefinitions="Auto,Auto,*" ColumnDefinitions="100,3,100,3,65,3,70,3,50,0,50,3,95,3,75,3,120,3,Auto">
+	<Grid RowDefinitions="Auto,Auto" ColumnDefinitions="100,3,100,3,65,3,70,3,50,0,50,3,95,3,75,3,Auto">
 		<Grid.Styles>
 			<Style Selector="Label">
 				<Setter Property="FontSize" Value="11"/>
@@ -54,10 +54,7 @@
 		</ContentControl>
 		<Label		Grid.Column="14"  Grid.Row="0" ToolTip.Tip="Companion selects this camera with ?SelectCamera=N (or ?SetCameraPreview=N). Each camera needs its own number.">Companion #</Label>
 		<TextBox	Grid.Column="14"  Grid.Row="1" Text="{Binding CompanionNumber}"/>
-		<Label		Grid.Column="16"  Grid.Row="0">Bitfocus Page/Button</Label>
-		<TextBox	Grid.Column="16"  Grid.Row="1" Text="{Binding BitfocusPage}"/>
-		<TextBox	Grid.Column="16"  Grid.Row="2" Text="{Binding BitfocusButton}"/>
-		<Button Grid.Column="18" Grid.Row="0" Grid.RowSpan="2" Background="#3000" Command="{Binding $parent[3].DataContext.RemoveCamera}" CommandParameter="{Binding Converter={StaticResource CameraViewToCameraConverter}}" ToolTip.Tip="Remove Camera">
+		<Button Grid.Column="16" Grid.Row="0" Grid.RowSpan="2" Background="#3000" Command="{Binding $parent[3].DataContext.RemoveCamera}" CommandParameter="{Binding Converter={StaticResource CameraViewToCameraConverter}}" ToolTip.Tip="Remove Camera">
 			<Button.Styles>
 				<Style Selector="Button:pointerover">
 					<Setter Property="Foreground" Value="red"/>
