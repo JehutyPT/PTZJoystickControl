@@ -1,12 +1,17 @@
 using System.Diagnostics;
 using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Tests.Skaarhoj;
+using Xunit;
 
 namespace PtzJoystickControl.Tests.Devices;
 
-// XC cameras addressed to a FakeXcCamera, and their log lines, for the XC camera tests.
+// XC cameras addressed to a FakeXcCamera, their log lines, and the stops they send, for the XC camera
+// tests.
 internal static class XcTestCameras
 {
+    // Every stop goes out at least this many times (docs/live-safety.md §1).
+    private const int MinStopSends = 3;
+
     internal static XcCamera CameraFor(FakeXcCamera fake, string? name = null, TimeSpan? requestTimeout = null, TimeSpan? probeInterval = null, string username = "", string password = "")
     {
         var camera = new XcCamera(name ?? UniqueName(), requestTimeout ?? XcCamera.DefaultRequestTimeout, probeInterval ?? XcCamera.DefaultProbeInterval);
@@ -20,10 +25,27 @@ internal static class XcTestCameras
 
     // A FakeXcCamera responder that holds the first control request until the test calls Release, and
     // answers every other request at once.
-    internal static Func<XcRequest, XcReply> HoldingTheFirstControlRequest()
+    internal static Func<XcRequest, XcReply> HoldingTheFirstControlRequest() => HoldingTheFirst(r => r.IsControl);
+
+    // A FakeXcCamera responder that holds the first request that matches until the test calls Release,
+    // and answers every other request at once.
+    internal static Func<XcRequest, XcReply> HoldingTheFirst(Func<XcRequest, bool> matches)
     {
         var held = 0;
-        return r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok;
+        return r => matches(r) && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok;
+    }
+
+    /// <summary>Asserts at least 3 requests match, consecutive matches at least StopRepeatInterval apart.</summary>
+    internal static void AssertRepeatedStops(IReadOnlyList<XcRequest> requests, Func<XcRequest, bool> isStop)
+    {
+        var stops = requests.Where(isStop).ToList();
+        Assert.True(stops.Count >= MinStopSends, FakeXcCamera.Describe(requests));
+        for (var i = 1; i < stops.Count; i++)
+        {
+            var gap = Stopwatch.GetElapsedTime(stops[i - 1].ArrivedAt, stops[i].ArrivedAt);
+            Assert.True(gap >= XcCamera.StopRepeatInterval,
+                $"Stops {i - 1} and {i} arrived {gap.TotalMilliseconds:0.0} ms apart. {FakeXcCamera.Describe(requests)}");
+        }
     }
 
     // Trace listeners are global and test classes run in parallel: log assertions filter on this name.

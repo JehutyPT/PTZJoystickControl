@@ -13,8 +13,9 @@ namespace PtzJoystickControl.Application.Devices;
 /// A camera driven over Canon's XC protocol (HTTP). Pan, tilt, zoom, focus and preset recall calls
 /// only record the wanted state; one background loop per camera sends it as sessionless
 /// <c>control.cgi</c> requests, one in flight at a time, newest wanted state first. A request
-/// combines every axis group that changed; a preset recall goes in a request of its own. With a
-/// username set, a request the camera answers with HTTP 401 is repeated at once with Basic or Digest
+/// combines every axis group that changed; a preset recall goes in a request of its own, the next one
+/// sent, and takes the place of the pending stops, which are restored if it fails. With a username
+/// set, a request the camera answers with HTTP 401 is repeated at once with Basic or Digest
 /// credentials, and later requests carry them up front.
 /// </summary>
 public class XcCamera : XcCameraBase, IDisposable
@@ -103,9 +104,12 @@ public class XcCamera : XcCameraBase, IDisposable
     private readonly AxisGroup _zoomGroup = new();
     private readonly AxisGroup _focusGroup = new();
     private readonly AxisGroup[] _groups;
-    // The camera preset to recall, with its p.ptzspeed (null for none), in a request of its own once no
-    // stop is pending; null when no recall is wanted. Sent once, never retried: a newer recall
-    // replaces it, and Stop() drops it.
+    // The pan and tilt the last control request carrying them was sent with: a recall that takes the
+    // place of a pan/tilt stop leaves a move the camera was never sent to go out after it.
+    private (PanDir Pan, int PanSpeed, TiltDir Tilt, int TiltSpeed) _sentPanTilt = (PanDir.Stop, SpeedMin, TiltDir.Stop, SpeedMin);
+    // The camera preset to recall, with its p.ptzspeed (null for none), in a request of its own, the
+    // next one sent; null when no recall is wanted. Sent once, never retried: only a newer recall
+    // replaces it.
     private (int Preset, int? PresetSpeed)? _recall;
     // The p.ptzspeed (PresetSpeedMin..PresetSpeedMax) recalls carry, mapped from the last Preset
     // Recall Speed. Null until one is set, so a recall moves at the speeds saved with the camera
@@ -318,9 +322,9 @@ public class XcCamera : XcCameraBase, IDisposable
             _zoomSpeed = ZoomSpeedMin;
             _focus = FocusDir.Stop;
             _focusSpeed = FocusSpeedMin;
-            // The stop is the last instruction the camera gets, as in VISCA's send order (a recall
-            // goes out at once there, and the stop after it).
-            _recall = null;
+            // Unlike VISCA, which sends a recall at once and the stop after it, a recall not yet sent
+            // is kept: it goes out next and takes the place of these stops, which are sent only if it
+            // fails (NextRequestLocked, SettleStopsLocked).
             foreach (var group in _groups)
                 OnWantedChangedLocked(group, enteredStop: true, supersedesStop: false);
         }
@@ -425,9 +429,9 @@ public class XcCamera : XcCameraBase, IDisposable
     {
         while (!stopping.IsCancellationRequested)
         {
+            Request? request = null;
             try
             {
-                Request? request;
                 TimeSpan wait;
                 lock (_lock)
                     request = NextRequestLocked(Stopwatch.GetTimestamp(), out wait);
@@ -449,6 +453,13 @@ public class XcCamera : XcCameraBase, IDisposable
                 // Should not happen; keep the camera's loop alive rather than lose the camera for the
                 // rest of the show.
                 Trace.TraceError($"Camera {Name}: unexpected error in the XC send loop: {e}");
+                // A recall that ends this way did not succeed: the stops it took the place of are
+                // restored, as for any failed recall.
+                if (request is { Recall: true })
+                {
+                    lock (_lock)
+                        SettleStopsLocked(request, succeeded: false);
+                }
                 try
                 {
                     await Task.Delay(UnexpectedErrorPause, stopping).ConfigureAwait(false);
@@ -464,8 +475,8 @@ public class XcCamera : XcCameraBase, IDisposable
     // The bookkeeping of one group of axes a control request carries together (pan and tilt, zoom, or
     // focus): whether its wanted state changed since it was last sent, and the stop it is repeating,
     // from an axis entering stop (or Stop()) until it was sent StopRepeatCount + 1 times and one send
-    // succeeded, or a move superseded it. StopId tells a send of an earlier stop from one of the
-    // current stop.
+    // succeeded, a move superseded it, or a recall that took its place succeeded. StopId tells a send
+    // of an earlier stop from one of the current stop.
     private sealed class AxisGroup
     {
         // Bumped on every wanted change; the group is sent while the version it last sent differs.
@@ -491,10 +502,11 @@ public class XcCamera : XcCameraBase, IDisposable
 
     // A request the loop sends: a control request (moves, stops or a preset recall) or a probe, to the
     // address and port current at EndpointVersion. StopIds, one per axis group, is the stop the request
-    // repeats in that group, or 0 for none. Login is the username and password, null when no username
-    // is set; Challenge the one the camera gave at that address and port, answered up front, or null.
-    // Neither shows in a log: both print as their type name.
-    private sealed record Request(Uri Uri, long[] StopIds, long EndpointVersion, NetworkCredential? Login, Challenge? Challenge);
+    // repeats in that group, or 0 for none; for a recall, the stop it takes the place of. Login is the
+    // username and password, null when no username is set; Challenge the one the camera gave at that
+    // address and port, answered up front, or null. Neither shows in a log: both print as their type
+    // name.
+    private sealed record Request(Uri Uri, bool Recall, long[] StopIds, long EndpointVersion, NetworkCredential? Login, Challenge? Challenge);
 
     // The request to send now, or null and how long to wait before looking again (infinite with no
     // address; a wake ends the wait early). Only the newest wanted state is ever sent, and a probe
@@ -505,17 +517,18 @@ public class XcCamera : XcCameraBase, IDisposable
         if (Address.Length == 0)
             return null;
 
-        // A recall waits while any stop is pending, so every send of a stop comes before it; then it
-        // goes out ahead of pending moves, so continuous movement never holds it back.
-        var recall = _recall != null && !_groups.Any(g => g.StopActive);
+        // A recall goes out next, ahead of every stop and move, and takes the place of the pending
+        // stops (below), so neither continuous movement nor a stop that keeps failing holds it back.
+        var recall = _recall != null;
         var control = recall || _groups.Any(g => g.Pending);
 
         // Gaps count from the previous request's completion, so request starts are further apart. A
         // stop's first send waits only the normal gap; while any stop is being repeated or retried,
-        // every request waits the repeat interval, so no stop's sends come closer together than it.
-        // A probe waits until no request has completed for the probe interval.
+        // every request but a recall waits the repeat interval, so no stop's sends come closer
+        // together than it. A recall, which takes those stops' place, waits only the normal gap. A
+        // probe waits until no request has completed for the probe interval.
         var gap = control
-            ? _groups.Any(g => g.StopActive && g.StopSends > 0) ? StopRepeatInterval : MinRequestGap
+            ? !recall && _groups.Any(g => g.StopActive && g.StopSends > 0) ? StopRepeatInterval : MinRequestGap
             : _probeNow ? MinRequestGap : _probeInterval;
         var due = _lastCompletedAt + StopwatchTicks(gap);
         if (now < due)
@@ -536,10 +549,24 @@ public class XcCamera : XcCameraBase, IDisposable
         if (recall)
         {
             _recall = null;
-            return new Request(uri, stopIds, _endpointVersion, login, challenge);
+            // The recall takes the place of every pending stop: none is sent while it is in flight,
+            // and OnCompleted ends them once it succeeds. The stop is all such a group has left to
+            // send, except a pan or tilt move the camera was never sent, which goes out after it.
+            for (var i = 0; i < _groups.Length; i++)
+            {
+                var group = _groups[i];
+                if (!group.StopActive)
+                    continue;
+                if (group != _panTiltGroup || !PanTiltMoveUnsentLocked())
+                    group.SentVersion = group.WantedVersion;
+                stopIds[i] = group.StopId;
+            }
+            return new Request(uri, Recall: true, stopIds, _endpointVersion, login, challenge);
         }
         if (!control)
-            return new Request(uri, stopIds, _endpointVersion, login, challenge);
+            return new Request(uri, Recall: false, stopIds, _endpointVersion, login, challenge);
+        if (_panTiltGroup.Pending)
+            _sentPanTilt = (_pan, _panSpeed, _tilt, _tiltSpeed);
         for (var i = 0; i < _groups.Length; i++)
         {
             var group = _groups[i];
@@ -551,8 +578,14 @@ public class XcCamera : XcCameraBase, IDisposable
             group.StopSends++;
             stopIds[i] = group.StopId;
         }
-        return new Request(uri, stopIds, _endpointVersion, login, challenge);
+        return new Request(uri, Recall: false, stopIds, _endpointVersion, login, challenge);
     }
+
+    // Whether pan or tilt is wanted moving at a direction or speed other than the last one sent for
+    // it. An axis wanted at stop, or at the move last sent for it, has nothing to send.
+    private bool PanTiltMoveUnsentLocked() =>
+        _pan != PanDir.Stop && (_pan, _panSpeed) != (_sentPanTilt.Pan, _sentPanTilt.PanSpeed)
+        || _tilt != TiltDir.Stop && (_tilt, _tiltSpeed) != (_sentPanTilt.Tilt, _sentPanTilt.TiltSpeed);
 
     private static long StopwatchTicks(TimeSpan span) => (long)(span.TotalSeconds * Stopwatch.Frequency);
 
@@ -676,10 +709,10 @@ public class XcCamera : XcCameraBase, IDisposable
         };
     }
 
-    // Ends each group's stop once it was sent often enough and succeeded, keeps the camera's challenge,
-    // and updates Connected. Logs a failure when a run of failures starts or its reason changes (a
-    // login failure instead at most once per LoginFailureLogInterval), the first success after one,
-    // and each Connected change; never once per request.
+    // Settles the stops the request sent or took the place of (SettleStopsLocked), keeps the camera's
+    // challenge, and updates Connected. Logs a failure when a run of failures starts or its reason
+    // changes (a login failure instead at most once per LoginFailureLogInterval), the first success
+    // after one, and each Connected change; never once per request.
     private void OnCompleted(Request request, string? failure, bool loginFailure, Challenge? challenge)
     {
         string? warning = null;
@@ -689,15 +722,7 @@ public class XcCamera : XcCameraBase, IDisposable
         {
             var now = Stopwatch.GetTimestamp();
             _lastCompletedAt = now;
-            for (var i = 0; i < _groups.Length; i++)
-            {
-                var group = _groups[i];
-                if (!group.StopActive || request.StopIds[i] != group.StopId)
-                    continue;
-                group.StopSucceeded |= failure == null;
-                if (group.StopSucceeded && group.StopSends > StopRepeatCount)
-                    group.StopActive = false;
-            }
+            SettleStopsLocked(request, succeeded: failure == null);
 
             if (request.EndpointVersion != _endpointVersion)
             {
@@ -743,6 +768,33 @@ public class XcCamera : XcCameraBase, IDisposable
             Trace.TraceInformation(information);
         if (connectedChanged)
             RaiseConnectedChanged();
+    }
+
+    // Settles the stops a completed request sent or took the place of. A stop ends once it was sent
+    // StopRepeatCount + 1 times and one send succeeded. A recall ends the stops it took the place of if
+    // it succeeded, and restores each as a new stop if not. A stop a newer action took the place of is
+    // left alone: a newer stop (a new StopId) or a move that superseded it.
+    private void SettleStopsLocked(Request request, bool succeeded)
+    {
+        for (var i = 0; i < _groups.Length; i++)
+        {
+            var group = _groups[i];
+            if (!group.StopActive || request.StopIds[i] != group.StopId)
+                continue;
+            if (request.Recall)
+            {
+                if (succeeded)
+                    group.StopActive = false;
+                else
+                    group.StartStop();
+            }
+            else
+            {
+                group.StopSucceeded |= succeeded;
+                if (group.StopSucceeded && group.StopSends > StopRepeatCount)
+                    group.StopActive = false;
+            }
+        }
     }
 
     // Whether a login failure may be logged now; if so, counts it as logged.
