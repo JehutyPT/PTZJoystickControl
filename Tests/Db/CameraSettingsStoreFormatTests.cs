@@ -171,6 +171,25 @@ public sealed class CameraSettingsStoreFormatTests : IDisposable
         Assert.DoesNotContain(trace.Events, e => e.Type == TraceEventType.Error && e.Message.Contains(_path));
     }
 
+    // The file names the type the store constructs, so a type that is not a camera must never be
+    // constructed: a StreamWriter, for one, creates a file at the path given as the camera's name.
+    [Fact]
+    public void AnEntryWhoseTypeIsNotACamera_IsSkippedWithAWarning_WithoutConstructingIt()
+    {
+        using var trace = new TraceRecorder();
+        var visca = JsonDocument.Parse(CamerasJsonBeforeTheAbstraction).RootElement.EnumerateArray().Select(e => e.GetRawText()).ToList();
+        var fileAStreamWriterWouldCreate = Path.Combine(_dir, "created by the load.txt");
+        var notACamera = $"{{\"{TypeNameKey}\":\"{typeof(StreamWriter).AssemblyQualifiedName}\",\"Name\":{JsonSerializer.Serialize(fileAStreamWriterWouldCreate)}}}";
+        File.WriteAllText(_path, $"[{visca[0]},{notACamera},{visca[1]}]");
+
+        var loaded = new CameraSettingsStore(_path).GetAllCameras().ToList();
+
+        Assert.Equal(new[] { "Cam 1", "Cam 2" }, loaded.Select(c => c.Name));
+        Assert.False(File.Exists(fileAStreamWriterWouldCreate));
+        var warning = Assert.Single(trace.Events, e => e.Type == TraceEventType.Warning && e.Message.Contains(_path));
+        Assert.Contains("entry 2", warning.Message);
+    }
+
     private static void AssertSameKeysAndValues(string expectedJson, string actualJson) =>
         AssertSameKeysAndValues(Entries(expectedJson), Entries(actualJson));
 

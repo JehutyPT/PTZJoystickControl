@@ -76,7 +76,9 @@ namespace PtzJoystickControl.Application.Db
 
             var type = Type.GetType(viscaDeviceSettings.IViscaDeveiceTypeAssemblyQualifiedName ?? "")
                 ?? throw new InvalidDataException("its camera type is not known to this build");
-            var camera = (ICamera)Activator.CreateInstance(type, viscaDeviceSettings.Name)!;
+            // Checked before constructing: the file names the type, so nothing but a camera is constructed from it.
+            if (!typeof(ICamera).IsAssignableFrom(type) || Activator.CreateInstance(type, viscaDeviceSettings.Name) is not ICamera camera)
+                throw new InvalidDataException("its type is not a camera");
             if (camera is ViscaIPDeviceBase viscaIPDevice)
             {
                 viscaIPDevice.IPAddress = viscaDeviceSettings.IpAddress;
