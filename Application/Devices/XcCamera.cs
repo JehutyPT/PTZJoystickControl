@@ -234,7 +234,7 @@ public class XcCamera : XcCameraBase, IDisposable
         lock (_lock)
         {
             var now = Stopwatch.GetTimestamp();
-            if (_unsupportedLoggedAt.TryGetValue(operation, out var loggedAt) && now - loggedAt < Ticks(UnsupportedLogInterval))
+            if (_unsupportedLoggedAt.TryGetValue(operation, out var loggedAt) && now - loggedAt < StopwatchTicks(UnsupportedLogInterval))
                 return;
             _unsupportedLoggedAt[operation] = now;
         }
@@ -332,7 +332,7 @@ public class XcCamera : XcCameraBase, IDisposable
         var gap = control
             ? _stopActive && _stopSends > 0 ? StopRepeatInterval : MinRequestGap
             : _probeNow ? MinRequestGap : _probeInterval;
-        var due = _lastCompletedAt + Ticks(gap);
+        var due = _lastCompletedAt + StopwatchTicks(gap);
         if (now < due)
         {
             wait = WaitUntil(due, now);
@@ -351,7 +351,7 @@ public class XcCamera : XcCameraBase, IDisposable
         return new Request(uri, _stopId, _endpointVersion);
     }
 
-    private static long Ticks(TimeSpan span) => (long)(span.TotalSeconds * Stopwatch.Frequency);
+    private static long StopwatchTicks(TimeSpan span) => (long)(span.TotalSeconds * Stopwatch.Frequency);
 
     // Rounded up to whole milliseconds: a wait shorter than the timer can measure would spin.
     private static TimeSpan WaitUntil(long due, long now) =>
@@ -458,7 +458,7 @@ public class XcCamera : XcCameraBase, IDisposable
                     warning = $"Camera {Name}: request to the XC camera at {Address}:{Port} failed: {failure}";
                     _failure = failure;
                 }
-                if (_connected && now - _lastSuccessAt >= Ticks(_probeInterval))
+                if (_connected && now - _lastSuccessAt >= StopwatchTicks(_probeInterval))
                 {
                     _connected = false;
                     connectedChanged = true;
