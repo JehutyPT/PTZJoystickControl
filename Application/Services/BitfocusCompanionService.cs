@@ -300,7 +300,7 @@ namespace PtzJoystickControl.Application.Services
 
                 // A step is applied here, on the listener thread, never queued on the input loop: it saves
                 // SpeedProfiles.json before it returns, and a slow disk must never delay joystick control.
-                switch (parsed.SpeedProfile)
+                switch (parsed.SpeedProfileRequest)
                 {
                     case CompanionSpeedProfileRequest.Faster:
                         _speedProfiles.StepFaster();
@@ -312,7 +312,7 @@ namespace PtzJoystickControl.Application.Services
 
                 response.StatusCode = (int)HttpStatusCode.OK;
 
-                if (parsed.SpeedProfile == CompanionSpeedProfileRequest.Current)
+                if (parsed.SpeedProfileRequest == CompanionSpeedProfileRequest.Current)
                     WriteActiveSpeedProfile(response);
             }
             catch (Exception e)

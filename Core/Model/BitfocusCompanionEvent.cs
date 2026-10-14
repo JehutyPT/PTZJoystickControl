@@ -57,7 +57,7 @@ namespace PtzJoystickControl.Core.Model
             IEnumerable<KeyValuePair<string?, string?>> parameters, IReadOnlyCollection<ICamera> cameras)
         {
             var events = new List<BitfocusCompanionEvent>();
-            CompanionSpeedProfileRequest? speedProfile = null;
+            CompanionSpeedProfileRequest? speedProfileRequest = null;
 
             foreach (var (name, value) in parameters)
             {
@@ -66,13 +66,13 @@ namespace PtzJoystickControl.Core.Model
 
                 if (string.Equals(name, SpeedProfileCommand, StringComparison.Ordinal))
                 {
-                    if (speedProfile != null)
+                    if (speedProfileRequest != null)
                         return BitfocusCompanionRequestParseResult.Rejected($"Command '{name}' given more than once");
                     // The query string joins a repeated parameter ("faster,finer"), so it never matches.
                     if (value == null || !SpeedProfileRequests.TryGetValue(value, out var request))
                         return BitfocusCompanionRequestParseResult.Rejected($"'{value}' for command '{name}' is not faster, finer or current");
 
-                    speedProfile = request;
+                    speedProfileRequest = request;
                     continue;
                 }
 
@@ -97,13 +97,13 @@ namespace PtzJoystickControl.Core.Model
                 events.Add(new BitfocusCompanionEvent(eventType, number, matches[0]));
             }
 
-            if (speedProfile == CompanionSpeedProfileRequest.Current && events.Count > 0)
+            if (speedProfileRequest == CompanionSpeedProfileRequest.Current && events.Count > 0)
                 return BitfocusCompanionRequestParseResult.Rejected($"'{SpeedProfileCommand}=current' must be the only parameter of its request");
 
-            if (events.Count == 0 && speedProfile == null)
+            if (events.Count == 0 && speedProfileRequest == null)
                 return BitfocusCompanionRequestParseResult.Rejected("No command in request");
 
-            return BitfocusCompanionRequestParseResult.Accepted(events, speedProfile);
+            return BitfocusCompanionRequestParseResult.Accepted(events, speedProfileRequest);
         }
     }
 }

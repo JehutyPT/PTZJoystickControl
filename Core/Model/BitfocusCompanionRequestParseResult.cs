@@ -10,10 +10,10 @@ namespace PtzJoystickControl.Core.Model
     public sealed class BitfocusCompanionRequestParseResult
     {
         private BitfocusCompanionRequestParseResult(
-            IReadOnlyList<BitfocusCompanionEvent> events, CompanionSpeedProfileRequest? speedProfile, string? rejectionReason)
+            IReadOnlyList<BitfocusCompanionEvent> events, CompanionSpeedProfileRequest? speedProfileRequest, string? rejectionReason)
         {
             Events = events;
-            SpeedProfile = speedProfile;
+            SpeedProfileRequest = speedProfileRequest;
             RejectionReason = rejectionReason;
         }
 
@@ -22,13 +22,13 @@ namespace PtzJoystickControl.Core.Model
         public IReadOnlyList<BitfocusCompanionEvent> Events { get; }
 
         /// <summary>The request's <c>SpeedProfile</c> command, or null when it has none.</summary>
-        public CompanionSpeedProfileRequest? SpeedProfile { get; }
+        public CompanionSpeedProfileRequest? SpeedProfileRequest { get; }
 
         public string? RejectionReason { get; }
 
         public static BitfocusCompanionRequestParseResult Accepted(
-            IReadOnlyList<BitfocusCompanionEvent> events, CompanionSpeedProfileRequest? speedProfile) =>
-            new(events, speedProfile, null);
+            IReadOnlyList<BitfocusCompanionEvent> events, CompanionSpeedProfileRequest? speedProfileRequest) =>
+            new(events, speedProfileRequest, null);
 
         public static BitfocusCompanionRequestParseResult Rejected(string reason) =>
             new(Array.Empty<BitfocusCompanionEvent>(), null, reason);

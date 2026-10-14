@@ -39,7 +39,7 @@ public class BitfocusCompanionRequestParsingTests
 
         Assert.True(result.IsAccepted);
         Assert.Equal(new[] { CamB, CamA }, result.Events.Select(e => e.Camera));
-        Assert.Null(result.SpeedProfile);
+        Assert.Null(result.SpeedProfileRequest);
     }
 
     [Theory]
@@ -51,7 +51,7 @@ public class BitfocusCompanionRequestParsingTests
         var result = BitfocusCompanionEvent.ParseRequest(new[] { P("SpeedProfile", value) }, Cameras);
 
         Assert.True(result.IsAccepted);
-        Assert.Equal(expected, result.SpeedProfile);
+        Assert.Equal(expected, result.SpeedProfileRequest);
         Assert.Empty(result.Events);
     }
 
@@ -61,7 +61,7 @@ public class BitfocusCompanionRequestParsingTests
         var result = BitfocusCompanionEvent.ParseRequest(new[] { P("SelectCamera", "2"), P("SpeedProfile", "finer") }, Cameras);
 
         Assert.True(result.IsAccepted);
-        Assert.Equal(CompanionSpeedProfileRequest.Finer, result.SpeedProfile);
+        Assert.Equal(CompanionSpeedProfileRequest.Finer, result.SpeedProfileRequest);
         Assert.Equal(new[] { CamB }, result.Events.Select(e => e.Camera));
     }
 
@@ -122,7 +122,7 @@ public class BitfocusCompanionRequestParsingTests
 
         Assert.False(result.IsAccepted, scenario);
         Assert.Empty(result.Events);
-        Assert.Null(result.SpeedProfile);
+        Assert.Null(result.SpeedProfileRequest);
         Assert.False(string.IsNullOrWhiteSpace(result.RejectionReason), scenario);
     }
 
