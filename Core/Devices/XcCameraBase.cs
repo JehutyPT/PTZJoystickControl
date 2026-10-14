@@ -109,39 +109,46 @@ public abstract class XcCameraBase : ICamera
     public string Username
     {
         get => _username;
-        set
-        {
-            value ??= "";
-            if (_username == value)
-                return;
-
-            // The message leaves the value out: it may end up in the log.
-            if (value.Any(char.IsControl))
-                throw new ArgumentException("A username cannot contain control characters.", nameof(value));
-
-            _username = value;
-            OnLoginChanged();
-            NotifyPropertyChanged();
-            NotifyPersistentPropertyChanged();
-        }
+        set => SetLogin(value, _password);
     }
 
     /// <summary>The password for <see cref="Username"/>; any text. Saved in plaintext, never logged.</summary>
     public string Password
     {
         get => _password;
-        set
-        {
-            value ??= "";
-            if (_password == value)
-                return;
-
-            _password = value;
-            OnLoginChanged();
-            NotifyPropertyChanged();
-            NotifyPersistentPropertyChanged();
-        }
+        set => SetLogin(_username, value);
     }
+
+    /// <summary>
+    /// Sets <see cref="Username"/> and <see cref="Password"/> together, as one login change: the camera
+    /// reacts once, each field that changed is raised, and one persistent change, named for the first
+    /// field that changed, saves both. The login the camera already has changes nothing.
+    /// </summary>
+    public void SetLogin(string username, string password)
+    {
+        username ??= "";
+        password ??= "";
+        var usernameChanged = _username != username;
+        var passwordChanged = _password != password;
+        if (!usernameChanged && !passwordChanged)
+            return;
+
+        // The message leaves the value out: it may end up in the log.
+        if (!IsUsername(username))
+            throw new ArgumentException("A username cannot contain control characters.", nameof(username));
+
+        _username = username;
+        _password = password;
+        OnLoginChanged();
+        if (usernameChanged)
+            NotifyPropertyChanged(nameof(Username));
+        if (passwordChanged)
+            NotifyPropertyChanged(nameof(Password));
+        NotifyPersistentPropertyChanged(usernameChanged ? nameof(Username) : nameof(Password));
+    }
+
+    /// <summary>Whether <paramref name="value"/> can be a username: any text without control characters.</summary>
+    public static bool IsUsername(string value) => !value.Any(char.IsControl);
 
     // "" (no address), a dotted-quad IPv4 address, or a DNS host name. Digits and dots alone must be a
     // full dotted quad without leading zeros, which other parsers would read as a different address
@@ -184,6 +191,12 @@ public abstract class XcCameraBase : ICamera
     }
 
     public abstract bool Connected { get; }
+
+    /// <summary>
+    /// Why the camera's requests fail, in the words of the failure's log line; null while they succeed.
+    /// Its changes are raised as <see cref="Connected"/>'s are.
+    /// </summary>
+    public abstract string? FailureReason { get; }
 
     public abstract bool IsMoving { get; }
 

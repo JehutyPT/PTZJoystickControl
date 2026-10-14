@@ -136,6 +136,40 @@ public class XcCameraAddressTests
         Assert.Equal("fake-xc-user", camera.Username);
     }
 
+    // Log in checks the username by the same rule: rejected whole, nothing changes and nothing is raised.
+    [Theory]
+    [InlineData("fake-xc\nuser")]
+    [InlineData("fake-xc\tuser")]
+    [InlineData("fake-xc\u007fuser")]
+    public void ApplyingALoginWithAControlCharacterInItsUsername_IsRejected_WithoutRepeatingIt_AndTheLoginKept(string username)
+    {
+        using var camera = SetterOnlyCamera();
+        camera.SetLogin("fake-xc-user", "fake-xc-password");
+        var changed = new List<string?>();
+        var persistent = new List<string?>();
+        camera.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        camera.PersistentPropertyChanged += (_, e) => persistent.Add(e.PropertyName);
+
+        var rejected = Assert.ThrowsAny<ArgumentException>(() => camera.SetLogin(username, "fake-xc-other-password"));
+
+        Assert.DoesNotContain("fake-xc", rejected.Message);
+        Assert.Equal("fake-xc-user", camera.Username);
+        Assert.Equal("fake-xc-password", camera.Password);
+        Assert.Empty(changed);
+        Assert.Empty(persistent);
+    }
+
+    [Theory]
+    [InlineData("fake-xc-user", true)]
+    [InlineData("fäke xc üser", true)]
+    [InlineData("", true)]
+    [InlineData("fake-xc\tuser", false)]
+    [InlineData("fake-xc\u007fuser", false)]
+    public void TheUsernameRule_RejectsExactlyAControlCharacter(string username, bool valid)
+    {
+        Assert.Equal(valid, XcCameraBase.IsUsername(username));
+    }
+
     [Theory]
     [InlineData("fake-xc-password")]
     [InlineData("fake-xc\npassword")]
@@ -180,6 +214,29 @@ public class XcCameraAddressTests
         var expected = new[] { nameof(XcCamera.Username), nameof(XcCamera.Password) };
         Assert.Equal(expected, changed);
         Assert.Equal(expected, persistent);
+    }
+
+    // Log in applies both fields as one change: each field that changed is raised, and one persistent
+    // change saves the login once, named for the first field that changed. The login the camera
+    // already has changes nothing.
+    [Fact]
+    public void ApplyingALogin_RaisesEachFieldThatChanged_AndOnePersistentChange()
+    {
+        using var camera = SetterOnlyCamera();
+        var changed = new List<string?>();
+        var persistent = new List<string?>();
+        camera.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        camera.PersistentPropertyChanged += (_, e) => persistent.Add(e.PropertyName);
+
+        camera.SetLogin("fake-xc-user", "fake-xc-password");
+        camera.SetLogin("fake-xc-user", "fake-xc-password");
+        camera.SetLogin("fake-xc-user", "fake-xc-other-password");
+        camera.SetLogin("fake-xc-other-user", "fake-xc-other-password");
+
+        Assert.Equal(new[] { nameof(XcCamera.Username), nameof(XcCamera.Password), nameof(XcCamera.Password), nameof(XcCamera.Username) }, changed);
+        Assert.Equal(new[] { nameof(XcCamera.Username), nameof(XcCamera.Password), nameof(XcCamera.Username) }, persistent);
+        Assert.Equal("fake-xc-other-user", camera.Username);
+        Assert.Equal("fake-xc-other-password", camera.Password);
     }
 
     // Disposed first, so giving it an address sends nothing: these tests exercise only the setters.

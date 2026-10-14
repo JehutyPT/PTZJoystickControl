@@ -11,8 +11,10 @@
 	</UserControl.Resources>
 
 	<!-- The XC camera's settings: no VISCA-only fields (protocol, header, interval), and the camera's login
-	     in their place, so the row is as wide as a VISCA camera's. -->
-	<Grid RowDefinitions="Auto,Auto" ColumnDefinitions="100,3,100,3,65,3,85,3,85,3,95,3,75,3,Auto">
+	     in their place, with Log in, which alone applies it, so the row is as wide as a VISCA camera's and
+	     its Status, Companion # and Remove line up. Below the fields, the camera's failure reason while
+	     there is one. -->
+	<Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="100,3,100,3,65,3,70,3,50,3,47,3,95,3,75,3,Auto">
 		<Grid.Styles>
 			<Style Selector="Label">
 				<Setter Property="FontSize" Value="11"/>
@@ -27,12 +29,13 @@
 		<TextBox	Grid.Column="2"  Grid.Row="1" Text="{Binding Address}"/>
 		<Label		Grid.Column="4"  Grid.Row="0">Port</Label>
 		<TextBox	Grid.Column="4"  Grid.Row="1" Text="{Binding Port}"/>
-		<Label		Grid.Column="6"  Grid.Row="0" ToolTip.Tip="The camera's login, when it does not allow guest control. Leave empty for guest control.">Username</Label>
-		<TextBox	Grid.Column="6"  Grid.Row="1" Text="{Binding Username}"/>
-		<Label		Grid.Column="8"  Grid.Row="0" ToolTip.Tip="Stored unencrypted in Cameras.json.">Password</Label>
-		<TextBox	Grid.Column="8"  Grid.Row="1" Text="{Binding Password}" PasswordChar="•"/>
-		<Label		Grid.Column="10" Grid.Row="0">Status</Label>
-		<ContentControl Grid.Column="10" Grid.Row="1" Content="{Binding Connected}">
+		<Label		Grid.Column="6"  Grid.Row="0" ToolTip.Tip="The camera's login, when it does not allow guest control. Leave empty for guest control. Applied with Log in.">Username</Label>
+		<TextBox	Grid.Column="6"  Grid.Row="1" Text="{Binding Username}" MinWidth="0"/>
+		<Label		Grid.Column="8"  Grid.Row="0" ToolTip.Tip="Stored unencrypted in Cameras.json. Applied with Log in.">Password</Label>
+		<TextBox	Grid.Column="8"  Grid.Row="1" Text="{Binding Password}" PasswordChar="•" MinWidth="0"/>
+		<Button		Grid.Column="10" Grid.Row="1" Padding="2,0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Command="{Binding LogIn}" IsEnabled="{Binding CanLogIn}" ToolTip.Tip="Apply this username and password, and save them. Enabled while they differ from the login the camera uses.">Log in</Button>
+		<Label		Grid.Column="12" Grid.Row="0">Status</Label>
+		<ContentControl Grid.Column="12" Grid.Row="1" Content="{Binding Connected}">
 			<ContentControl.Styles>
 				<Style Selector="TextBlock">
 					<Setter Property="VerticalAlignment" Value="Center"/>
@@ -50,9 +53,10 @@
 				</v:CameraStatusTemplateSelector>
 			</ContentControl.DataTemplates>
 		</ContentControl>
-		<Label		Grid.Column="12" Grid.Row="0" ToolTip.Tip="Companion selects this camera with ?SelectCamera=N (or ?SetCameraPreview=N). Each camera needs its own number.">Companion #</Label>
-		<TextBox	Grid.Column="12" Grid.Row="1" Text="{Binding CompanionNumber}"/>
-		<Button Grid.Column="14" Grid.Row="0" Grid.RowSpan="2" Background="#3000" Command="{Binding $parent[3].DataContext.RemoveCamera}" CommandParameter="{Binding Converter={StaticResource CameraViewToCameraConverter}}" ToolTip.Tip="Remove Camera">
+		<Label		Grid.Column="14" Grid.Row="0" ToolTip.Tip="Companion selects this camera with ?SelectCamera=N (or ?SetCameraPreview=N). Each camera needs its own number.">Companion #</Label>
+		<TextBox	Grid.Column="14" Grid.Row="1" Text="{Binding CompanionNumber}"/>
+		<TextBlock	Grid.Column="0"  Grid.Row="2" Grid.ColumnSpan="15" Text="{Binding FailureReason}" IsVisible="{Binding FailureReason, Converter={x:Static ObjectConverters.IsNotNull}}" TextWrapping="Wrap" FontSize="11" Foreground="#FFFF9090" Margin="0,3,0,0"/>
+		<Button Grid.Column="16" Grid.Row="0" Grid.RowSpan="2" Background="#3000" Command="{Binding $parent[3].DataContext.RemoveCamera}" CommandParameter="{Binding Converter={StaticResource CameraViewToCameraConverter}}" ToolTip.Tip="Remove Camera">
 			<Button.Styles>
 				<Style Selector="Button:pointerover">
 					<Setter Property="Foreground" Value="red"/>
