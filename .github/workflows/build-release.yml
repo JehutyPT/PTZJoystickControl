@@ -13,6 +13,10 @@ on:
 permissions:
   contents: write
 
+# Opt out of Avalonia's build-time telemetry (Avalonia.BuildServices).
+env:
+  AVALONIA_TELEMETRY_OPTOUT: 1
+
 jobs:
 
   # Runs before anything is versioned, tagged, packaged or released: a failing

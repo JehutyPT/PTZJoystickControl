@@ -14,6 +14,8 @@ dotnet build PTZJoystickControl.sln
 dotnet run --project Gui
 ```
 
+Avalonia 12 sends anonymous build-time telemetry unless `AVALONIA_TELEMETRY_OPTOUT=1` is set in the environment. CI sets it for every job; set it in your shell profile to opt out locally.
+
 The solution builds on Windows, macOS and Linux.
 
 Only one instance can run at a time (named mutex, `Application/SingleInstance.cs`); a second launch shows an "already running" window instead. If the previous instance died without releasing the mutex, the next launch takes it over, starts normally and logs a `WARN` that the previous instance did not exit cleanly. The name must not contain `/` (.NET on macOS and Linux throws) or `\`.
