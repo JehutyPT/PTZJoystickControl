@@ -40,6 +40,10 @@ public sealed class CameraSettingsStoreRetiredKeysTests : IDisposable
         return cameras;
     }
 
+    // Other test classes log through the same global Trace in parallel, and many name a camera "Cam 1",
+    // so a message is this test's when it names this file or a camera address only this class uses.
+    private bool IsAbout(string message, string ipAddress) => message.Contains(_path) || message.Contains(ipAddress);
+
     private static string Camera(string name, string ip, int companionNumber, string bitfocusKeys)
     {
         var type = typeof(ViscaIpDevice).AssemblyQualifiedName;
@@ -67,8 +71,7 @@ public sealed class CameraSettingsStoreRetiredKeysTests : IDisposable
             Assert.Equal(45, c.SendWaitTime);
             Assert.False(c.UseHeader);
         });
-        // Filtered to this file and these cameras: other test classes log through the same global Trace in parallel.
-        Assert.DoesNotContain(_trace.Messages, m => m.Contains(_path) || m.Contains("Cam 1") || m.Contains("Cam 2"));
+        Assert.DoesNotContain(_trace.Messages, m => IsAbout(m, "192.168.1.11") || IsAbout(m, "192.168.1.12"));
     }
 
     [Fact]
@@ -100,7 +103,7 @@ public sealed class CameraSettingsStoreRetiredKeysTests : IDisposable
         Assert.Equal(Protocol.Udp, camera.Protocol);
         Assert.Equal(45, camera.SendWaitTime);
         Assert.False(camera.UseHeader);
-        Assert.DoesNotContain(_trace.Messages, m => m.Contains(_path) || m.Contains("Cam 1"));
+        Assert.DoesNotContain(_trace.Messages, m => IsAbout(m, "192.168.1.11"));
 
         Assert.True(store.SaveCameras(new ViscaDeviceBase[] { camera }));
         Assert.DoesNotContain("SingleCommand", File.ReadAllText(_path));
