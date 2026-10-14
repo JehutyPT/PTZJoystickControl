@@ -7,8 +7,8 @@ namespace PtzJoystickControl.SkaarhojPanel;
 /// <summary>
 /// Owns the one TCP connection to a SKAARHOJ panel's Raw Panel server (docs/skaarhoj-integration.md).
 /// Reports the link up as soon as TCP connects (without waiting for <c>RDY</c>). Any line from the panel
-/// counts as hearing from it; a <c>ping</c> goes out only after a ping interval without a line or a ping,
-/// and the link reports down after the timeout without a line, counted only after a grace period from
+/// counts as hearing from it; the first <c>ping</c> goes out with the startup queries, and each later one
+/// only after a ping interval without a line or a ping, and the link reports down after the timeout without a line, counted only after a grace period from
 /// connect and again from <c>_isSleeping=0</c> (the panel stalls for ~0.5 s after every connect and for
 /// more than the timeout when it wakes). A freeze of the app itself restarts the count (see
 /// <see cref="PanelDeadMan"/>). On down it closes the socket and reconnects with capped backoff. Every line
@@ -395,8 +395,8 @@ public sealed class SkaarhojPanelLink : IDisposable
         Raise(MessageReceived, message, nameof(MessageReceived));
     }
 
-    // Sends the startup queries, then a ping whenever the panel has been quiet for a ping interval since
-    // the last line or ping. Returns why the connection should go down. Never throws.
+    // Sends the startup queries and a first ping, then a ping whenever the panel has been quiet for a ping
+    // interval since the last line or ping. Returns why the connection should go down. Never throws.
     private async Task<string> PingAsync(NetworkStream stream, PanelDeadMan deadMan, CancellationToken session)
     {
         try

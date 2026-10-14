@@ -119,15 +119,14 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     }
 
     [Fact]
-    public async Task AfterConnect_SendsListAndConnectionsQuery_ThenPings()
+    public async Task AfterConnect_SendsListAndConnectionsQuery_ThenAPingAtOnce()
     {
-        Start();
+        // A ping interval far longer than the wait: only the first ping, sent with the queries, can arrive.
+        Start(ping: TimeSpan.FromSeconds(5), timeout: TimeSpan.FromSeconds(10));
 
-        Assert.True(await WaitUntil(() => _panel.Received.Count(l => l == "ping") >= 3, TimeSpan.FromSeconds(2)));
+        Assert.True(await WaitUntil(() => PingsReceived == 1, TimeSpan.FromSeconds(2)));
 
-        var received = _panel.Received.ToList();
-        Assert.Equal("list", received[0]);
-        Assert.Equal("Connections?", received[1]);
+        Assert.Equal(new[] { "list", "Connections?", "ping" }, _panel.Received.Take(3));
     }
 
     [Fact]

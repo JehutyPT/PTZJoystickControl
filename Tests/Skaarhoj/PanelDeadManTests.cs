@@ -19,11 +19,14 @@ public sealed class PanelDeadManTests
         SkaarhojPanelLink.DefaultConnectGrace);
 
     [Fact]
-    public void FirstPing_IsDue500msAfterConnect_WhenNothingIsHeard()
+    public void FirstPing_IsDueAtConnect_RightAfterTheStartupQueries_WhateverIsHeard()
     {
         var deadMan = Connected();
+        Assert.Equal(At(0), deadMan.NextPingDue);
 
-        Assert.Equal(At(500), deadMan.NextPingDue);
+        // The panel's greeting (RDY, map= lines) does not hold it back.
+        deadMan.LineHeard(At(3));
+        Assert.Equal(At(0), deadMan.NextPingDue);
     }
 
     [Fact]
@@ -31,9 +34,9 @@ public sealed class PanelDeadManTests
     {
         var deadMan = Connected();
 
-        deadMan.PingSent(At(500));
+        deadMan.PingSent(At(1));
 
-        Assert.Equal(At(1000), deadMan.NextPingDue);
+        Assert.Equal(At(501), deadMan.NextPingDue);
     }
 
     [Fact]

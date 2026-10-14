@@ -20,8 +20,8 @@ internal sealed class PanelDeadMan
     private readonly long _silenceTimeout;
     private readonly long _grace;
 
-    // The later of connect (the startup queries count as the first send) and the last ping sent.
-    private long _lastSent;
+    // When the last ping went out; null until the first, which goes right after the startup queries.
+    private long? _lastPing;
     private long? _lastHeard;
     // The silence count starts no earlier than this: the end of the grace after connect, moved on by each wake.
     private long _graceEnd;
@@ -37,7 +37,6 @@ internal sealed class PanelDeadMan
         _pingInterval = StopwatchTicks.From(pingInterval);
         _silenceTimeout = StopwatchTicks.From(silenceTimeout);
         _grace = StopwatchTicks.From(grace);
-        _lastSent = connectedAt;
         _graceEnd = connectedAt + _grace;
 
         // Several checks per ping, so a drop is seen within a quarter ping interval of being due.
@@ -48,13 +47,18 @@ internal sealed class PanelDeadMan
     /// <summary>How often the link runs <see cref="Check"/>.</summary>
     public TimeSpan CheckInterval { get; }
 
-    /// <summary>When the next <c>ping</c> is due: a ping interval after the later of the last line heard and the last send.</summary>
+    /// <summary>
+    /// When the next <c>ping</c> is due: at connect for the first, right after the startup queries; then a
+    /// ping interval after the later of the last line heard and the last ping.
+    /// </summary>
     public long NextPingDue
     {
         get
         {
             lock (_lock)
-                return Math.Max(_lastSent, _lastHeard ?? long.MinValue) + _pingInterval;
+                return _lastPing is { } lastPing
+                    ? Math.Max(lastPing, _lastHeard ?? long.MinValue) + _pingInterval
+                    : _connectedAt;
         }
     }
 
@@ -72,7 +76,7 @@ internal sealed class PanelDeadMan
     public void PingSent(long at)
     {
         lock (_lock)
-            _lastSent = Math.Max(_lastSent, at);
+            _lastPing = Math.Max(_lastPing ?? long.MinValue, at);
     }
 
     /// <summary>The panel reported waking at <paramref name="at"/>: it stalls as after a connect, so the grace starts again.</summary>
