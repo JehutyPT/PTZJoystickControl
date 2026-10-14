@@ -34,11 +34,11 @@ namespace PtzJoystickControl.Application.Db
             if (!File.Exists(_cameratFilePath))
                 return new List<ICamera>();
 
-            List<ViscaDeviceSettings?> viscaDeviceSettingsList;
+            List<JsonElement> entries;
             try
             {
                 string serializedViscaDeviceSettings = File.ReadAllText(_cameratFilePath);
-                viscaDeviceSettingsList = JsonSerializer.Deserialize<List<ViscaDeviceSettings?>>(serializedViscaDeviceSettings) ?? new();
+                entries = JsonSerializer.Deserialize<List<JsonElement>>(serializedViscaDeviceSettings) ?? new();
             }
             catch (Exception e)
             {
@@ -46,22 +46,28 @@ namespace PtzJoystickControl.Application.Db
                 return new List<ICamera>();
             }
 
-            // One camera that cannot be loaded (e.g. a camera type from a newer build) must not lose the others.
+            // One camera that cannot be loaded (e.g. a camera type from a newer build, or a value of the
+            // wrong type) must not lose the others, so each entry is read on its own.
             var cameras = new List<ICamera>();
-            for (var i = 0; i < viscaDeviceSettingsList.Count; i++)
+            for (var i = 0; i < entries.Count; i++)
             {
-                var viscaDeviceSettings = viscaDeviceSettingsList[i];
                 try
                 {
-                    cameras.Add(LoadCamera(viscaDeviceSettings));
+                    cameras.Add(LoadCamera(entries[i].Deserialize<ViscaDeviceSettings>()));
                 }
                 catch (Exception e)
                 {
-                    Trace.TraceWarning($"Skipping camera '{viscaDeviceSettings?.Name}' (entry {i + 1}, type {viscaDeviceSettings?.IViscaDeveiceTypeAssemblyQualifiedName}) in {_cameratFilePath}: it cannot be loaded: {e.GetBaseException().Message}");
+                    Trace.TraceWarning($"Skipping camera '{Text(entries[i], nameof(ViscaDeviceSettings.Name))}' (entry {i + 1}, type {Text(entries[i], nameof(ViscaDeviceSettings.IViscaDeveiceTypeAssemblyQualifiedName))}) in {_cameratFilePath}: it cannot be loaded: {e.GetBaseException().Message}");
                 }
             }
             return cameras;
         }
+
+        // The entry's text value for the key, to name an entry that cannot be loaded; null when it has none.
+        private static string? Text(JsonElement entry, string key) =>
+            entry.ValueKind == JsonValueKind.Object && entry.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString()
+                : null;
 
         private ICamera LoadCamera(ViscaDeviceSettings? viscaDeviceSettings)
         {

@@ -152,6 +152,25 @@ public sealed class CameraSettingsStoreFormatTests : IDisposable
         Assert.DoesNotContain(trace.Events, e => e.Type == TraceEventType.Error && e.Message.Contains(_path));
     }
 
+    // Valid JSON whose entry does not fit the format: a value of the wrong type, or no object at all.
+    [Fact]
+    public void AnEntryThatDoesNotFitTheFormat_IsSkippedWithAWarningNamingIt_AndTheOthersLoad()
+    {
+        using var trace = new TraceRecorder();
+        var visca = JsonDocument.Parse(CamerasJsonBeforeTheAbstraction).RootElement.EnumerateArray().Select(e => e.GetRawText()).ToList();
+        var textPort = $"{{\"{TypeNameKey}\":\"{typeof(XcCamera).AssemblyQualifiedName}\",\"IpAddress\":\"\",\"Name\":\"Text port\",\"Port\":\"80\",\"CompanionNumber\":6}}";
+        File.WriteAllText(_path, $"[{visca[0]},{textPort},5,{visca[1]}]");
+
+        var loaded = new CameraSettingsStore(_path).GetAllCameras().ToList();
+
+        Assert.Equal(new[] { "Cam 1", "Cam 2" }, loaded.Select(c => c.Name));
+        var warnings = trace.Events.Where(e => e.Type == TraceEventType.Warning && e.Message.Contains(_path)).Select(e => e.Message).ToList();
+        Assert.Equal(2, warnings.Count);
+        Assert.Contains(warnings, m => m.Contains("Text port") && m.Contains("entry 2"));
+        Assert.Contains(warnings, m => m.Contains("entry 3"));
+        Assert.DoesNotContain(trace.Events, e => e.Type == TraceEventType.Error && e.Message.Contains(_path));
+    }
+
     private static void AssertSameKeysAndValues(string expectedJson, string actualJson) =>
         AssertSameKeysAndValues(Entries(expectedJson), Entries(actualJson));
 
