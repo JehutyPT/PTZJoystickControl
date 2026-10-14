@@ -298,9 +298,9 @@ public class XcCameraPresetTests
             _ => XcReply.Never,
         };
         using var fake = new FakeXcCamera { Responder = r => r.Preset != null ? recallReply : XcReply.Ok };
-        // Only the unanswered recall times out, after a short timeout. The other cases take a long one,
+        // Only the unanswered recall times out, after the 500 ms production timeout. The other cases take a long one,
         // so that no request the fake answers at once can time out on a busy host.
-        var requestTimeout = answer == "unanswered" ? TimeSpan.FromMilliseconds(300) : LongRequestTimeout;
+        var requestTimeout = answer == "unanswered" ? TimeSpan.FromMilliseconds(500) : LongRequestTimeout;
         using var camera = new XcCamera(name, requestTimeout, LongProbeInterval) { Port = fake.Port };
         camera.Pan(0.5, PanDir.Left);
         camera.Pan(0.5, PanDir.Stop);
