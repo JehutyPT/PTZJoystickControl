@@ -8,11 +8,11 @@ public interface IGamepad : IGamepadInfo, INotifyPropertyChanged
 {
     //public abstract Guid Id { get; }
     //public abstract string Name { get; }
-    public abstract ObservableCollection<ViscaDeviceBase>? Cameras { get; set; }
+    public abstract ObservableCollection<ICamera>? Cameras { get; set; }
     public abstract IReadOnlyList<ICommand> Commands { get; }
     public abstract bool DetectInput { get; set; }
     public abstract IEnumerable<IInput> Inputs { get; }
-    public abstract ViscaDeviceBase? SelectedCamera { get; set; }
+    public abstract ICamera? SelectedCamera { get; set; }
 
     public abstract event PropertyChangedEventHandler? PersistentPropertyChanged;
 

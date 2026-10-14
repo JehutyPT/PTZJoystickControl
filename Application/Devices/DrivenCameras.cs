@@ -6,7 +6,7 @@ namespace PtzJoystickControl.Application.Devices;
 
 /// <summary>
 /// Follows a controller's camera selection while it is active. When the selection changes and the
-/// app is driving the camera being left (<see cref="ViscaDeviceBase.IsMoving"/>), that camera is
+/// app is driving the camera being left (<see cref="ICamera.IsMoving"/>), that camera is
 /// stopped once, so it cannot keep moving on the last command it was sent. Every camera the
 /// controller has had selected is also remembered, so that when the controller goes away each of
 /// them is stopped unconditionally: a stop on switch may have been lost.
@@ -14,8 +14,8 @@ namespace PtzJoystickControl.Application.Devices;
 public sealed class DrivenCameras
 {
     private readonly IGamepad gamepad;
-    private readonly HashSet<ViscaDeviceBase> cameras = new();
-    private ViscaDeviceBase? current;
+    private readonly HashSet<ICamera> cameras = new();
+    private ICamera? current;
     private bool tracking = true;
 
     public DrivenCameras(IGamepad gamepad)
@@ -28,14 +28,14 @@ public sealed class DrivenCameras
     }
 
     /// <summary>
-    /// Stops tracking, then calls <see cref="ViscaDeviceBase.Stop"/> once on each tracked camera.
+    /// Stops tracking, then calls <see cref="ICamera.Stop"/> once on each tracked camera.
     /// A camera that fails to stop does not keep the others from stopping, and nothing is thrown.
     /// </summary>
     public void StopAll()
     {
         gamepad.PropertyChanged -= OnGamepadPropertyChanged;
 
-        ViscaDeviceBase[] toStop;
+        ICamera[] toStop;
         lock (cameras)
         {
             tracking = false;
@@ -69,9 +69,9 @@ public sealed class DrivenCameras
     /// Runs inside the <see cref="IGamepad.SelectedCamera"/> setter, so the stop is queued before
     /// any command can reach the newly selected camera.
     /// </summary>
-    private void OnSelectionChanged(ViscaDeviceBase? selected)
+    private void OnSelectionChanged(ICamera? selected)
     {
-        ViscaDeviceBase? previous;
+        ICamera? previous;
         lock (cameras)
         {
             if (!tracking || ReferenceEquals(current, selected))

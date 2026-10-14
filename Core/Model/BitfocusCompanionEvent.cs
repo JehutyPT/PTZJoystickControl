@@ -22,7 +22,7 @@ namespace PtzJoystickControl.Core.Model
         private static readonly Dictionary<string, InboundBitfocusCompanionEventEnum> Commands =
             Enum.GetValues<InboundBitfocusCompanionEventEnum>().ToDictionary(e => e.ToString(), StringComparer.Ordinal);
 
-        public BitfocusCompanionEvent(InboundBitfocusCompanionEventEnum eventType, int companionNumber, ViscaDeviceBase camera)
+        public BitfocusCompanionEvent(InboundBitfocusCompanionEventEnum eventType, int companionNumber, ICamera camera)
         {
             EventType = eventType;
             CompanionNumber = companionNumber;
@@ -33,7 +33,7 @@ namespace PtzJoystickControl.Core.Model
 
         public int CompanionNumber { get; }
 
-        public ViscaDeviceBase Camera { get; }
+        public ICamera Camera { get; }
 
         /// <summary>
         /// Validates every parameter of an inbound request before anything is executed.
@@ -43,7 +43,7 @@ namespace PtzJoystickControl.Core.Model
         /// request is empty or any parameter does not match.
         /// </summary>
         public static BitfocusCompanionRequestParseResult ParseRequest(
-            IEnumerable<KeyValuePair<string?, string?>> parameters, IReadOnlyCollection<ViscaDeviceBase> cameras)
+            IEnumerable<KeyValuePair<string?, string?>> parameters, IReadOnlyCollection<ICamera> cameras)
         {
             var events = new List<BitfocusCompanionEvent>();
 

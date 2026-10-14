@@ -27,8 +27,8 @@
 				<DataTemplate DataType="{x:Type devices:ViscaIPDeviceBase}">
 					<v:IPCameraView DataContext="{Binding, Converter={StaticResource CameraToCameraViewConverter}}"/>
 				</DataTemplate>
-				<DataTemplate DataType="{x:Type devices:ViscaDeviceBase}">
-					<TextBlock Text="Unsupported visca device"/>
+				<DataTemplate DataType="{x:Type devices:ICamera}">
+					<TextBlock Text="Unsupported camera type"/>
 				</DataTemplate>
 			</ListBox.DataTemplates>
 		</ListBox>

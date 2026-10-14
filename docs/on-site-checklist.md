@@ -6,6 +6,19 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #44: Camera abstraction
+
+Everything outside the VISCA camera now works with a protocol-neutral camera (`ICamera`) instead of the VISCA camera class, so that another camera type can join the camera list later (#47). Nothing should look or behave differently: the camera rows, `Cameras.json`, the controller mappings and camera control are unchanged. Back up `%APPDATA%\PTZJoystickControl\Cameras.json`, `Gamepads.json` and `SkaarhojGamepads.json` before starting the new build, and note each camera row's fields in the previous build.
+
+- [ ] Start the new build with the existing settings files: no settings `WARN` or `ERROR` in the log (tray menu → **Show log**). Both CR-N500 rows show the same **Name**, **IP Address**, **Port**, **Protocol**, **Header**, **Interval** and **Companion #** as in the previous build, with the connected status, and no row reads "Unsupported camera type". The USB joystick's and the panel's mappings are as before.
+- [ ] In a camera row, type an invalid IP address, an invalid port, then a **Companion #** of 0 or another camera's number, one at a time: each field shows the same red border and message as the previous build. Undo each. **Add** adds a row with the same fields and the next free Companion #, and that row's remove button removes it again.
+- [ ] Rename a camera, then quit and restart the app: the new name is kept and every other field is unchanged. Rename it back.
+- [ ] With the USB joystick selected, pan, tilt, zoom and focus both CR-N500s: the speeds are as in the previous build, and each camera stops on release.
+- [ ] Select each camera from its Companion button, then by clicking its row in the main window: the selected controller drives it, and the tray icon follows the selection.
+- [ ] Pan camera 1 and, while holding the stick, select camera 2 from Companion: camera 1 stops, and the stick now drives camera 2.
+- [ ] Pan a camera and, while holding the stick, unplug the USB joystick: the camera stops. Plug it back in, pan again and, while holding the stick, select the SKAARHOJ panel in the controller list (which deactivates the joystick): the camera stops.
+- [ ] With the panel selected, repeat the Companion switch check with the panel's stick. Then pan a camera and, while holding the stick, pull the panel's Ethernet cable: the camera stops within about half a second. The stop when the panel falls asleep is the same stop; the #39 held-still check covers it, run with this build.
+
 ### #43: Max speed is a percentage
 
 Pan, tilt, zoom and focus **Max speed** (axes) and **Speed** (buttons) are now percentages of the full range (0–100 %) instead of VISCA steps. Saved steps are converted on load to the smallest percentage that still reaches the same top speed (pan 12 of 24 becomes 48 %, zoom 5 of 7 becomes 72 %); at 100 % the cameras get exactly the speeds the previous build sent. Back up `%APPDATA%\PTZJoystickControl\Gamepads.json` and `SkaarhojGamepads.json` before starting the new build, and note each axis's and button's Max speed/Speed in the previous build.

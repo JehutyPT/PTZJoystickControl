@@ -5,7 +5,7 @@ namespace PtzJoystickControl.Core.Services;
 
 public interface ICamerasService
 {
-    public ObservableCollection<ViscaDeviceBase> Cameras { get; }
-    public void AddCamera(ViscaDeviceBase camera);
-    public void RemoveCamera(ViscaDeviceBase camera);
+    public ObservableCollection<ICamera> Cameras { get; }
+    public void AddCamera(ICamera camera);
+    public void RemoveCamera(ICamera camera);
 }

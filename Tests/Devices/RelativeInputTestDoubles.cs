@@ -70,11 +70,11 @@ internal sealed class FakeGamepad : IGamepad
     public string Name => "Fake gamepad";
     public bool IsActivated { get; set; } = true;
     public bool IsConnected { get; set; } = true;
-    public ObservableCollection<ViscaDeviceBase>? Cameras { get; set; }
+    public ObservableCollection<ICamera>? Cameras { get; set; }
     public IReadOnlyList<ICommand> Commands => CommandList;
     public bool DetectInput { get; set; }
     public IEnumerable<IInput> Inputs => InputList;
-    public ViscaDeviceBase? SelectedCamera { get; set; }
+    public ICamera? SelectedCamera { get; set; }
 
     public void Acquire() { }
     public void Unacquire() { }
@@ -82,26 +82,30 @@ internal sealed class FakeGamepad : IGamepad
 }
 
 /// <summary>A camera that records each move's speed fraction and direction sign (0 = stop) on any axis.</summary>
-internal sealed class SpeedRecordingCamera : ViscaDeviceBase
+internal sealed class SpeedRecordingCamera : ICamera
 {
-    public SpeedRecordingCamera() : base("Speed recorder") { }
-
     public List<(double Speed, int Sign)> Runs { get; } = new();
 
-    public override void Pan(double panSpeed, PanDir panDir) =>
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+    public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }
+
+    public string Name => "Speed recorder";
+    public int? CompanionNumber { get; set; }
+    public bool Connected => true;
+    public bool IsMoving => false;
+
+    public void Pan(double panSpeed, PanDir panDir) =>
         Runs.Add((panSpeed, panDir == PanDir.Stop ? 0 : panDir == PanDir.Right ? 1 : -1));
-    public override void Tilt(double tiltSpeed, TiltDir tiltDir) =>
+    public void Tilt(double tiltSpeed, TiltDir tiltDir) =>
         Runs.Add((tiltSpeed, tiltDir == TiltDir.Stop ? 0 : tiltDir == TiltDir.Up ? 1 : -1));
-    public override void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir) =>
-        throw new NotSupportedException("Commands drive one axis at a time");
-    public override void Zoom(double zoomSpeed, ZoomDir zoomDir) =>
+    public void Zoom(double zoomSpeed, ZoomDir zoomDir) =>
         Runs.Add((zoomSpeed, zoomDir == ZoomDir.Stop ? 0 : zoomDir == ZoomDir.Tele ? 1 : -1));
-    public override void Focus(double focusSpeed, FocusDir focusDir) =>
+    public void Focus(double focusSpeed, FocusDir focusDir) =>
         Runs.Add((focusSpeed, focusDir == FocusDir.Stop ? 0 : focusDir == FocusDir.Far ? 1 : -1));
-    public override void Power(Power byteVal) { }
-    public override void FocusMode(FocusMode focusMode) { }
-    public override void FocusLock(FocusLock focusMode) { }
-    public override void Preset(Preset preset, byte presetNumber) { }
-    public override void PresetRecallSpeed(byte value) { }
-    public override void Stop() { }
+    public void Power(Power power) { }
+    public void FocusMode(FocusMode focusMode) { }
+    public void FocusLock(FocusLock focusLock) { }
+    public void Preset(Preset preset, byte presetNumber) { }
+    public void PresetRecallSpeed(byte speed) { }
+    public void Stop() { }
 }

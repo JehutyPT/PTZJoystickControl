@@ -41,10 +41,10 @@ public sealed class SkaarhojGamepad : IGamepad
     private bool isActivated;
     private bool isConnected = true;
     private volatile bool unacquired;
-    private ViscaDeviceBase? selectedCamera;
-    private ObservableCollection<ViscaDeviceBase>? cameras;
+    private ICamera? selectedCamera;
+    private ObservableCollection<ICamera>? cameras;
 
-    internal SkaarhojGamepad(string id, string name, ICommandsService commandsService, ObservableCollection<ViscaDeviceBase> cameras)
+    internal SkaarhojGamepad(string id, string name, ICommandsService commandsService, ObservableCollection<ICamera> cameras)
     {
         Id = id;
         Name = name;
@@ -98,7 +98,7 @@ public sealed class SkaarhojGamepad : IGamepad
         }
     }
 
-    public ObservableCollection<ViscaDeviceBase>? Cameras
+    public ObservableCollection<ICamera>? Cameras
     {
         get => cameras;
         set
@@ -108,7 +108,7 @@ public sealed class SkaarhojGamepad : IGamepad
         }
     }
 
-    public ViscaDeviceBase? SelectedCamera
+    public ICamera? SelectedCamera
     {
         get => selectedCamera;
         set

@@ -15,7 +15,7 @@ public static class CompanionCameraSelection
     /// Stopping the previous camera, when it was moving, is done by each controller's
     /// <see cref="DrivenCameras"/> as the selection changes.
     /// </summary>
-    public static void SelectOnEveryController(IEnumerable<IGamepad> controllers, ViscaDeviceBase camera)
+    public static void SelectOnEveryController(IEnumerable<IGamepad> controllers, ICamera camera)
     {
         foreach (var controller in controllers)
         {

@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 
 namespace PtzJoystickControl.Core.Devices;
 
-public abstract class ViscaDeviceBase : INotifyPropertyChanged
+public abstract class ViscaDeviceBase : ICamera
 {
     protected string name = null!;
     protected byte address = 0x01;

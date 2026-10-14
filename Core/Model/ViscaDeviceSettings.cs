@@ -24,12 +24,12 @@ public class ViscaDeviceSettings
     {
     }
 
-    public ViscaDeviceSettings(ViscaDeviceBase viscaDevice)
+    public ViscaDeviceSettings(ICamera camera)
     {
-        CompanionNumber = viscaDevice.CompanionNumber;
-        IViscaDeveiceTypeAssemblyQualifiedName = viscaDevice.GetType().AssemblyQualifiedName!;
-        Name = viscaDevice.Name;
-        if(viscaDevice is ViscaIPDeviceBase viscaIPDevice)
+        CompanionNumber = camera.CompanionNumber;
+        IViscaDeveiceTypeAssemblyQualifiedName = camera.GetType().AssemblyQualifiedName!;
+        Name = camera.Name;
+        if(camera is ViscaIPDeviceBase viscaIPDevice)
         {
             IpAddress = viscaIPDevice.IPAddress;
             Port = viscaIPDevice.Port;

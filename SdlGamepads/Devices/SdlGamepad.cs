@@ -36,8 +36,8 @@ public class SdlGamepad : IGamepad
     public bool DetectInput { get; set; } = false;
 
     private readonly Dictionary<string, IInput> inputs = new();
-    private ViscaDeviceBase? selectedCamera;
-    private ObservableCollection<ViscaDeviceBase>? cameras;
+    private ICamera? selectedCamera;
+    private ObservableCollection<ICamera>? cameras;
 
     public bool IsActivated { 
         get => isActivated;
@@ -60,7 +60,7 @@ public class SdlGamepad : IGamepad
         }
     }
 
-    public ObservableCollection<ViscaDeviceBase>? Cameras
+    public ObservableCollection<ICamera>? Cameras
     {
         get => cameras;
         set
@@ -71,7 +71,7 @@ public class SdlGamepad : IGamepad
     }
 
 
-    public ViscaDeviceBase? SelectedCamera
+    public ICamera? SelectedCamera
     {
         get => selectedCamera;
         set
@@ -91,7 +91,7 @@ public class SdlGamepad : IGamepad
     /// <summary>Cameras this gamepad has had selected; stopped when it disconnects or is deactivated.</summary>
     internal DrivenCameras DrivenCameras { get; }
 
-    internal SdlGamepad(SdlGamepadInfo gamepadInfo, ICommandsService commandsService, ObservableCollection<ViscaDeviceBase> cameras)
+    internal SdlGamepad(SdlGamepadInfo gamepadInfo, ICommandsService commandsService, ObservableCollection<ICamera> cameras)
     {
         Name = gamepadInfo.Name;
         Cameras = cameras;
