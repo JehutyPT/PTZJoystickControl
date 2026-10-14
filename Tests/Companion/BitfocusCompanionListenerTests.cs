@@ -142,6 +142,8 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
         Assert.Equal(end, _speedProfiles.Profiles.ActivePosition);
         Assert.Single(_speedProfileStore.Saves);
         Assert.Equal(1, Volatile.Read(ref _speedProfileChanges));
+        // Only the listener's lines: Trace is global, and other test classes log speed-profile refusals in
+        // parallel. The service has nothing to log here: at either end a step just leaves the list as it is.
         Assert.DoesNotContain(trace.Events, e =>
             e.Type is TraceEventType.Warning or TraceEventType.Error && e.Message.Contains("Companion listener"));
     }
@@ -490,12 +492,12 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
 
         public void StepFaster() => throw new InvalidOperationException("step failed");
         public void StepFiner() => throw new InvalidOperationException("step failed");
-        public void SetActive(int position) => throw new NotSupportedException();
-        public void Add() => throw new NotSupportedException();
-        public void Edit(int position, SpeedProfile edited) => throw new NotSupportedException();
-        public void MoveUp(int position) => throw new NotSupportedException();
-        public void MoveDown(int position) => throw new NotSupportedException();
-        public void Remove(int position) => throw new NotSupportedException();
+        public void SetActive(int position) { }
+        public void Add() { }
+        public void Edit(int position, SpeedProfile edited) { }
+        public void MoveUp(int position) { }
+        public void MoveDown(int position) { }
+        public void Remove(int position) { }
     }
 
     private sealed class RecordingTraceListener : TraceListener
