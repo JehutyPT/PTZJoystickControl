@@ -77,11 +77,7 @@ public class XcCameraPresetTests
     [Fact]
     public async Task ARecall_GoesOutAheadOfAPendingMove()
     {
-        var held = 0;
-        using var fake = new FakeXcCamera
-        {
-            Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
-        };
+        using var fake = new FakeXcCamera { Responder = XcTestCameras.HoldingTheFirstControlRequest() };
         using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout);
         camera.Pan(0.2, PanDir.Left);
         await fake.WaitForControlAsync(1);
@@ -124,11 +120,7 @@ public class XcCameraPresetTests
     [Fact]
     public async Task AStopEnteredAfterARecallBeforeEitherWasSent_GoesOutFirst_ThenTheRecall()
     {
-        var held = 0;
-        using var fake = new FakeXcCamera
-        {
-            Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
-        };
+        using var fake = new FakeXcCamera { Responder = XcTestCameras.HoldingTheFirstControlRequest() };
         using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout);
         camera.Zoom(0.5, ZoomDir.Tele);
         await fake.WaitForControlAsync(1);
@@ -149,11 +141,7 @@ public class XcCameraPresetTests
     [Fact]
     public async Task Stop_DropsARecallNotYetSent()
     {
-        var held = 0;
-        using var fake = new FakeXcCamera
-        {
-            Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
-        };
+        using var fake = new FakeXcCamera { Responder = XcTestCameras.HoldingTheFirstControlRequest() };
         using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout);
         camera.Pan(0.5, PanDir.Left);
         await fake.WaitForControlAsync(1);
@@ -172,11 +160,7 @@ public class XcCameraPresetTests
     [Fact]
     public async Task ANewerRecall_ReplacesOneNotYetSent()
     {
-        var held = 0;
-        using var fake = new FakeXcCamera
-        {
-            Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
-        };
+        using var fake = new FakeXcCamera { Responder = XcTestCameras.HoldingTheFirstControlRequest() };
         using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout);
         camera.Pan(0.5, PanDir.Left);
         await fake.WaitForControlAsync(1);

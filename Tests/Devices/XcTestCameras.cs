@@ -15,6 +15,14 @@ internal static class XcTestCameras
         return camera;
     }
 
+    // A FakeXcCamera responder that holds the first control request until the test calls Release, and
+    // answers every other request at once.
+    internal static Func<XcRequest, XcReply> HoldingTheFirstControlRequest()
+    {
+        var held = 0;
+        return r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok;
+    }
+
     // Trace listeners are global and test classes run in parallel: log assertions filter on this name.
     internal static string UniqueName() => $"XC test {Guid.NewGuid():N}";
 

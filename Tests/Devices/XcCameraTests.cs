@@ -92,7 +92,9 @@ public class XcCameraTests
     [InlineData(0.0, FocusDir.Far, "c.1.focus.speed=0&c.1.focus.action=far")]
     [InlineData(0.0, FocusDir.Near, "c.1.focus.speed=0&c.1.focus.action=near")]
     [InlineData(0.0001, FocusDir.Far, "c.1.focus.speed=0&c.1.focus.action=far")]
+    [InlineData(0.0001, FocusDir.Near, "c.1.focus.speed=0&c.1.focus.action=near")]
     [InlineData(0.4999, FocusDir.Near, "c.1.focus.speed=0&c.1.focus.action=near")]
+    [InlineData(0.5, FocusDir.Far, "c.1.focus.speed=1&c.1.focus.action=far")]
     [InlineData(0.5, FocusDir.Near, "c.1.focus.speed=1&c.1.focus.action=near")]
     [InlineData(1.0, FocusDir.Far, "c.1.focus.speed=2&c.1.focus.action=far")]
     [InlineData(1.0, FocusDir.Near, "c.1.focus.speed=2&c.1.focus.action=near")]
@@ -113,11 +115,7 @@ public class XcCameraTests
     [Fact]
     public async Task PanAndZoomChangedTogether_GoOutInOneRequest_PanAndTiltFirst()
     {
-        var held = 0;
-        using var fake = new FakeXcCamera
-        {
-            Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
-        };
+        using var fake = new FakeXcCamera { Responder = XcTestCameras.HoldingTheFirstControlRequest() };
         using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout);
         camera.Tilt(0.5, TiltDir.Up);
         await fake.WaitForControlAsync(1);
@@ -140,7 +138,9 @@ public class XcCameraTests
     [InlineData(0.0, ZoomDir.Tele, "c.1.zoom.speed.dir=0&c.1.zoom=tele")]
     [InlineData(0.0, ZoomDir.Wide, "c.1.zoom.speed.dir=0&c.1.zoom=wide")]
     [InlineData(0.0001, ZoomDir.Tele, "c.1.zoom.speed.dir=0&c.1.zoom=tele")]
+    [InlineData(0.0001, ZoomDir.Wide, "c.1.zoom.speed.dir=0&c.1.zoom=wide")]
     [InlineData(2.0 / 15, ZoomDir.Wide, "c.1.zoom.speed.dir=2&c.1.zoom=wide")]
+    [InlineData(0.5, ZoomDir.Tele, "c.1.zoom.speed.dir=7&c.1.zoom=tele")]
     [InlineData(0.5, ZoomDir.Wide, "c.1.zoom.speed.dir=7&c.1.zoom=wide")]
     [InlineData(1.0, ZoomDir.Tele, "c.1.zoom.speed.dir=15&c.1.zoom=tele")]
     [InlineData(1.0, ZoomDir.Wide, "c.1.zoom.speed.dir=15&c.1.zoom=wide")]
@@ -182,11 +182,7 @@ public class XcCameraTests
     [Fact]
     public async Task ChangesWhileARequestIsInFlight_SendOnlyTheNewestStateNext()
     {
-        var held = 0;
-        using var fake = new FakeXcCamera
-        {
-            Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
-        };
+        using var fake = new FakeXcCamera { Responder = XcTestCameras.HoldingTheFirstControlRequest() };
         using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout);
         camera.Pan(0.1, PanDir.Right);
         await fake.WaitForControlAsync(1);

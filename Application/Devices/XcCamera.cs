@@ -92,10 +92,11 @@ public class XcCamera : XcCameraBase, IDisposable
     // The camera preset to recall, with its p.ptzspeed (null for none), in a request of its own once no
     // stop is pending; null when no recall is wanted. Sent once, never retried: a newer recall
     // replaces it, and Stop() drops it.
-    private (int Preset, int? Speed)? _recall;
-    // The p.ptzspeed recalls carry, from the last Preset Recall Speed. Null until one is set, so a
-    // recall moves at the speeds saved with the camera preset. Not saved.
-    private int? _recallSpeed;
+    private (int Preset, int? PresetSpeed)? _recall;
+    // The p.ptzspeed (PresetSpeedMin..PresetSpeedMax) recalls carry, mapped from the last Preset
+    // Recall Speed. Null until one is set, so a recall moves at the speeds saved with the camera
+    // preset. Not saved.
+    private int? _presetSpeed;
     // Stopwatch timestamp of the last request's completion; long ago until the first.
     private long _lastCompletedAt = long.MinValue / 4;
     // Why the current run of failed requests fails; null while requests succeed. Logged when it changes.
@@ -308,7 +309,7 @@ public class XcCamera : XcCameraBase, IDisposable
     {
         var presetSpeed = ToXcPresetSpeed(speed);
         lock (_lock)
-            _recallSpeed = presetSpeed;
+            _presetSpeed = presetSpeed;
     }
 
     // Recalls the app's 0-based preset presetNumber as the camera preset presetNumber + 1. Saving or
@@ -330,7 +331,7 @@ public class XcCamera : XcCameraBase, IDisposable
 
         lock (_lock)
         {
-            _recall = (cameraPreset, _recallSpeed);
+            _recall = (cameraPreset, _presetSpeed);
             WakeLocked();
         }
     }
@@ -528,11 +529,11 @@ public class XcCamera : XcCameraBase, IDisposable
     }
 
     // A recall carries only the camera preset and, once a recall speed was set, its p.ptzspeed.
-    private Uri RecallUri((int Preset, int? Speed) recall) => new(recall.Speed is { } speed
+    private Uri RecallUri((int Preset, int? PresetSpeed) recall) => new(recall.PresetSpeed is { } speed
         ? string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ControlPath}?p={recall.Preset}&p.ptzspeed={speed}")
         : string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ControlPath}?p={recall.Preset}"));
 
-    private Uri ProbeUri() =>new(string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ProbePathAndQuery}"));
+    private Uri ProbeUri() => new(string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ProbePathAndQuery}"));
 
     private static string PanValue(PanDir dir) => dir switch
     {

@@ -14,6 +14,9 @@ public class XcCameraStopTests
     // Long enough for the whole repeat window (3 sends ~50 ms apart) plus scheduling jitter on a busy CI host.
     private static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(600);
 
+    // Long enough that a held request is still outstanding when the test releases it.
+    private static readonly TimeSpan LongRequestTimeout = TimeSpan.FromSeconds(30);
+
     [Fact]
     public async Task APanTiltStop_IsSentAtLeastThreeTimes_StopRepeatIntervalApart()
     {
@@ -65,11 +68,7 @@ public class XcCameraStopTests
     [Fact]
     public async Task AStopBehindAPendingMove_GoesOutFirst()
     {
-        var held = 0;
-        using var fake = new FakeXcCamera
-        {
-            Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
-        };
+        using var fake = new FakeXcCamera { Responder = XcTestCameras.HoldingTheFirstControlRequest() };
         using var camera = XcTestCameras.CameraFor(fake);
         camera.Pan(0.4, PanDir.Left);
         await fake.WaitForControlAsync(1);
@@ -88,12 +87,8 @@ public class XcCameraStopTests
     [Fact]
     public async Task AZoomStopBehindAPendingPanMove_GoesOutInTheNextRequest()
     {
-        var held = 0;
-        using var fake = new FakeXcCamera
-        {
-            Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
-        };
-        using var camera = XcTestCameras.CameraFor(fake);
+        using var fake = new FakeXcCamera { Responder = XcTestCameras.HoldingTheFirstControlRequest() };
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout);
         camera.Zoom(0.5, ZoomDir.Tele);
         await fake.WaitForControlAsync(1);
 
