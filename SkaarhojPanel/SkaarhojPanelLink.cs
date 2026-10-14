@@ -18,8 +18,8 @@ namespace PtzJoystickControl.SkaarhojPanel;
 /// </summary>
 public sealed class SkaarhojPanelLink : IDisposable
 {
-    public static readonly TimeSpan DefaultPingInterval = TimeSpan.FromMilliseconds(100);
-    public static readonly TimeSpan DefaultAckTimeout = TimeSpan.FromMilliseconds(300);
+    public static readonly TimeSpan DefaultPingInterval = TimeSpan.FromMilliseconds(500);
+    public static readonly TimeSpan DefaultSilenceTimeout = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan DefaultConnectGrace = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan DefaultReconnectInitialDelay = TimeSpan.FromSeconds(1);
     public static readonly TimeSpan DefaultReconnectMaxDelay = TimeSpan.FromSeconds(30);
@@ -38,7 +38,7 @@ public sealed class SkaarhojPanelLink : IDisposable
     private readonly string _host;
     private readonly int _port;
     private readonly TimeSpan _pingInterval;
-    private readonly TimeSpan _ackTimeout;
+    private readonly TimeSpan _silenceTimeout;
     private readonly TimeSpan _connectGrace;
     private readonly TimeSpan _reconnectInitialDelay;
     private readonly TimeSpan _reconnectMaxDelay;
@@ -62,7 +62,7 @@ public sealed class SkaarhojPanelLink : IDisposable
     private int _unknownLines;
 
     public SkaarhojPanelLink(string host, int port)
-        : this(host, port, DefaultPingInterval, DefaultAckTimeout, DefaultConnectGrace,
+        : this(host, port, DefaultPingInterval, DefaultSilenceTimeout, DefaultConnectGrace,
             DefaultReconnectInitialDelay, DefaultReconnectMaxDelay, DefaultConnectTimeout)
     {
     }
@@ -71,7 +71,7 @@ public sealed class SkaarhojPanelLink : IDisposable
         string host,
         int port,
         TimeSpan pingInterval,
-        TimeSpan ackTimeout,
+        TimeSpan silenceTimeout,
         TimeSpan connectGrace,
         TimeSpan reconnectInitialDelay,
         TimeSpan reconnectMaxDelay,
@@ -80,13 +80,13 @@ public sealed class SkaarhojPanelLink : IDisposable
         _host = host;
         _port = port;
         _pingInterval = pingInterval;
-        _ackTimeout = ackTimeout;
+        _silenceTimeout = silenceTimeout;
         _connectGrace = connectGrace;
         _reconnectInitialDelay = reconnectInitialDelay;
         _reconnectMaxDelay = reconnectMaxDelay;
         _connectTimeout = connectTimeout;
         // Check the deadline several times per ping, so detection lands within timeout + one ping interval.
-        var check = TimeSpan.FromTicks(Math.Min(pingInterval.Ticks, ackTimeout.Ticks) / 4);
+        var check = TimeSpan.FromTicks(Math.Min(pingInterval.Ticks, silenceTimeout.Ticks) / 4);
         _watchdogInterval = check < TimeSpan.FromMilliseconds(1) ? TimeSpan.FromMilliseconds(1) : check;
     }
 
@@ -424,7 +424,7 @@ public sealed class SkaarhojPanelLink : IDisposable
     {
         try
         {
-            var timeout = StopwatchTicks.From(_ackTimeout);
+            var timeout = StopwatchTicks.From(_silenceTimeout);
             while (true)
             {
                 await Task.Delay(_watchdogInterval, session).ConfigureAwait(false);
@@ -440,8 +440,8 @@ public sealed class SkaarhojPanelLink : IDisposable
                 if (now - since > timeout)
                 {
                     return lastAck == 0
-                        ? $"no ack within {_ackTimeout.TotalMilliseconds:0} ms after the {_connectGrace.TotalMilliseconds:0} ms connect grace"
-                        : $"no ack for {Stopwatch.GetElapsedTime(lastAck, now).TotalMilliseconds:0} ms (timeout {_ackTimeout.TotalMilliseconds:0} ms)";
+                        ? $"no ack within {_silenceTimeout.TotalMilliseconds:0} ms after the {_connectGrace.TotalMilliseconds:0} ms connect grace"
+                        : $"no ack for {Stopwatch.GetElapsedTime(lastAck, now).TotalMilliseconds:0} ms (timeout {_silenceTimeout.TotalMilliseconds:0} ms)";
                 }
             }
         }

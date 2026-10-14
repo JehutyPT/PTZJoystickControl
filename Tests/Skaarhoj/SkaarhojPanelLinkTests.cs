@@ -43,7 +43,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
             "127.0.0.1",
             port ?? _panel.Port,
             pingInterval: Ping,
-            ackTimeout: Timeout,
+            silenceTimeout: Timeout,
             connectGrace: grace ?? Grace,
             reconnectInitialDelay: reconnectInitial ?? NoReconnect,
             reconnectMaxDelay: reconnectMax ?? NoReconnect,
