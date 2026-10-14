@@ -48,9 +48,9 @@ public class SpeedProfilesService : ISpeedProfilesService
                 profiles.ActivePosition)
             : null);
 
-    public void MoveUp(int position) => Change(profiles => Move(profiles, position, -1, "up"));
+    public void MoveUp(int position) => Change(profiles => Move(profiles, position, -1));
 
-    public void MoveDown(int position) => Change(profiles => Move(profiles, position, +1, "down"));
+    public void MoveDown(int position) => Change(profiles => Move(profiles, position, +1));
 
     public void Remove(int position) => Change(profiles =>
     {
@@ -73,16 +73,17 @@ public class SpeedProfilesService : ISpeedProfilesService
 
     // Swaps the profile at position with its neighbour step away (-1 above, +1 below);
     // the profile that was active stays active.
-    private static SpeedProfileList? Move(SpeedProfileList profiles, int position, int step, string direction)
+    private static SpeedProfileList? Move(SpeedProfileList profiles, int position, int step)
     {
-        var request = $"move speed profile {position} {direction}";
+        var up = step < 0;
+        var request = $"move speed profile {position} {(up ? "up" : "down")}";
         if (!Exists(profiles, position, request))
             return null;
 
         var other = position + step;
         if (other < 1 || other > profiles.Count)
         {
-            Refuse(request, step < 0 ? "it is already first" : "it is already last");
+            Refuse(request, up ? "it is already first" : "it is already last");
             return null;
         }
 
