@@ -7,8 +7,11 @@ namespace PtzJoystickControl.Application.Commands;
 
 public class FocusMoveCommand : IDynamicCommand
 {
-    public FocusMoveCommand(IGamepad gamepad, IBitfocusCompanionService companionService) : base(gamepad, companionService)
+    private readonly ISpeedProfilesService _speedProfiles;
+
+    public FocusMoveCommand(IGamepad gamepad, IBitfocusCompanionService companionService, ISpeedProfilesService speedProfiles) : base(gamepad, companionService)
     {
+        _speedProfiles = speedProfiles;
     }
 
     public override string CommandName => "Manual focus";
@@ -26,6 +29,8 @@ public class FocusMoveCommand : IDynamicCommand
 
     protected override void Move(double speed, Direction direction)
     {
+        // Every focus move, on every camera, runs at the active speed profile's focus percentage.
+        speed *= _speedProfiles.Profiles.Active.Focus / 100.0;
         FocusDir focusDir;
 
         switch (direction)

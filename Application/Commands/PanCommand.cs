@@ -7,8 +7,11 @@ namespace PtzJoystickControl.Application.Commands;
 
 public class PanCommand : IDynamicCommand
 {
-    public PanCommand(IGamepad gamepad, IBitfocusCompanionService companionService) : base(gamepad, companionService)
+    private readonly ISpeedProfilesService _speedProfiles;
+
+    public PanCommand(IGamepad gamepad, IBitfocusCompanionService companionService, ISpeedProfilesService speedProfiles) : base(gamepad, companionService)
     {
+        _speedProfiles = speedProfiles;
     }
 
     public override string CommandName => "Pan";
@@ -25,6 +28,8 @@ public class PanCommand : IDynamicCommand
 
     protected override void Move(double speed, Direction direction)
     {
+        // Every pan move, on every camera, runs at the active speed profile's pan percentage.
+        speed *= _speedProfiles.Profiles.Active.Pan / 100.0;
         PanDir panDir;
 
         switch (direction)

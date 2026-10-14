@@ -7,8 +7,11 @@ namespace PtzJoystickControl.Application.Commands;
 
 public class TiltCommand : IDynamicCommand
 {
-    public TiltCommand(IGamepad gamepad, IBitfocusCompanionService companionService) : base(gamepad, companionService)
+    private readonly ISpeedProfilesService _speedProfiles;
+
+    public TiltCommand(IGamepad gamepad, IBitfocusCompanionService companionService, ISpeedProfilesService speedProfiles) : base(gamepad, companionService)
     {
+        _speedProfiles = speedProfiles;
     }
 
     public override string CommandName => "Tilt";
@@ -26,6 +29,8 @@ public class TiltCommand : IDynamicCommand
 
     protected override void Move(double speed, Direction direction)
     {
+        // Every tilt move, on every camera, runs at the active speed profile's tilt percentage.
+        speed *= _speedProfiles.Profiles.Active.Tilt / 100.0;
         TiltDir tiltDir;
 
         switch (direction)

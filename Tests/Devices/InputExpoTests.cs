@@ -4,6 +4,7 @@ using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Core.Commands;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
+using PtzJoystickControl.Tests.Services;
 using PtzJoystickControl.Tests.Skaarhoj;
 using Xunit;
 
@@ -278,10 +279,10 @@ public sealed class InputExpoTests
         gamepad.SelectedCamera = camera;
         IDynamicCommand command = commandName switch
         {
-            "Pan" => new PanCommand(gamepad, new NullCompanionService()),
-            "Tilt" => new TiltCommand(gamepad, new NullCompanionService()),
-            "Zoom" => new ZoomCommand(gamepad, new NullCompanionService()),
-            _ => new FocusMoveCommand(gamepad, new NullCompanionService()),
+            "Pan" => new PanCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full()),
+            "Tilt" => new TiltCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full()),
+            "Zoom" => new ZoomCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full()),
+            _ => new FocusMoveCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full()),
         };
         gamepad.CommandList.Add(command);
         var axis = new Input("axis-1", "Axis 1", InputType.Axis, gamepad.Commands) { DeadZone = 0, Saturation = 0 };
@@ -383,7 +384,7 @@ public sealed class InputExpoTests
         var gamepad = new FakeGamepad();
         var camera = new SpeedRecordingCamera();
         gamepad.SelectedCamera = camera;
-        var pan = new PanCommand(gamepad, new NullCompanionService());
+        var pan = new PanCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full());
         gamepad.CommandList.Add(pan);
         var button = new Input("button-1", "Button 1", InputType.Button, gamepad.Commands);
         button.SelectedCommand = pan;
@@ -455,7 +456,7 @@ public sealed class InputExpoTests
         var gamepad = new FakeGamepad();
         var camera = new SpeedRecordingCamera();
         gamepad.SelectedCamera = camera;
-        var zoom = new ZoomCommand(gamepad, new NullCompanionService());
+        var zoom = new ZoomCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full());
         using var trace = new TraceRecorder();
 
         var thrown = Record.Exception(() => zoom.Execute(bad, Direction.High));

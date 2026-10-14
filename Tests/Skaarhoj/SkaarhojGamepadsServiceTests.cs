@@ -40,7 +40,7 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
     private string SettingsPath => Path.Combine(_dir, "SkaarhojGamepads.json");
 
     private SkaarhojGamepadsService NewService(Action<Action>? notifyOnUiThread = null) => new(Address,
-        new GamepadSettingsStore(SettingsPath), _cameras, new CommandsService(_companion), _companion, _queue,
+        new GamepadSettingsStore(SettingsPath), _cameras, new CommandsService(_companion, TestSpeedProfiles.Full()), _companion, _queue,
         notifyOnUiThread);
 
     private static IGamepadInfo Info(SkaarhojGamepadsService service) => Assert.Single(service.Gamepads);

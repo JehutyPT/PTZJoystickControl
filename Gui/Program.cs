@@ -105,6 +105,11 @@ internal class Program
 
         services.RegisterConstant<ICameraSettingsStore>(new CameraSettingsStore());
         services.RegisterConstant<IGamepadSettingsStore>(new GamepadSettingsStore());
+        services.RegisterConstant<ISpeedProfileSettingsStore>(new SpeedProfileSettingsStore());
+
+        // Before the commands: every pan, tilt, zoom and focus command reads the active speed profile.
+        services.RegisterConstant<ISpeedProfilesService>(new SpeedProfilesService(
+            resolver.GetServiceOrThrow<ISpeedProfileSettingsStore>()));
 
         // Before the Companion service: an inbound request selects a camera by its Companion number.
         services.RegisterConstant<ICamerasService>(new CamerasService(
@@ -117,7 +122,8 @@ internal class Program
         services.RegisterConstant<IBitfocusCompanionService>(companion);
 
         services.RegisterConstant<ICommandsService>(new CommandsService(
-            resolver.GetServiceOrThrow<IBitfocusCompanionService>()));
+            resolver.GetServiceOrThrow<IBitfocusCompanionService>(),
+            resolver.GetServiceOrThrow<ISpeedProfilesService>()));
 
         // The one input queue: input arriving on other threads is run by SdlGamepadsService's input loop.
         var inputQueue = new InputQueue();

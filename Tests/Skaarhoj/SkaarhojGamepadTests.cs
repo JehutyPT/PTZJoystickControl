@@ -4,6 +4,7 @@ using PtzJoystickControl.Core.Commands;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.SkaarhojPanel;
 using PtzJoystickControl.Tests.Devices;
+using PtzJoystickControl.Tests.Services;
 using Xunit;
 
 namespace PtzJoystickControl.Tests.Skaarhoj;
@@ -16,7 +17,7 @@ public class SkaarhojGamepadTests
     {
         var cameras = new FakeCamerasService(_camera);
         var gamepad = new SkaarhojGamepad("skaarhoj:192.0.2.1", "SKAARHOJ panel (192.0.2.1)",
-            new CommandsService(new NullCompanionService()), cameras.Cameras);
+            new CommandsService(new NullCompanionService(), TestSpeedProfiles.Full()), cameras.Cameras);
         gamepad.SelectedCamera = _camera;
         return gamepad;
     }
@@ -41,7 +42,7 @@ public class SkaarhojGamepadTests
     public void HasTheDefaultCommandSet()
     {
         var gamepad = NewGamepad();
-        var expected = new CommandsService(new NullCompanionService()).GetCommandsForGamepad(gamepad)
+        var expected = new CommandsService(new NullCompanionService(), TestSpeedProfiles.Full()).GetCommandsForGamepad(gamepad)
             .Select(c => c.GetType()).ToArray();
 
         Assert.Equal(expected, gamepad.Commands.Select(c => c.GetType()).ToArray());
