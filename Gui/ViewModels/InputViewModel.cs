@@ -89,6 +89,7 @@ public class InputViewModel : ViewModelBase, INotifyPropertyChanged
         if (e?.PropertyName == nameof(_input.SelectedCommand))
         {
             NotifyPropertyChanged(nameof(IsCleared));
+            NotifyPropertyChanged(nameof(OutputValue));
             if (_secondInputViewModel != null)
                 NotifyPropertyChanged(nameof(ShowSecondCommand));
         }
