@@ -9,7 +9,6 @@ public abstract class ViscaIPDeviceBase : ViscaDeviceBase
     protected Socket? socket;
     protected Protocol protocol = Protocol.Udp;
     protected bool useHeader = true;
-    protected bool singleCommand = true; //TODO: test if allowed or not...
     protected IPEndPoint ViscaIpEndpont;
 
     public ViscaIPDeviceBase(string name) : this(name, null) { }
@@ -28,17 +27,6 @@ public abstract class ViscaIPDeviceBase : ViscaDeviceBase
         set
         {
             useHeader = value;
-            NotifyPropertyChanged();
-            NotifyPersistentPropertyChanged();
-        }
-    }
-
-    public bool SingleCommand
-    {
-        get => singleCommand;
-        set
-        {
-            singleCommand = value;
             NotifyPropertyChanged();
             NotifyPersistentPropertyChanged();
         }

@@ -11,10 +11,11 @@ public class ViscaDeviceSettings
     public Protocol Protocol { get; set; }
     public int SendWaitTime { get; set; }
     public bool UseHeader { get; set; }
-    public bool SingleCommand { get; set; }
 
     // Files saved before #15 also hold OnSelectedBitfocusPageNumber / OnSelectedBitfocusButtonNumber
     // (the Companion button pressed on selection). Deserialization skips them, so those files still load.
+    // Files saved before #50 also hold SingleCommand (an unused option to pack several VISCA commands
+    // into one packet; every packet carries one command). Skipped the same way, and not written back.
 
     // Absent in files saved before Companion numbers existed; CamerasService assigns one on load.
     public int? CompanionNumber { get; set; }
@@ -35,7 +36,6 @@ public class ViscaDeviceSettings
             Protocol = viscaIPDevice.Protocol;
             SendWaitTime = viscaIPDevice.SendWaitTime;
             UseHeader = viscaIPDevice.UseHeader;
-            SingleCommand = viscaIPDevice.SingleCommand;
         }
     }
 }

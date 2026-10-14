@@ -282,6 +282,31 @@ public class ViscaIpDeviceStopRepeatTests
         Assert.True(packets.Count(p => IsPanTiltStop(p.Payload)) >= MinStopSends, Describe(packets));
     }
 
+    [Fact]
+    public async Task SeveralPendingCommands_AreSentOneCommandPerPacket()
+    {
+        using var camera = new LoopbackCamera();
+
+        // Queued faster than the send throttle, so all three are pending at once.
+        camera.Device.PanTilt(10, 10, PanDir.Left, TiltDir.Up);
+        camera.Device.Zoom(5, ZoomDir.Tele);
+        camera.Device.Focus(5, FocusDir.Far);
+        await camera.WaitForPacketsAsync(3);
+        var packets = await camera.CollectAsync();
+
+        Assert.All(packets, p => Assert.True(IsOneCommand(p), Describe(packets)));
+        Assert.Contains(packets, p => IsPanTilt(p.Payload));
+        Assert.Contains(packets, p => p.Payload.Take(4).SequenceEqual(new byte[] { 0x81, 0x01, 0x04, 0x07 }));
+        Assert.Contains(packets, p => p.Payload.Take(4).SequenceEqual(new byte[] { 0x81, 0x01, 0x04, 0x08 }));
+    }
+
+    /// <summary>One VISCA command: a single 0xFF terminator, at the end, and a header that carries exactly one payload.</summary>
+    private static bool IsOneCommand(Packet p) =>
+        p.Payload.Length > 0 &&
+        p.Payload.Count(b => b == 0xFF) == 1 &&
+        p.Payload[^1] == 0xFF &&
+        p.HeaderPayloadLength == p.Payload.Length;
+
     /// <summary>Asserts at least 3 packets match, and the first 3 arrived within <paramref name="spread"/> of each other.</summary>
     private static void AssertStopsWithin(List<Packet> packets, Func<byte[], bool> isStop, TimeSpan spread)
     {
@@ -307,7 +332,7 @@ public class ViscaIpDeviceStopRepeatTests
     private static string Describe(IEnumerable<Packet> packets) =>
         "Received: " + string.Join(" | ", packets.Select(p => BitConverter.ToString(p.Payload)));
 
-    private sealed record Packet(byte[] Payload, TimeSpan ReceivedAt);
+    private sealed record Packet(byte[] Payload, TimeSpan ReceivedAt, int HeaderPayloadLength);
 
     /// <summary>A ViscaIpDevice pointed at a loopback UDP receiver that records VISCA payloads.</summary>
     private sealed class LoopbackCamera : IDisposable
@@ -342,7 +367,9 @@ public class ViscaIpDeviceStopRepeatTests
                     var result = await receiver.ReceiveAsync(cts.Token);
                     // Strip the 8-byte VISCA-over-IP header.
                     var payload = result.Buffer.Skip(8).ToArray();
-                    lock (received) received.Add(new Packet(payload, clock.Elapsed));
+                    // Header bytes 2-3: payload length, big-endian.
+                    var headerPayloadLength = result.Buffer.Length >= 4 ? (result.Buffer[2] << 8) | result.Buffer[3] : -1;
+                    lock (received) received.Add(new Packet(payload, clock.Elapsed, headerPayloadLength));
                 }
                 catch (OperationCanceledException) { return; }
                 catch (ObjectDisposedException) { return; }

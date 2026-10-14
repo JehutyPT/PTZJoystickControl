@@ -11,7 +11,6 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
 {
     private readonly object sendRecieveLock = new();
     private readonly HashSet<Func<ViscaIPHeaderType>> commandsToSend = new();
-    private readonly List<Func<ViscaIPHeaderType>> commandsToRemoveFromSet = new();
 
     byte[] tmpBuffer = new byte[16];
     ushort tmpBuffIndex = 0;
@@ -511,42 +510,34 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         return hadLock;
     }
 
+    // Each packet carries exactly one VISCA command (the first pending one); the rest go out on later sends.
     private void buildCommand()
     {
         sendBuffIndex = 0;
         lock (commandsToSend)
         {
-            foreach (var command in commandsToSend)
-            {
-                tmpBuffIndex = 0;
-                var headerType = command();
+            if (commandsToSend.Count == 0)
+                return;
 
-                ushort cmdLen = tmpBuffIndex;
-                if (useHeader)
-                    cmdLen += 8;
+            var command = commandsToSend.First();
+            tmpBuffIndex = 0;
+            var headerType = command();
 
-                if (sendBuffIndex + cmdLen <= sendBuffer.Length)
-                {
-                    if (useHeader)
-                        AddHeader(headerType, tmpBuffIndex);
+            ushort cmdLen = tmpBuffIndex;
+            if (useHeader)
+                cmdLen += 8;
 
-                    for (int i = 0; i < tmpBuffIndex; i++)
-                        sendBuffer[sendBuffIndex++] = tmpBuffer[i];
+            if (cmdLen > sendBuffer.Length)
+                return;
 
-                    commandsToRemoveFromSet.Add(command);
-                }
-                else
-                    break;
+            if (useHeader)
+                AddHeader(headerType, tmpBuffIndex);
 
-                if (singleCommand) 
-                    break;
-            }
-            foreach (var commandToRemove in commandsToRemoveFromSet)
-            {
-                commandsToSend.Remove(commandToRemove);
-            }
+            for (int i = 0; i < tmpBuffIndex; i++)
+                sendBuffer[sendBuffIndex++] = tmpBuffer[i];
+
+            commandsToSend.Remove(command);
         }
-        commandsToRemoveFromSet.Clear();
     }
 
     public void SendCommand()
