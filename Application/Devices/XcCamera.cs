@@ -2,6 +2,10 @@ using PtzJoystickControl.Core.Devices;
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
+using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace PtzJoystickControl.Application.Devices;
 
@@ -9,7 +13,9 @@ namespace PtzJoystickControl.Application.Devices;
 /// A camera driven over Canon's XC protocol (HTTP). Pan, tilt, zoom, focus and preset recall calls
 /// only record the wanted state; one background loop per camera sends it as sessionless
 /// <c>control.cgi</c> requests, one in flight at a time, newest wanted state first. A request
-/// combines every axis group that changed; a preset recall goes in a request of its own.
+/// combines every axis group that changed; a preset recall goes in a request of its own. With a
+/// username set, a request the camera answers with HTTP 401 is repeated at once with Basic or Digest
+/// credentials, and later requests carry them up front.
 /// </summary>
 public class XcCamera : XcCameraBase, IDisposable
 {
@@ -50,6 +56,14 @@ public class XcCamera : XcCameraBase, IDisposable
 
     // An unsupported operation is logged at most once per this long, per operation.
     private static readonly TimeSpan UnsupportedLogInterval = TimeSpan.FromMinutes(1);
+
+    // A login failure (an HTTP 401 the camera cannot get past) is logged at most once per this long,
+    // until the address, port or login changes.
+    private static readonly TimeSpan LoginFailureLogInterval = TimeSpan.FromMinutes(1);
+
+    private const string LoginRequired = "the camera requires a login; set username and password";
+    private const string LoginRefused = "the camera refused the username and password";
+    private const string LoginUnsupported = "the camera asks for a login the app does not support";
 
     private const string ControlPath = "/-wvhttp-01-/control.cgi";
     // The probe: a sessionless, read-only info request for one item group, which needs no control right.
@@ -106,11 +120,20 @@ public class XcCamera : XcCameraBase, IDisposable
     private bool _connected;
     // Stopwatch timestamp of the last request to the current address and port that succeeded.
     private long _lastSuccessAt = long.MinValue / 4;
-    // Bumped when the address or port changes: the outcome of a request sent before says nothing
-    // about the camera now configured.
+    // Bumped when the address, port or login changes: the outcome of a request sent before says
+    // nothing about the camera as now configured.
     private long _endpointVersion;
-    // Set by an address or port change: probe as soon as the gap allows, not after the probe interval.
+    // Set by an address, port or login change: probe as soon as the gap allows, not after the probe
+    // interval.
     private bool _probeNow;
+    // The camera's last login challenge, answered up front by every request with the current login to
+    // the address and port it came from; null until the camera challenges, after an address, port or
+    // login change, and after it challenged with nothing the app can answer. Only the send loop
+    // answers it.
+    private Challenge? _challenge;
+    // Stopwatch timestamp of the last login failure logged; long ago until the first, and after an
+    // address, port or login change.
+    private long _loginFailureLoggedAt = long.MinValue / 4;
     // Stopwatch timestamp each unsupported operation was last logged at.
     private readonly Dictionary<string, long> _unsupportedLoggedAt = new();
 
@@ -153,15 +176,13 @@ public class XcCamera : XcCameraBase, IDisposable
         string? information = null;
         lock (_lock)
         {
-            _endpointVersion++;
-            _probeNow = true;
+            OnReconfiguredLocked();
             _failure = null;
             if (_connected)
             {
                 _connected = false;
                 information = $"Camera {Name}: the XC camera's address or port changed; not connected until it answers";
             }
-            WakeLocked();
         }
 
         if (information != null)
@@ -169,6 +190,27 @@ public class XcCamera : XcCameraBase, IDisposable
             Trace.TraceInformation(information);
             RaiseConnectedChanged();
         }
+    }
+
+    // The next request carries the new login, or none, with a probe as soon as nothing else is wanted.
+    // A request in flight with the old login finishes or times out, and its outcome is ignored. Unlike
+    // an address change, Connected keeps its value until a request with the new login settles it.
+    protected override void OnLoginChanged()
+    {
+        lock (_lock)
+            OnReconfiguredLocked();
+    }
+
+    // After an address, port or login change: the outcome of a request sent before is ignored, no
+    // credentials go up front until the camera challenges again, the next login failure is logged at
+    // once, and a probe goes out as soon as the gap allows.
+    private void OnReconfiguredLocked()
+    {
+        _endpointVersion++;
+        _probeNow = true;
+        _challenge = null;
+        _loginFailureLoggedAt = long.MinValue / 4;
+        WakeLocked();
     }
 
     /// <summary>
@@ -395,8 +437,8 @@ public class XcCamera : XcCameraBase, IDisposable
                     continue;
                 }
 
-                var failure = await SendAsync(request.Uri, stopping).ConfigureAwait(false);
-                OnCompleted(request, failure);
+                var (failure, loginFailure, challenge) = await SendAsync(request, stopping).ConfigureAwait(false);
+                OnCompleted(request, failure, loginFailure, challenge);
             }
             catch (Exception) when (stopping.IsCancellationRequested)
             {
@@ -449,8 +491,10 @@ public class XcCamera : XcCameraBase, IDisposable
 
     // A request the loop sends: a control request (moves, stops or a preset recall) or a probe, to the
     // address and port current at EndpointVersion. StopIds, one per axis group, is the stop the request
-    // repeats in that group, or 0 for none.
-    private sealed record Request(Uri Uri, long[] StopIds, long EndpointVersion);
+    // repeats in that group, or 0 for none. Login is the username and password, null when no username
+    // is set; Challenge the one the camera gave at that address and port, answered up front, or null.
+    // Neither shows in a log: both print as their type name.
+    private sealed record Request(Uri Uri, long[] StopIds, long EndpointVersion, NetworkCredential? Login, Challenge? Challenge);
 
     // The request to send now, or null and how long to wait before looking again (infinite with no
     // address; a wake ends the wait early). Only the newest wanted state is ever sent, and a probe
@@ -482,15 +526,20 @@ public class XcCamera : XcCameraBase, IDisposable
 
         // Built before any state changes, so a failure here leaves the request wanted.
         var uri = recall ? RecallUri(_recall!.Value) : control ? ControlUri() : ProbeUri();
+        var login = Username.Length > 0 ? new NetworkCredential(Username, Password) : null;
+        // Answered only at the address and port it came from: the base class sets a new address or
+        // port before OnEndpointChanged forgets the challenge, and a request built in between goes to
+        // the new one.
+        var challenge = login != null && _challenge?.Authority == uri.Authority ? _challenge : null;
         _probeNow = false;
         var stopIds = new long[_groups.Length];
         if (recall)
         {
             _recall = null;
-            return new Request(uri, stopIds, _endpointVersion);
+            return new Request(uri, stopIds, _endpointVersion, login, challenge);
         }
         if (!control)
-            return new Request(uri, stopIds, _endpointVersion);
+            return new Request(uri, stopIds, _endpointVersion, login, challenge);
         for (var i = 0; i < _groups.Length; i++)
         {
             var group = _groups[i];
@@ -502,7 +551,7 @@ public class XcCamera : XcCameraBase, IDisposable
             group.StopSends++;
             stopIds[i] = group.StopId;
         }
-        return new Request(uri, stopIds, _endpointVersion);
+        return new Request(uri, stopIds, _endpointVersion, login, challenge);
     }
 
     private static long StopwatchTicks(TimeSpan span) => (long)(span.TotalSeconds * Stopwatch.Frequency);
@@ -563,25 +612,50 @@ public class XcCamera : XcCameraBase, IDisposable
         _ => "stop",
     };
 
-    // Sends one request; returns null when it succeeded, else why it failed. Throws only when stopping
-    // (or on an unexpected error, which the loop logs).
-    private async Task<string?> SendAsync(Uri uri, CancellationToken stopping)
+    // Sends one request; returns null when it succeeded, else why it failed and whether that is a login
+    // failure, with the camera's challenge to answer from now on (null when it did not challenge, or
+    // challenged with nothing the app can answer). A request the camera challenges is repeated once,
+    // at once, answering the challenge: both share the request's one timeout. Throws only when
+    // stopping (or on an unexpected error, which the loop logs).
+    private async Task<(string? Failure, bool LoginFailure, Challenge? Challenge)> SendAsync(Request request, CancellationToken stopping)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stopping);
         timeout.CancelAfter(_requestTimeout);
+        Challenge? challenge = null;
         try
         {
-            using var response = await _http.GetAsync(uri, timeout.Token).ConfigureAwait(false);
-            return Failure(response);
+            var login = request.Login;
+            using var response = await GetAsync(request.Uri, login != null ? request.Challenge?.Answer(login, request.Uri) : null, timeout.Token).ConfigureAwait(false);
+            if (response.StatusCode != HttpStatusCode.Unauthorized)
+                return (Failure(response), false, null);
+            if (login == null)
+                return (LoginRequired, true, null);
+
+            challenge = Challenge.From(response, request.Uri, request.Challenge);
+            if (challenge == null)
+                return ($"{LoginUnsupported} (offered: {Challenge.Offered(response)})", true, null);
+
+            using var retry = await GetAsync(request.Uri, challenge.Answer(login, request.Uri), timeout.Token).ConfigureAwait(false);
+            if (retry.StatusCode == HttpStatusCode.Unauthorized)
+                return (LoginRefused, true, Challenge.From(retry, request.Uri, challenge) ?? challenge);
+            return (Failure(retry), false, challenge);
         }
         catch (OperationCanceledException) when (!stopping.IsCancellationRequested)
         {
-            return $"no answer within {_requestTimeout.TotalMilliseconds:0} ms";
+            return ($"no answer within {_requestTimeout.TotalMilliseconds:0} ms", false, challenge);
         }
         catch (HttpRequestException e) when (!stopping.IsCancellationRequested)
         {
-            return e.GetBaseException().Message;
+            return (e.GetBaseException().Message, false, challenge);
         }
+    }
+
+    // A GET of the uri, with the Authorization header when there is one.
+    private async Task<HttpResponseMessage> GetAsync(Uri uri, AuthenticationHeaderValue? authorization, CancellationToken cancellation)
+    {
+        using var message = new HttpRequestMessage(HttpMethod.Get, uri);
+        message.Headers.Authorization = authorization;
+        return await _http.SendAsync(message, cancellation).ConfigureAwait(false);
     }
 
     // XC answers errors with HTTP 200 too: only livescope-status 0 means the camera did as asked.
@@ -602,10 +676,11 @@ public class XcCamera : XcCameraBase, IDisposable
         };
     }
 
-    // Ends each group's stop once it was sent often enough and succeeded, and updates Connected. Logs
-    // a failure when a run of failures starts or its reason changes, the first success after one, and
-    // each Connected change; never once per request.
-    private void OnCompleted(Request request, string? failure)
+    // Ends each group's stop once it was sent often enough and succeeded, keeps the camera's challenge,
+    // and updates Connected. Logs a failure when a run of failures starts or its reason changes (a
+    // login failure instead at most once per LoginFailureLogInterval), the first success after one,
+    // and each Connected change; never once per request.
+    private void OnCompleted(Request request, string? failure, bool loginFailure, Challenge? challenge)
     {
         string? warning = null;
         string? information = null;
@@ -626,9 +701,17 @@ public class XcCamera : XcCameraBase, IDisposable
 
             if (request.EndpointVersion != _endpointVersion)
             {
-                // Sent to an address or port no longer configured: says nothing about the camera now.
+                // Sent to an address or port, or with a login, no longer configured: says nothing about
+                // the camera now.
+                return;
             }
-            else if (failure == null)
+
+            if (challenge != null)
+                _challenge = challenge;
+            else if (loginFailure)
+                _challenge = null;
+
+            if (failure == null)
             {
                 _lastSuccessAt = now;
                 connectedChanged = !_connected;
@@ -642,11 +725,9 @@ public class XcCamera : XcCameraBase, IDisposable
             }
             else
             {
-                if (failure != _failure)
-                {
+                if (loginFailure ? LoginFailureLogDueLocked(now) : failure != _failure)
                     warning = $"Camera {Name}: request to the XC camera at {Address}:{Port} failed: {failure}";
-                    _failure = failure;
-                }
+                _failure = failure;
                 if (_connected && now - _lastSuccessAt >= StopwatchTicks(_probeInterval))
                 {
                     _connected = false;
@@ -664,6 +745,15 @@ public class XcCamera : XcCameraBase, IDisposable
             RaiseConnectedChanged();
     }
 
+    // Whether a login failure may be logged now; if so, counts it as logged.
+    private bool LoginFailureLogDueLocked(long now)
+    {
+        if (now - _loginFailureLoggedAt < StopwatchTicks(LoginFailureLogInterval))
+            return false;
+        _loginFailureLoggedAt = now;
+        return true;
+    }
+
     // Raised outside _lock (a subscriber reads the camera's state); a failing subscriber is logged,
     // never thrown into the send loop or a setter's caller.
     private void RaiseConnectedChanged()
@@ -676,5 +766,143 @@ public class XcCamera : XcCameraBase, IDisposable
         {
             Trace.TraceError($"Camera {Name}: a {nameof(Connected)} subscriber failed: {e}");
         }
+    }
+
+    // A login challenge from the camera's HTTP 401 (a WWW-Authenticate header) and how to answer it
+    // with a username and password: Basic (RFC 7617), or Digest with MD5 (RFC 7616), with qop auth when
+    // the challenge offers it. A Digest answer counts nc up on the challenge's nonce: only the send
+    // loop answers.
+    private sealed class Challenge
+    {
+        // auth-param (RFC 9110 section 11.2): a name, "=" and a token or a quoted string.
+        private static readonly Regex AuthParam = new(@"([^\s=,]+)\s*=\s*(?:""((?:[^""\\]|\\.)*)""|([^\s,]*))", RegexOptions.CultureInvariant);
+        private static readonly Regex QuotedPair = new(@"\\(.)", RegexOptions.CultureInvariant);
+
+        private readonly bool _digest;
+        private readonly string _realm = "";
+        private readonly string _nonce = "";
+        private readonly string? _opaque;
+        private readonly string? _algorithm;
+        private readonly bool _qop;
+        // The requests answered on the nonce so far (nc).
+        private long _nonceCount;
+
+        private Challenge(string authority)
+        {
+            Authority = authority;
+        }
+
+        private Challenge(string authority, string realm, string nonce, string? opaque, string? algorithm, bool qop, long nonceCount)
+        {
+            Authority = authority;
+            _digest = true;
+            _realm = realm;
+            _nonce = nonce;
+            _opaque = opaque;
+            _algorithm = algorithm;
+            _qop = qop;
+            _nonceCount = nonceCount;
+        }
+
+        // The address and port (the URI authority) the challenge came from, the only one it is
+        // answered at.
+        public string Authority { get; }
+
+        // The challenge to answer among those of a 401 to a GET of the uri: Digest when it offers one
+        // the app can answer, so the password does not cross the network in the clear, else Basic; null
+        // for neither. A Digest challenge on the nonce of the previous one counts nc on from it.
+        public static Challenge? From(HttpResponseMessage response, Uri uri, Challenge? previous)
+        {
+            Challenge? basic = null;
+            foreach (var offered in response.Headers.WwwAuthenticate)
+            {
+                if (offered.Scheme.Equals("Digest", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (Digest(offered.Parameter, uri.Authority, previous) is { } digest)
+                        return digest;
+                }
+                else if (offered.Scheme.Equals("Basic", StringComparison.OrdinalIgnoreCase))
+                {
+                    basic ??= new Challenge(uri.Authority);
+                }
+            }
+            return basic;
+        }
+
+        // The schemes a 401 offers, for the log: each Digest with its algorithm when it names one, and
+        // never a realm, nonce or other parameter; "none" when it offers none.
+        public static string Offered(HttpResponseMessage response)
+        {
+            var offered = response.Headers.WwwAuthenticate
+                .Select(c => c.Scheme.Equals("Digest", StringComparison.OrdinalIgnoreCase) && Parameters(c.Parameter).TryGetValue("algorithm", out var algorithm)
+                    ? $"{c.Scheme} {algorithm}"
+                    : c.Scheme)
+                .ToList();
+            return offered.Count > 0 ? string.Join(", ", offered) : "none";
+        }
+
+        // A challenge's auth-params by name, unquoted; the first of a name given twice.
+        private static Dictionary<string, string> Parameters(string? parameter)
+        {
+            var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (Match match in AuthParam.Matches(parameter ?? ""))
+            {
+                var value = match.Groups[2].Success ? QuotedPair.Replace(match.Groups[2].Value, "$1") : match.Groups[3].Value;
+                parameters.TryAdd(match.Groups[1].Value, value);
+            }
+            return parameters;
+        }
+
+        // A Digest challenge with a realm and a nonce, algorithm MD5 (or none given), and qop auth among
+        // its qops (or none given); null for any other.
+        private static Challenge? Digest(string? parameter, string authority, Challenge? previous)
+        {
+            var parameters = Parameters(parameter);
+            if (!parameters.TryGetValue("realm", out var realm) || !parameters.TryGetValue("nonce", out var nonce))
+                return null;
+            parameters.TryGetValue("algorithm", out var algorithm);
+            if (algorithm != null && !algorithm.Equals("MD5", StringComparison.OrdinalIgnoreCase))
+                return null;
+            var qop = parameters.TryGetValue("qop", out var qops);
+            if (qop && !qops!.Split(',').Any(q => q.Trim().Equals("auth", StringComparison.OrdinalIgnoreCase)))
+                return null;
+
+            parameters.TryGetValue("opaque", out var opaque);
+            var nonceCount = previous is { _digest: true } && previous._realm == realm && previous._nonce == nonce ? previous._nonceCount : 0;
+            return new Challenge(authority, realm, nonce, opaque, algorithm, qop, nonceCount);
+        }
+
+        // The Authorization header for a GET of the uri. Digest per RFC 7616 section 3.4: username,
+        // realm, nonce, uri, response, cnonce and opaque are quoted strings; qop, nc and algorithm are
+        // tokens, the algorithm as the challenge gave it.
+        public AuthenticationHeaderValue Answer(NetworkCredential login, Uri uri)
+        {
+            if (!_digest)
+                return new("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{login.UserName}:{login.Password}")));
+
+            var target = uri.PathAndQuery;
+            var ha1 = Md5($"{login.UserName}:{_realm}:{login.Password}");
+            var ha2 = Md5($"GET:{target}");
+            var answer = new StringBuilder($"username={Quoted(login.UserName)}, realm={Quoted(_realm)}, nonce={Quoted(_nonce)}, uri={Quoted(target)}");
+            if (_qop)
+            {
+                var nc = (++_nonceCount).ToString("x8", CultureInfo.InvariantCulture);
+                var cnonce = RandomNumberGenerator.GetHexString(16, lowercase: true);
+                answer.Append($", qop=auth, nc={nc}, cnonce={Quoted(cnonce)}, response={Quoted(Md5($"{ha1}:{_nonce}:{nc}:{cnonce}:auth:{ha2}"))}");
+            }
+            else
+            {
+                answer.Append($", response={Quoted(Md5($"{ha1}:{_nonce}:{ha2}"))}");
+            }
+            if (_opaque != null)
+                answer.Append($", opaque={Quoted(_opaque)}");
+            if (_algorithm != null)
+                answer.Append($", algorithm={_algorithm}");
+            return new("Digest", answer.ToString());
+        }
+
+        private static string Md5(string text) => Convert.ToHexStringLower(MD5.HashData(Encoding.UTF8.GetBytes(text)));
+
+        private static string Quoted(string value) => $"\"{value.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
     }
 }

@@ -195,6 +195,77 @@ public class XcCameraReachabilityTests
         Assert.Equal(firstCount, first.Requests.Count);
     }
 
+    // A camera that answers every request with HTTP 401, without a login and with a wrong one: no
+    // request succeeds, so it is never connected.
+    [Theory]
+    [InlineData("")]
+    [InlineData("fake-xc-wrong-password")]
+    public async Task ACameraAnswering401ToEverything_IsNotReachable(string password)
+    {
+        using var fake = new FakeXcCamera { Login = new XcLogin { Username = "fake-xc-user", Password = "fake-xc-password", Digest = true } };
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongTimeout, probeInterval: Interval,
+            username: password.Length > 0 ? "fake-xc-user" : "", password: password);
+
+        await fake.WaitUntilAsync(r => r.Count(x => x.IsProbe) >= 4, "four probes");
+
+        Assert.All(fake.Requests, r => Assert.True(r.Challenged));
+        Assert.False(camera.Connected);
+    }
+
+    // Probes alone, with no control request: the first is challenged and repeated with the login, and
+    // every later one carries the login up front, so an idle camera stays reachable.
+    [Fact]
+    public async Task WithTheRightLogin_ProbesAlone_MakeACameraThatRequiresALoginReachable()
+    {
+        using var fake = new FakeXcCamera { Login = new XcLogin { Username = "fake-xc-user", Password = "fake-xc-password", Digest = true } };
+        using var camera = new XcCamera(XcTestCameras.UniqueName(), LongTimeout, Interval);
+        var connected = ConnectedBecomes(camera, true);
+        camera.Username = "fake-xc-user";
+        camera.Password = "fake-xc-password";
+        camera.Port = fake.Port;
+        camera.Address = "127.0.0.1";
+
+        await connected.WaitAsync(Wait);
+        var probes = await fake.WaitUntilAsync(r => r.Count(x => x.IsProbe) >= 4, "four probes");
+
+        var described = FakeXcCamera.Describe(probes);
+        Assert.All(probes, r => Assert.True(r.IsProbe, described));
+        Assert.True(probes[0].Challenged, described);
+        Assert.All(probes.Skip(1), r => Assert.False(r.Challenged, described));
+    }
+
+    // Unlike an address change, a login change leaves Connected as it is until a request with the new
+    // login settles it. Here the new login is refused, which turns the camera unreachable only once no
+    // request succeeded for the (long) probe interval.
+    [Fact]
+    public async Task ALoginChange_KeepsConnected_UntilARequestWithTheNewLoginSettlesIt()
+    {
+        using var trace = new TraceRecorder();
+        var name = XcTestCameras.UniqueName();
+        using var fake = new FakeXcCamera { Login = new XcLogin { Username = "fake-xc-user", Password = "fake-xc-password", Basic = true } };
+        using var camera = new XcCamera(name, LongTimeout, LongTimeout);
+        var connected = ConnectedBecomes(camera, true);
+        camera.Username = "fake-xc-user";
+        camera.Password = "fake-xc-password";
+        camera.Port = fake.Port;
+        camera.Address = "127.0.0.1";
+        await connected.WaitAsync(Wait);
+        var changes = new List<string?>();
+        camera.PropertyChanged += (_, e) =>
+        {
+            lock (changes)
+                changes.Add(e.PropertyName);
+        };
+
+        camera.Password = "fake-xc-wrong-password";
+
+        Assert.True(camera.Connected);
+        await XcTestCameras.WaitForLogAsync(trace, name, "refused the username and password");
+        Assert.True(camera.Connected);
+        lock (changes)
+            Assert.Equal(new[] { nameof(XcCamera.Password) }, changes);
+    }
+
     // Completes when the camera raises a Connected change to the given value.
     private static Task ConnectedBecomes(XcCamera camera, bool value)
     {

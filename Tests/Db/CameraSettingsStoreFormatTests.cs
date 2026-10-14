@@ -130,6 +130,63 @@ public sealed class CameraSettingsStoreFormatTests : IDisposable
         }
     }
 
+    // An XC camera's login (#49) is saved in plaintext under keys of its own, each only when set, so an
+    // entry without one keeps the keys above. It loads back before the address: the loaded camera
+    // answers its camera's challenge with it.
+    [Fact]
+    public async Task AnXcCamerasLogin_IsSavedOnlyWhenSet_AndLoadsBack()
+    {
+        using var trace = new TraceRecorder();
+        using var fake = new FakeXcCamera { Login = new XcLogin { Username = "fake-xc-user", Password = "fake-xc-password", Digest = true } };
+        var store = new CameraSettingsStore(_path);
+        // Disposed first, so giving it an address sends nothing: only its settings are saved.
+        var withLogin = new XcCamera(XcTestCameras.UniqueName()) { CompanionNumber = 2 };
+        withLogin.Dispose();
+        withLogin.Username = "fake-xc-user";
+        withLogin.Password = "fake-xc-password";
+        withLogin.Port = fake.Port;
+        withLogin.Address = "127.0.0.1";
+        using var withoutLogin = new XcCamera("XC 2") { CompanionNumber = 4 };
+
+        Assert.True(store.SaveCameras(new ICamera[] { withLogin, withoutLogin }));
+        var saved = Entries(File.ReadAllText(_path));
+        var loaded = new CameraSettingsStore(_path).GetAllCameras().ToList();
+        try
+        {
+            Assert.Equal("fake-xc-user", saved[0]["Username"].GetString());
+            Assert.Equal("fake-xc-password", saved[0]["Password"].GetString());
+            Assert.Equal(Entries(CamerasJsonBeforeTheAbstraction)[0].Keys.Order(), saved[1].Keys.Order());
+
+            var first = Assert.IsType<XcCamera>(loaded[0]);
+            Assert.Equal(("fake-xc-user", "fake-xc-password"), (first.Username, first.Password));
+            var second = Assert.IsType<XcCamera>(loaded[1]);
+            Assert.Equal(("", ""), (second.Username, second.Password));
+            // Its first request, challenged, was repeated with the login, which the fake accepted.
+            var requests = await fake.WaitUntilAsync(r => r.Any(x => !x.Challenged), "a request accepted");
+            Assert.True(requests[1].Authorization != null && !requests[1].Challenged, FakeXcCamera.Describe(requests));
+            Assert.DoesNotContain(XcTestCameras.LogFor(trace, withLogin.Name), l => l.Type == TraceEventType.Warning);
+        }
+        finally
+        {
+            foreach (var camera in loaded.OfType<IDisposable>())
+                camera.Dispose();
+        }
+    }
+
+    // Setting the address starts an XC camera's requests, so loading sets its login and port first:
+    // its first request already has them.
+    [Fact]
+    public void AnXcCamerasLoginAndPort_AreLoadedBeforeItsAddress()
+    {
+        using var fake = new FakeXcCamera();
+        File.WriteAllText(_path,
+            $"[{{\"{TypeNameKey}\":\"{typeof(ChangeRecordingXcCamera).AssemblyQualifiedName}\",\"IpAddress\":\"127.0.0.1\",\"Name\":\"XC\",\"Port\":{fake.Port},\"Username\":\"fake-xc-user\",\"Password\":\"fake-xc-password\"}}]");
+
+        using var camera = Assert.IsType<ChangeRecordingXcCamera>(Assert.Single(new CameraSettingsStore(_path).GetAllCameras()));
+
+        Assert.Equal(new[] { nameof(XcCamera.Username), nameof(XcCamera.Password), nameof(XcCamera.Port), nameof(XcCamera.Address) }, camera.Changes);
+    }
+
     // A camera type from a newer build, an empty entry or a value the camera rejects must not lose the
     // other cameras: the app would otherwise start with none.
     [Fact]
@@ -233,5 +290,14 @@ public sealed class CameraSettingsStoreFormatTests : IDisposable
         public void Power(Power power) { }
         public void Preset(Preset preset, byte presetNumber) { }
         public void PresetRecallSpeed(byte speed) { }
+    }
+
+    // An XC camera that records, in order, which of its saved settings changed.
+    private sealed class ChangeRecordingXcCamera : XcCamera
+    {
+        public ChangeRecordingXcCamera(string name) : base(name) =>
+            PersistentPropertyChanged += (_, e) => Changes.Add(e.PropertyName!);
+
+        public List<string> Changes { get; } = new();
     }
 }

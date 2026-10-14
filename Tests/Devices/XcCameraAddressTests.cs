@@ -4,8 +4,8 @@ using Xunit;
 
 namespace PtzJoystickControl.Tests.Devices;
 
-// The address and port setters accept what the settings panel may save and reject the rest, as the
-// VISCA camera's setters do, so the panel can show the error.
+// The address, port and username setters accept what the settings panel may save and reject the rest,
+// as the VISCA camera's setters do, so the panel can show the error.
 public class XcCameraAddressTests
 {
     [Fact]
@@ -93,6 +93,93 @@ public class XcCameraAddressTests
 
         Assert.ThrowsAny<ArgumentException>(() => camera.Name = " ");
         Assert.Equal(name, camera.Name);
+    }
+
+    [Fact]
+    public void ANewCamera_HasNoLogin()
+    {
+        using var camera = new XcCamera(XcTestCameras.UniqueName());
+
+        Assert.Equal("", camera.Username);
+        Assert.Equal("", camera.Password);
+    }
+
+    [Theory]
+    [InlineData("fake-xc-user")]
+    [InlineData("fake xc user")]
+    [InlineData("fäke-xc-üser")]
+    [InlineData("")]
+    public void AUsernameWithoutControlCharacters_IsAccepted(string username)
+    {
+        using var camera = SetterOnlyCamera();
+
+        camera.Username = username;
+
+        Assert.Equal(username, camera.Username);
+    }
+
+    // The message does not repeat the username, which the settings panel shows and the log may record.
+    [Theory]
+    [InlineData("fake-xc\nuser")]
+    [InlineData("fake-xc\ruser")]
+    [InlineData("fake-xc\tuser")]
+    [InlineData("fake-xc\0user")]
+    [InlineData("fake-xc\u007fuser")]
+    public void AUsernameWithAControlCharacter_IsRejected_WithoutRepeatingIt_AndTheUsernameKept(string username)
+    {
+        using var camera = SetterOnlyCamera();
+        camera.Username = "fake-xc-user";
+
+        var rejected = Assert.ThrowsAny<ArgumentException>(() => camera.Username = username);
+
+        Assert.DoesNotContain("fake-xc", rejected.Message);
+        Assert.Equal("fake-xc-user", camera.Username);
+    }
+
+    [Theory]
+    [InlineData("fake-xc-password")]
+    [InlineData("fake-xc\npassword")]
+    [InlineData(" ")]
+    [InlineData("")]
+    public void AnyPassword_IsAccepted(string password)
+    {
+        using var camera = SetterOnlyCamera();
+
+        camera.Password = password;
+
+        Assert.Equal(password, camera.Password);
+    }
+
+    [Fact]
+    public void ANullUsernameOrPassword_IsEmpty()
+    {
+        using var camera = SetterOnlyCamera();
+        camera.Username = "fake-xc-user";
+        camera.Password = "fake-xc-password";
+
+        camera.Username = null!;
+        camera.Password = null!;
+
+        Assert.Equal("", camera.Username);
+        Assert.Equal("", camera.Password);
+    }
+
+    [Fact]
+    public void ChangingTheLogin_RaisesTheChangeAndThePersistentChange_OncePerChange()
+    {
+        using var camera = SetterOnlyCamera();
+        var changed = new List<string?>();
+        var persistent = new List<string?>();
+        camera.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+        camera.PersistentPropertyChanged += (_, e) => persistent.Add(e.PropertyName);
+
+        camera.Username = "fake-xc-user";
+        camera.Password = "fake-xc-password";
+        camera.Password = "fake-xc-password";
+
+        var expected = new[] { nameof(XcCamera.Username), nameof(XcCamera.Password) };
+        Assert.Equal(expected, changed);
+        Assert.Equal(expected, persistent);
     }
 
     // Disposed first, so giving it an address sends nothing: these tests exercise only the setters.

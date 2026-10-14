@@ -89,7 +89,9 @@ namespace PtzJoystickControl.Application.Db
             }
             else if (camera is XcCameraBase xcCamera)
             {
-                // Port first: setting the address starts the camera's requests.
+                // The login and port first: setting the address starts the camera's requests.
+                xcCamera.Username = viscaDeviceSettings.Username ?? "";
+                xcCamera.Password = viscaDeviceSettings.Password ?? "";
                 xcCamera.Port = viscaDeviceSettings.Port;
                 xcCamera.Address = viscaDeviceSettings.IpAddress;
             }

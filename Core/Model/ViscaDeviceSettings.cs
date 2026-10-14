@@ -1,4 +1,5 @@
 ﻿using PtzJoystickControl.Core.Devices;
+using System.Text.Json.Serialization;
 
 namespace PtzJoystickControl.Core.Model;
 
@@ -19,6 +20,13 @@ public class ViscaDeviceSettings
 
     // Absent in files saved before Companion numbers existed; CamerasService assigns one on load.
     public int? CompanionNumber { get; set; }
+
+    // An XC camera's login, unencrypted. Each is written only when set, so a VISCA entry, and an XC
+    // entry without a login, keep the keys above; a file without them loads with no login.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Username { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Password { get; set; }
 
     public ViscaDeviceSettings()
     {
@@ -42,6 +50,8 @@ public class ViscaDeviceSettings
             // The same keys as a VISCA camera's connection; the VISCA-only values keep their defaults.
             IpAddress = xcCamera.Address;
             Port = xcCamera.Port;
+            Username = xcCamera.Username.Length > 0 ? xcCamera.Username : null;
+            Password = xcCamera.Password.Length > 0 ? xcCamera.Password : null;
         }
     }
 }

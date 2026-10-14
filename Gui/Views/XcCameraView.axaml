@@ -3,15 +3,16 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
 			 xmlns:v="clr-namespace:PtzJoystickControl.Gui.Views;assembly=Gui"
-             mc:Ignorable="d" d:DesignWidth="450" d:DesignHeight="100"
+             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="100"
              x:Class="PtzJoystickControl.Gui.Views.XcCameraView">
 
 	<UserControl.Resources>
 		<v:CameraViewToCameraConverter x:Key="CameraViewToCameraConverter"/>
 	</UserControl.Resources>
 
-	<!-- The XC camera's settings: no VISCA-only fields (protocol, header, interval). -->
-	<Grid RowDefinitions="Auto,Auto" ColumnDefinitions="100,3,100,3,65,3,95,3,75,3,Auto">
+	<!-- The XC camera's settings: no VISCA-only fields (protocol, header, interval), and the camera's login
+	     in their place, so the row is as wide as a VISCA camera's. -->
+	<Grid RowDefinitions="Auto,Auto" ColumnDefinitions="100,3,100,3,65,3,85,3,85,3,95,3,75,3,Auto">
 		<Grid.Styles>
 			<Style Selector="Label">
 				<Setter Property="FontSize" Value="11"/>
@@ -26,8 +27,12 @@
 		<TextBox	Grid.Column="2"  Grid.Row="1" Text="{Binding Address}"/>
 		<Label		Grid.Column="4"  Grid.Row="0">Port</Label>
 		<TextBox	Grid.Column="4"  Grid.Row="1" Text="{Binding Port}"/>
-		<Label		Grid.Column="6"  Grid.Row="0">Status</Label>
-		<ContentControl Grid.Column="6" Grid.Row="1" Content="{Binding Connected}">
+		<Label		Grid.Column="6"  Grid.Row="0" ToolTip.Tip="The camera's login, when it does not allow guest control. Leave empty for guest control.">Username</Label>
+		<TextBox	Grid.Column="6"  Grid.Row="1" Text="{Binding Username}"/>
+		<Label		Grid.Column="8"  Grid.Row="0" ToolTip.Tip="Stored unencrypted in Cameras.json.">Password</Label>
+		<TextBox	Grid.Column="8"  Grid.Row="1" Text="{Binding Password}" PasswordChar="•"/>
+		<Label		Grid.Column="10" Grid.Row="0">Status</Label>
+		<ContentControl Grid.Column="10" Grid.Row="1" Content="{Binding Connected}">
 			<ContentControl.Styles>
 				<Style Selector="TextBlock">
 					<Setter Property="VerticalAlignment" Value="Center"/>
@@ -45,9 +50,9 @@
 				</v:CameraStatusTemplateSelector>
 			</ContentControl.DataTemplates>
 		</ContentControl>
-		<Label		Grid.Column="8"  Grid.Row="0" ToolTip.Tip="Companion selects this camera with ?SelectCamera=N (or ?SetCameraPreview=N). Each camera needs its own number.">Companion #</Label>
-		<TextBox	Grid.Column="8"  Grid.Row="1" Text="{Binding CompanionNumber}"/>
-		<Button Grid.Column="10" Grid.Row="0" Grid.RowSpan="2" Background="#3000" Command="{Binding $parent[3].DataContext.RemoveCamera}" CommandParameter="{Binding Converter={StaticResource CameraViewToCameraConverter}}" ToolTip.Tip="Remove Camera">
+		<Label		Grid.Column="12" Grid.Row="0" ToolTip.Tip="Companion selects this camera with ?SelectCamera=N (or ?SetCameraPreview=N). Each camera needs its own number.">Companion #</Label>
+		<TextBox	Grid.Column="12" Grid.Row="1" Text="{Binding CompanionNumber}"/>
+		<Button Grid.Column="14" Grid.Row="0" Grid.RowSpan="2" Background="#3000" Command="{Binding $parent[3].DataContext.RemoveCamera}" CommandParameter="{Binding Converter={StaticResource CameraViewToCameraConverter}}" ToolTip.Tip="Remove Camera">
 			<Button.Styles>
 				<Style Selector="Button:pointerover">
 					<Setter Property="Foreground" Value="red"/>

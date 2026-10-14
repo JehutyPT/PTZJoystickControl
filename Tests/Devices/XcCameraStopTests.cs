@@ -84,6 +84,35 @@ public class XcCameraStopTests
         Assert.True(afterHeld.All(r => r.IsStop), FakeXcCamera.Describe(fake.Requests));
     }
 
+    // The camera's nonce expired while it idled: it challenges the move it holds. The stop wanted
+    // meanwhile waits for the login round trip (the move repeated on the new nonce), then goes out
+    // first, at least three times, with the login up front.
+    [Fact]
+    public async Task AStopWantedWhileAChallengedRequestIsHeld_GoesOutFirstAfterTheLoginRoundTrip()
+    {
+        var login = new XcLogin { Username = "fake-xc-user", Password = "fake-xc-password", Digest = true };
+        using var fake = new FakeXcCamera { Login = login, Responder = XcTestCameras.HoldingTheFirstControlRequest() };
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout, username: login.Username, password: login.Password);
+        await fake.WaitUntilAsync(r => r.Any(x => x.IsProbe && !x.Challenged), "the probe, accepted");
+        login.RenewNonce();
+        camera.Pan(0.4, PanDir.Left);
+        var held = await fake.WaitForControlAsync(1);
+
+        camera.Stop();
+        fake.Release();
+        await fake.WaitUntilAsync(r => r.Count(x => x.IsStop && !x.Challenged) >= MinStopSends, "three stops, accepted");
+        await Task.Delay(SettleTime);
+
+        var control = fake.ControlRequests;
+        var described = FakeXcCamera.Describe(fake.Requests);
+        Assert.True(held.Challenged, described);
+        Assert.Equal(held.Target, control[1].Target);
+        Assert.All(control.Skip(1), r => Assert.False(r.Challenged, described));
+        Assert.All(control.Skip(2), r => Assert.True(r.IsStop, described));
+        AssertRepeatedStops(control, r => r.IsStop);
+        Assert.Equal(1, fake.MaxInFlight);
+    }
+
     [Fact]
     public async Task AZoomStopBehindAPendingPanMove_GoesOutInTheNextRequest()
     {

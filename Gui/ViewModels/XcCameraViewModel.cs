@@ -10,7 +10,7 @@ using System.Runtime.CompilerServices;
 
 namespace PtzJoystickControl.Gui.ViewModels;
 
-/// <summary>The settings panel of an XC camera: name, address, port, reachability and Companion number.</summary>
+/// <summary>The settings panel of an XC camera: name, address, port, login, reachability and Companion number.</summary>
 public class XcCameraViewModel : ViewModelBase, INotifyPropertyChanged
 {
     private readonly XcCameraBase _camera;
@@ -71,6 +71,31 @@ public class XcCameraViewModel : ViewModelBase, INotifyPropertyChanged
                 throw new DataValidationException("1-65535");
             }
         }
+    }
+
+    // Empty for guest control. Unlike the address, a rejected value is not logged: it is part of the login.
+    public string Username
+    {
+        get => _camera.Username;
+        set
+        {
+            try
+            {
+                _camera.Username = value;
+            }
+            catch (Exception e)
+            {
+                Trace.TraceInformation($"Camera {Name}: invalid username: {e.Message}");
+                throw new DataValidationException("No control characters");
+            }
+        }
+    }
+
+    // Any text; never logged.
+    public string Password
+    {
+        get => _camera.Password;
+        set => _camera.Password = value;
     }
 
     public bool Connected { get => _camera.Connected; }
