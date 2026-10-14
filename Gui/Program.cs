@@ -118,7 +118,10 @@ internal class Program
         // Read once: a change to Companion.json takes effect on the next start.
         var companionSettings = new CompanionSettingsStore().Load();
         Trace.TraceInformation($"Companion: listening on http://localhost:{companionSettings.ListenerPort}/");
-        var companion = new BitfocusCompanionService(companionSettings, resolver.GetServiceOrThrow<ICamerasService>());
+        var companion = new BitfocusCompanionService(
+            companionSettings,
+            resolver.GetServiceOrThrow<ICamerasService>(),
+            resolver.GetServiceOrThrow<ISpeedProfilesService>());
         services.RegisterConstant<IBitfocusCompanionService>(companion);
 
         services.RegisterConstant<ICommandsService>(new CommandsService(

@@ -22,6 +22,15 @@ namespace PtzJoystickControl.Core.Model
         private static readonly Dictionary<string, InboundBitfocusCompanionEventEnum> Commands =
             Enum.GetValues<InboundBitfocusCompanionEventEnum>().ToDictionary(e => e.ToString(), StringComparer.Ordinal);
 
+        private const string SpeedProfileCommand = "SpeedProfile";
+
+        private static readonly Dictionary<string, CompanionSpeedProfileRequest> SpeedProfileRequests = new(StringComparer.Ordinal)
+        {
+            ["faster"] = CompanionSpeedProfileRequest.Faster,
+            ["finer"] = CompanionSpeedProfileRequest.Finer,
+            ["current"] = CompanionSpeedProfileRequest.Current,
+        };
+
         public BitfocusCompanionEvent(InboundBitfocusCompanionEventEnum eventType, int companionNumber, ICamera camera)
         {
             EventType = eventType;
@@ -37,20 +46,35 @@ namespace PtzJoystickControl.Core.Model
 
         /// <summary>
         /// Validates every parameter of an inbound request before anything is executed.
-        /// A parameter matches only a defined command by exact, case-sensitive name, and its value
-        /// must be a plain positive decimal number that exactly one of <paramref name="cameras"/>
-        /// has as its Companion number. Returns one event per parameter, or a rejection when the
-        /// request is empty or any parameter does not match.
+        /// A parameter matches only a defined command by exact, case-sensitive name. A camera
+        /// command's value must be a plain positive decimal number that exactly one of
+        /// <paramref name="cameras"/> has as its Companion number. <c>SpeedProfile</c>'s value must be
+        /// exactly <c>faster</c>, <c>finer</c> or <c>current</c>; it may appear once, and
+        /// <c>current</c> only on its own. Returns one event per camera command and the speed profile
+        /// request, or a rejection when the request is empty or any parameter does not match.
         /// </summary>
         public static BitfocusCompanionRequestParseResult ParseRequest(
             IEnumerable<KeyValuePair<string?, string?>> parameters, IReadOnlyCollection<ICamera> cameras)
         {
             var events = new List<BitfocusCompanionEvent>();
+            CompanionSpeedProfileRequest? speedProfileRequest = null;
 
             foreach (var (name, value) in parameters)
             {
                 if (name == null)
                     return BitfocusCompanionRequestParseResult.Rejected($"Parameter without a name (value '{value}')");
+
+                if (string.Equals(name, SpeedProfileCommand, StringComparison.Ordinal))
+                {
+                    if (speedProfileRequest != null)
+                        return BitfocusCompanionRequestParseResult.Rejected($"Command '{name}' given more than once");
+                    // The query string joins a repeated parameter ("faster,finer"), so it never matches.
+                    if (value == null || !SpeedProfileRequests.TryGetValue(value, out var request))
+                        return BitfocusCompanionRequestParseResult.Rejected($"'{value}' for command '{name}' is not faster, finer or current");
+
+                    speedProfileRequest = request;
+                    continue;
+                }
 
                 // Ordinal name lookup, not Enum.Parse/TryParse: those accept numbers and other casings.
                 if (!Commands.TryGetValue(name, out var eventType))
@@ -73,10 +97,13 @@ namespace PtzJoystickControl.Core.Model
                 events.Add(new BitfocusCompanionEvent(eventType, number, matches[0]));
             }
 
-            if (events.Count == 0)
+            if (speedProfileRequest == CompanionSpeedProfileRequest.Current && events.Count > 0)
+                return BitfocusCompanionRequestParseResult.Rejected($"'{SpeedProfileCommand}=current' must be the only parameter of its request");
+
+            if (events.Count == 0 && speedProfileRequest == null)
                 return BitfocusCompanionRequestParseResult.Rejected("No command in request");
 
-            return BitfocusCompanionRequestParseResult.Accepted(events);
+            return BitfocusCompanionRequestParseResult.Accepted(events, speedProfileRequest);
         }
     }
 }

@@ -39,6 +39,30 @@ public class BitfocusCompanionRequestParsingTests
 
         Assert.True(result.IsAccepted);
         Assert.Equal(new[] { CamB, CamA }, result.Events.Select(e => e.Camera));
+        Assert.Null(result.SpeedProfileRequest);
+    }
+
+    [Theory]
+    [InlineData("faster", CompanionSpeedProfileRequest.Faster)]
+    [InlineData("finer", CompanionSpeedProfileRequest.Finer)]
+    [InlineData("current", CompanionSpeedProfileRequest.Current)]
+    public void SpeedProfile_IsAcceptedAsItsRequest_WithNoCameraEvents(string value, CompanionSpeedProfileRequest expected)
+    {
+        var result = BitfocusCompanionEvent.ParseRequest(new[] { P("SpeedProfile", value) }, Cameras);
+
+        Assert.True(result.IsAccepted);
+        Assert.Equal(expected, result.SpeedProfileRequest);
+        Assert.Empty(result.Events);
+    }
+
+    [Fact]
+    public void AStepWithACameraSelection_IsAcceptedWithBoth()
+    {
+        var result = BitfocusCompanionEvent.ParseRequest(new[] { P("SelectCamera", "2"), P("SpeedProfile", "finer") }, Cameras);
+
+        Assert.True(result.IsAccepted);
+        Assert.Equal(CompanionSpeedProfileRequest.Finer, result.SpeedProfileRequest);
+        Assert.Equal(new[] { CamB }, result.Events.Select(e => e.Camera));
     }
 
     public static IEnumerable<object[]> RejectedRequests() => new[]
@@ -74,6 +98,20 @@ public class BitfocusCompanionRequestParsingTests
         new object[] { "valid then unknown", new[] { P("SelectCamera", "1"), P("foo", "1") } },
         new object[] { "unknown then valid", new[] { P("foo", "1"), P("SelectCamera", "2") } },
         new object[] { "valid then unknown number", new[] { P("SelectCamera", "1"), P("SetCameraPreview", "9") } },
+        // SpeedProfile takes exactly faster, finer or current (case-sensitive), once, and current only on its own.
+        new object[] { "speed profile, lower case name", new[] { P("speedprofile", "faster") } },
+        new object[] { "speed profile, upper case value", new[] { P("SpeedProfile", "Faster") } },
+        new object[] { "speed profile, unknown value", new[] { P("SpeedProfile", "up") } },
+        new object[] { "speed profile, number", new[] { P("SpeedProfile", "1") } },
+        new object[] { "speed profile, empty value", new[] { P("SpeedProfile", "") } },
+        new object[] { "speed profile, missing value", new[] { P("SpeedProfile", null) } },
+        new object[] { "speed profile, bare word", new[] { P(null, "SpeedProfile") } },
+        new object[] { "speed profile, duplicate parameters combined", new[] { P("SpeedProfile", "faster,finer") } },
+        new object[] { "speed profile given twice", new[] { P("SpeedProfile", "faster"), P("SpeedProfile", "faster") } },
+        new object[] { "current then a camera", new[] { P("SpeedProfile", "current"), P("SelectCamera", "1") } },
+        new object[] { "a camera then current", new[] { P("SelectCamera", "1"), P("SpeedProfile", "current") } },
+        new object[] { "step then unknown number", new[] { P("SpeedProfile", "faster"), P("SelectCamera", "9") } },
+        new object[] { "unknown number then step", new[] { P("SelectCamera", "9"), P("SpeedProfile", "finer") } },
     };
 
     [Theory]
@@ -84,6 +122,7 @@ public class BitfocusCompanionRequestParsingTests
 
         Assert.False(result.IsAccepted, scenario);
         Assert.Empty(result.Events);
+        Assert.Null(result.SpeedProfileRequest);
         Assert.False(string.IsNullOrWhiteSpace(result.RejectionReason), scenario);
     }
 
