@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
@@ -106,5 +107,43 @@ public class BitfocusCompanionRequestParsingTests
         var result = BitfocusCompanionEvent.ParseRequest(new[] { P("SetCameraPreview", "1") }, Array.Empty<ICamera>());
 
         Assert.False(result.IsAccepted);
+    }
+
+    [Fact]
+    public void CameraOfAnotherCameraType_IsSelectedByItsCompanionNumber()
+    {
+        var other = new NonViscaCamera("Other") { CompanionNumber = 4 };
+
+        var result = BitfocusCompanionEvent.ParseRequest(new[] { P("SelectCamera", "4") }, new ICamera[] { CamA, other, CamC });
+
+        Assert.True(result.IsAccepted);
+        var companionEvent = Assert.Single(result.Events);
+        Assert.Same(other, companionEvent.Camera);
+        Assert.Equal(4, companionEvent.CompanionNumber);
+    }
+
+    // A camera of another camera type: it implements only the camera abstraction, not the VISCA base type.
+    private sealed class NonViscaCamera : ICamera
+    {
+        public NonViscaCamera(string name) => Name = name;
+
+        public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+        public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }
+
+        public string Name { get; }
+        public int? CompanionNumber { get; set; }
+        public bool Connected => true;
+        public bool IsMoving => false;
+
+        public void Pan(double panSpeed, PanDir panDir) { }
+        public void Tilt(double tiltSpeed, TiltDir tiltDir) { }
+        public void Zoom(double zoomSpeed, ZoomDir zoomDir) { }
+        public void Focus(double focusSpeed, FocusDir focusDir) { }
+        public void Stop() { }
+        public void FocusMode(FocusMode focusMode) { }
+        public void FocusLock(FocusLock focusLock) { }
+        public void Power(Power power) { }
+        public void Preset(Preset preset, byte presetNumber) { }
+        public void PresetRecallSpeed(byte speed) { }
     }
 }
