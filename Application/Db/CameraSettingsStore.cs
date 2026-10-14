@@ -34,42 +34,64 @@ namespace PtzJoystickControl.Application.Db
             if (!File.Exists(_cameratFilePath))
                 return new List<ICamera>();
 
+            List<ViscaDeviceSettings?> viscaDeviceSettingsList;
             try
             {
                 string serializedViscaDeviceSettings = File.ReadAllText(_cameratFilePath);
-                var viscaDeviceSettingsList = JsonSerializer.Deserialize<IEnumerable<ViscaDeviceSettings>>(serializedViscaDeviceSettings) ?? Enumerable.Empty<ViscaDeviceSettings>();
-                return viscaDeviceSettingsList
-                    .Select(viscaDeviceSettings =>
-                    {
-                        var camera = (ICamera?)Activator.CreateInstance(
-                            Type.GetType(viscaDeviceSettings.IViscaDeveiceTypeAssemblyQualifiedName)!,
-                            viscaDeviceSettings.Name);
-                        if (camera is ViscaIPDeviceBase viscaIPDevice)
-                        {
-                            viscaIPDevice.IPAddress = viscaDeviceSettings.IpAddress;
-                            viscaIPDevice.Port = viscaDeviceSettings.Port;
-                            viscaIPDevice.Protocol = viscaDeviceSettings.Protocol;
-                            viscaIPDevice.SendWaitTime = viscaDeviceSettings.SendWaitTime;
-                            viscaIPDevice.UseHeader = viscaDeviceSettings.UseHeader;
-                        }
-                        if (camera != null)
-                        {
-                            // A hand-edited invalid number must not fail the whole camera load: CamerasService assigns a new one.
-                            if (viscaDeviceSettings.CompanionNumber >= 1)
-                                camera.CompanionNumber = viscaDeviceSettings.CompanionNumber;
-                            else if (viscaDeviceSettings.CompanionNumber != null)
-                                Trace.TraceWarning($"Camera {camera.Name}: ignoring invalid Companion number {viscaDeviceSettings.CompanionNumber} in {_cameratFilePath}; a new one is assigned");
-                        }
-                        return camera;
-                    })
-                    .Where(camera => camera != null)
-                    .ToList()!;
+                viscaDeviceSettingsList = JsonSerializer.Deserialize<List<ViscaDeviceSettings?>>(serializedViscaDeviceSettings) ?? new();
             }
             catch (Exception e)
             {
                 Trace.TraceError($"Failed to load camera settings from {_cameratFilePath}, starting with none: {e}");
                 return new List<ICamera>();
             }
+
+            // One camera that cannot be loaded (e.g. a camera type from a newer build) must not lose the others.
+            var cameras = new List<ICamera>();
+            for (var i = 0; i < viscaDeviceSettingsList.Count; i++)
+            {
+                var viscaDeviceSettings = viscaDeviceSettingsList[i];
+                try
+                {
+                    cameras.Add(LoadCamera(viscaDeviceSettings));
+                }
+                catch (Exception e)
+                {
+                    Trace.TraceWarning($"Skipping camera '{viscaDeviceSettings?.Name}' (entry {i + 1}, type {viscaDeviceSettings?.IViscaDeveiceTypeAssemblyQualifiedName}) in {_cameratFilePath}: it cannot be loaded: {e.GetBaseException().Message}");
+                }
+            }
+            return cameras;
+        }
+
+        private ICamera LoadCamera(ViscaDeviceSettings? viscaDeviceSettings)
+        {
+            if (viscaDeviceSettings == null)
+                throw new InvalidDataException("the entry is empty");
+
+            var type = Type.GetType(viscaDeviceSettings.IViscaDeveiceTypeAssemblyQualifiedName ?? "")
+                ?? throw new InvalidDataException("its camera type is not known to this build");
+            var camera = (ICamera)Activator.CreateInstance(type, viscaDeviceSettings.Name)!;
+            if (camera is ViscaIPDeviceBase viscaIPDevice)
+            {
+                viscaIPDevice.IPAddress = viscaDeviceSettings.IpAddress;
+                viscaIPDevice.Port = viscaDeviceSettings.Port;
+                viscaIPDevice.Protocol = viscaDeviceSettings.Protocol;
+                viscaIPDevice.SendWaitTime = viscaDeviceSettings.SendWaitTime;
+                viscaIPDevice.UseHeader = viscaDeviceSettings.UseHeader;
+            }
+            else if (camera is XcCameraBase xcCamera)
+            {
+                // Port first: setting the address starts the camera's requests.
+                xcCamera.Port = viscaDeviceSettings.Port;
+                xcCamera.Address = viscaDeviceSettings.IpAddress;
+            }
+
+            // A hand-edited invalid number must not fail the whole camera load: CamerasService assigns a new one.
+            if (viscaDeviceSettings.CompanionNumber >= 1)
+                camera.CompanionNumber = viscaDeviceSettings.CompanionNumber;
+            else if (viscaDeviceSettings.CompanionNumber != null)
+                Trace.TraceWarning($"Camera {camera.Name}: ignoring invalid Companion number {viscaDeviceSettings.CompanionNumber} in {_cameratFilePath}; a new one is assigned");
+            return camera;
         }
 
         public bool SaveCameras(IEnumerable<ICamera> cameras)

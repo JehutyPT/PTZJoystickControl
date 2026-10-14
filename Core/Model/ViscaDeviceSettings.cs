@@ -37,5 +37,11 @@ public class ViscaDeviceSettings
             SendWaitTime = viscaIPDevice.SendWaitTime;
             UseHeader = viscaIPDevice.UseHeader;
         }
+        else if (camera is XcCameraBase xcCamera)
+        {
+            // The same keys as a VISCA camera's connection; the VISCA-only values keep their defaults.
+            IpAddress = xcCamera.Address;
+            Port = xcCamera.Port;
+        }
     }
 }
