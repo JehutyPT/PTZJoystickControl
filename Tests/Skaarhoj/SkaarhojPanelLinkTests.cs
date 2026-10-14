@@ -8,6 +8,7 @@ namespace PtzJoystickControl.Tests.Skaarhoj;
 // Timings are scaled down from the defaults (100 ms ping, 300 ms timeout, 1 s grace, 1–30 s backoff)
 // so each case runs well under a second. Lower bounds are asserted tightly; upper bounds leave room
 // for slow CI runners.
+[Collection(TimingBoundCollection.Name)]
 public sealed class SkaarhojPanelLinkTests : IDisposable
 {
     private static readonly TimeSpan Ping = TimeSpan.FromMilliseconds(20);
@@ -22,6 +23,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     private readonly List<SkaarhojPanelLink> _links = new();
     private readonly ConcurrentQueue<(string Kind, long At, string Detail)> _events = new();
     private readonly ConcurrentQueue<RawPanelMessage> _messages = new();
+    private long _startedAt;
 
     public void Dispose()
     {
@@ -50,6 +52,8 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         link.LinkDown += (_, reason) => _events.Enqueue(("down", Stopwatch.GetTimestamp(), reason));
         link.MessageReceived += (_, message) => _messages.Enqueue(message);
         _links.Add(link);
+        if (_startedAt == 0)
+            _startedAt = Stopwatch.GetTimestamp();
         link.Start();
         return link;
     }
@@ -57,6 +61,15 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     private int Count(string kind) => _events.Count(e => e.Kind == kind);
 
     private long FirstAt(string kind) => _events.First(e => e.Kind == kind).At;
+
+    // Each event with its ms since the first link started, and the reason for a down.
+    private string DescribeEvents()
+    {
+        var events = _events.ToArray();
+        var start = _startedAt;
+        return "Events: " + string.Join(" | ", events.Select(e =>
+            $"{e.Kind} at {Stopwatch.GetElapsedTime(start, e.At).TotalMilliseconds:F0} ms{(e.Detail.Length > 0 ? ": " + e.Detail : "")}"));
+    }
 
     private static async Task<bool> WaitUntil(Func<bool> condition, TimeSpan within)
     {
@@ -150,8 +163,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         Start();
 
         await Task.Delay(Grace + Timeout * 2);
-        Assert.Equal(1, Count("up"));
-        Assert.Equal(0, Count("down"));
+        Assert.True(Count("up") == 1 && Count("down") == 0, DescribeEvents());
 
         _panel.AnswerPings = false;
 

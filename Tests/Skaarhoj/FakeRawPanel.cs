@@ -181,8 +181,10 @@ internal sealed class FakeRawPanel : IDisposable
                         || Stopwatch.GetTimestamp() < SilentUntil;
                     if (AnswerPings && !silent)
                     {
-                        await stream.WriteAsync(Encoding.ASCII.GetBytes("ack\n"), _stopping.Token);
+                        // Stamped before the write: the link can read the ack, and time out from
+                        // it, before a write under load returns here.
                         Interlocked.Exchange(ref _lastAckSentAt, Stopwatch.GetTimestamp());
+                        await stream.WriteAsync(Encoding.ASCII.GetBytes("ack\n"), _stopping.Token);
                     }
                 }
             }
