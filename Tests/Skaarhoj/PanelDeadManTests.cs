@@ -124,4 +124,71 @@ public sealed class PanelDeadManTests
         Assert.False(OnTimeCheck(deadMan, 3500).Drop);
         Assert.True(OnTimeCheck(deadMan, 3625).Drop);
     }
+
+    [Fact]
+    public void ACheckMoreThan250msLate_IsAFreeze_AndTheFirstRestartsTheCountFromIt()
+    {
+        var deadMan = Connected();
+        deadMan.LineHeard(At(1100));
+        Assert.False(OnTimeCheck(deadMan, 1500).Drop);
+
+        // Scheduled for 2100, run at 2400: 1300 ms after the last line, but the app froze, not the panel.
+        Assert.False(deadMan.Check(At(2400), At(2100)).Drop);
+
+        Assert.False(OnTimeCheck(deadMan, 3400).Drop);
+        var verdict = OnTimeCheck(deadMan, 3525);
+        Assert.True(verdict.Drop);
+        // The reason still gives the panel's real silence, since its last line.
+        Assert.Equal("the panel was silent for 2425 ms (timeout 1000 ms)", verdict.DropReason);
+    }
+
+    [Fact]
+    public void ACheck250msLateOrLess_IsNoFreeze()
+    {
+        var deadMan = Connected();
+        deadMan.LineHeard(At(1100));
+
+        Assert.True(deadMan.Check(At(2350), At(2100)).Drop);
+    }
+
+    [Fact]
+    public void ASecondFreeze_WithNothingHeardSinceTheFirst_DoesNotRestartTheCount()
+    {
+        var deadMan = Connected();
+        deadMan.LineHeard(At(1100));
+        Assert.False(deadMan.Check(At(2400), At(2100)).Drop);
+        Assert.False(OnTimeCheck(deadMan, 3000).Drop);
+
+        // 1100 ms after the forgiven freeze at 2400: this freeze is not forgiven, so the count runs out.
+        Assert.True(deadMan.Check(At(3500), At(3200)).Drop);
+    }
+
+    [Fact]
+    public void AFreezeAfterThePanelWasHeardAgain_RestartsTheCountAgain()
+    {
+        var deadMan = Connected();
+        deadMan.LineHeard(At(1100));
+        Assert.False(deadMan.Check(At(2400), At(2100)).Drop);
+        deadMan.LineHeard(At(2410));
+        Assert.False(OnTimeCheck(deadMan, 3000).Drop);
+
+        // 1290 ms after the last line, but the panel answered since the last forgiven freeze.
+        Assert.False(deadMan.Check(At(3700), At(3400)).Drop);
+
+        Assert.False(OnTimeCheck(deadMan, 4700).Drop);
+        Assert.True(OnTimeCheck(deadMan, 4825).Drop);
+    }
+
+    [Fact]
+    public void WithThePanelGone_AndEveryCheckLate_DropsAtTheFirstCheckMoreThan1sAfterTheLastForgivenFreeze()
+    {
+        var deadMan = Connected();
+        deadMan.LineHeard(At(1100));
+
+        // Every check runs 300 ms late, so they land 425 ms apart. Only the first freeze is forgiven.
+        Assert.False(deadMan.Check(At(1500), At(1200)).Drop);
+        Assert.False(deadMan.Check(At(1925), At(1625)).Drop);
+        Assert.False(deadMan.Check(At(2350), At(2050)).Drop);
+        Assert.True(deadMan.Check(At(2775), At(2475)).Drop);
+    }
 }
