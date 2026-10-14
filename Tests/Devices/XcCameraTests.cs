@@ -160,7 +160,8 @@ public class XcCameraTests
     [Fact]
     public async Task ACameraThatNeverAnswers_DoesNotDelayRequestsToAnotherCamera()
     {
-        using var silent = new FakeXcCamera { Responder = _ => XcReply.Never };
+        // Answers probes: a probe sent before the pan would otherwise hold the pan back.
+        using var silent = new FakeXcCamera { Responder = r => r.IsControl ? XcReply.Never : XcReply.Ok };
         using var answering = new FakeXcCamera();
         using var stuck = CameraFor(silent, requestTimeout: LongRequestTimeout);
         using var other = CameraFor(answering, requestTimeout: LongRequestTimeout);
