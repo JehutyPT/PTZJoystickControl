@@ -74,6 +74,30 @@ public class XcCameraReachabilityTests
         Assert.Single(XcTestCameras.LogFor(trace, name), l => l.Type == TraceEventType.Warning);
     }
 
+    // Longer timings than the other tests: they leave room for a busy host, while a camera that waited
+    // for a second probe or a second interval would take at least one more interval.
+    [Fact]
+    public async Task AnIdleCameraThatStopsAnswering_TurnsUnreachable_WithinTheProbeIntervalPlusOneTimeout()
+    {
+        var interval = TimeSpan.FromSeconds(1);
+        var timeout = TimeSpan.FromMilliseconds(200);
+        var answering = 1;
+        using var fake = new FakeXcCamera { Responder = _ => Volatile.Read(ref answering) == 1 ? XcReply.Ok : XcReply.Never };
+        using var camera = new XcCamera(XcTestCameras.UniqueName(), timeout, interval);
+        var connected = ConnectedBecomes(camera, true);
+        camera.Port = fake.Port;
+        camera.Address = "127.0.0.1";
+        await connected.WaitAsync(Wait);
+        var unreachable = ConnectedBecomes(camera, false);
+
+        var silentSince = Stopwatch.GetTimestamp();
+        Volatile.Write(ref answering, 0);
+        await unreachable.WaitAsync(Wait);
+
+        var took = Stopwatch.GetElapsedTime(silentSince);
+        Assert.True(took < interval + timeout + TimeSpan.FromMilliseconds(800), $"Unreachable {took.TotalMilliseconds:0} ms after the camera stopped answering. {FakeXcCamera.Describe(fake.Requests)}");
+    }
+
     [Fact]
     public async Task NoProbeStarts_WhileAControlRequestIsInFlight()
     {
@@ -86,6 +110,27 @@ public class XcCameraReachabilityTests
 
         Assert.DoesNotContain(fake.Probes, p => p.ArrivedAt > control.ArrivedAt);
         Assert.Equal(1, fake.MaxInFlight);
+    }
+
+    // Between a refused stop and its retry nothing is in flight, but the stop is still wanted: no probe
+    // goes out in those gaps, though the probe interval here is shorter than the retry interval.
+    [Fact]
+    public async Task NoProbeStarts_WhileAControlRequestIsWanted()
+    {
+        var refusedStops = 0;
+        using var fake = new FakeXcCamera
+        {
+            Responder = r => r.IsStop && Interlocked.Increment(ref refusedStops) <= 4 ? XcReply.With(200, "301") : XcReply.Ok,
+        };
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongTimeout, probeInterval: XcCamera.StopRepeatInterval * 0.8);
+        camera.Pan(0.4, PanDir.Left);
+        await fake.WaitForControlAsync(1);
+
+        camera.Pan(0, PanDir.Stop);
+        var requests = await fake.WaitUntilAsync(r => r.Count(x => x.IsStop) >= 5, "four refused stops and a fifth");
+
+        var stops = requests.Where(r => r.IsStop).ToList();
+        Assert.DoesNotContain(requests, r => r.IsProbe && r.ArrivedAt > stops[0].ArrivedAt && r.ArrivedAt < stops[^1].ArrivedAt);
     }
 
     [Fact]
