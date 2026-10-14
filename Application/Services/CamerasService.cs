@@ -53,7 +53,7 @@ public class CamerasService : ICamerasService
 
     private void CameraPersistentPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (sender is ViscaDeviceBase)
+        if (sender is ICamera)
             _camerasDb.SaveCameras(Cameras);
     }
 

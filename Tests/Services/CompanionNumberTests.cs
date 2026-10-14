@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.ComponentModel;
 using System.Diagnostics;
 using PtzJoystickControl.Application.Db;
 using PtzJoystickControl.Application.Devices;
@@ -89,6 +90,21 @@ public sealed class CompanionNumberTests : IDisposable
     }
 
     [Fact]
+    public void AddedCameraOfAnotherCameraType_GetsANumber_AndItsNumberChangeIsSaved()
+    {
+        var store = new MemoryStore(Cam("A"));
+        var service = new CamerasService(store);
+        var other = new NonViscaCamera("Other");
+
+        service.AddCamera(other);
+        Assert.Equal(new int?[] { 1, 2 }, Numbers(service));
+
+        other.CompanionNumber = 5;
+
+        Assert.Equal(new int?[] { 1, 5 }, store.SavedNumbers);
+    }
+
+    [Fact]
     public void DuplicateStoredNumbers_AreKept_AndLoggedAsAWarning()
     {
         var service = new CamerasService(new MemoryStore(Cam("Left", 1), Cam("Right", 1)));
@@ -170,14 +186,56 @@ public sealed class CompanionNumberTests : IDisposable
 
         public List<ICamera> Saved { get; } = new();
 
+        // The numbers as they were when last saved: Saved holds the live cameras.
+        public int?[] SavedNumbers { get; private set; } = Array.Empty<int?>();
+
         public IEnumerable<ICamera> GetAllCameras() => _cameras;
 
         public bool SaveCameras(IEnumerable<ICamera> cameras)
         {
             Saved.Clear();
             Saved.AddRange(cameras);
+            SavedNumbers = Saved.Select(c => c.CompanionNumber).ToArray();
             return true;
         }
+    }
+
+    // A camera of another camera type: it implements only the camera abstraction, not the VISCA base type.
+    private sealed class NonViscaCamera : ICamera
+    {
+        private int? _companionNumber;
+
+        public NonViscaCamera(string name) => Name = name;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        public event PropertyChangedEventHandler? PersistentPropertyChanged;
+
+        public string Name { get; }
+
+        public int? CompanionNumber
+        {
+            get => _companionNumber;
+            set
+            {
+                _companionNumber = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CompanionNumber)));
+                PersistentPropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CompanionNumber)));
+            }
+        }
+
+        public bool Connected => true;
+        public bool IsMoving => false;
+
+        public void Pan(double panSpeed, PanDir panDir) { }
+        public void Tilt(double tiltSpeed, TiltDir tiltDir) { }
+        public void Zoom(double zoomSpeed, ZoomDir zoomDir) { }
+        public void Focus(double focusSpeed, FocusDir focusDir) { }
+        public void Stop() { }
+        public void FocusMode(FocusMode focusMode) { }
+        public void FocusLock(FocusLock focusLock) { }
+        public void Power(Power power) { }
+        public void Preset(Preset preset, byte presetNumber) { }
+        public void PresetRecallSpeed(byte speed) { }
     }
 
     private sealed class RecordingTraceListener : TraceListener
