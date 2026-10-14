@@ -8,8 +8,8 @@ namespace PtzJoystickControl.Tests.Devices;
 
 /// <summary>
 /// A loopback XC camera: a minimal HTTP/1.1 server that records every request (path, query, arrival
-/// time, connection) and answers as <see cref="Responder"/> decides: with an HTTP status and
-/// <c>livescope-status</c>, after the test releases it, never, or by closing the connection.
+/// time) and answers as <see cref="Responder"/> decides: with an HTTP status and
+/// <c>livescope-status</c>, after the test releases it, or never.
 /// Connections are kept alive, so a client that reuses one is served on it.
 /// </summary>
 internal sealed class FakeXcCamera : IDisposable
@@ -124,11 +124,12 @@ internal sealed class FakeXcCamera : IDisposable
             }
 
             _clients[client] = 0;
-            _ = Serve(client, Interlocked.Increment(ref _accepted));
+            Interlocked.Increment(ref _accepted);
+            _ = Serve(client);
         }
     }
 
-    private async Task Serve(TcpClient client, int connection)
+    private async Task Serve(TcpClient client)
     {
         try
         {
@@ -155,8 +156,7 @@ internal sealed class FakeXcCamera : IDisposable
                 var request = new XcRequest(
                     question < 0 ? target : target[..question],
                     question < 0 ? "" : target[(question + 1)..],
-                    arrivedAt,
-                    connection);
+                    arrivedAt);
                 lock (_requests)
                     _requests.Add(request);
 
@@ -172,8 +172,6 @@ internal sealed class FakeXcCamera : IDisposable
                     var reply = Responder(request);
                     switch (reply.Kind)
                     {
-                        case XcReplyKind.Close:
-                            return;
                         case XcReplyKind.Never:
                             // Until the client gives up and closes the connection.
                             while (await stream.ReadAsync(buffer, _stopping.Token) > 0)
@@ -209,7 +207,7 @@ internal sealed class FakeXcCamera : IDisposable
     }
 }
 
-internal sealed record XcRequest(string Path, string Query, long ArrivedAt, int Connection)
+internal sealed record XcRequest(string Path, string Query, long ArrivedAt)
 {
     public bool IsControl => Path == FakeXcCamera.ControlPath;
 
@@ -225,7 +223,7 @@ internal sealed record XcRequest(string Path, string Query, long ArrivedAt, int 
     public bool IsStop => IsControl && Pan == "stop" && Tilt == "stop";
 }
 
-internal enum XcReplyKind { Answer, Held, Never, Close }
+internal enum XcReplyKind { Answer, Held, Never }
 
 internal sealed record XcReply(XcReplyKind Kind, int Status = 200, string? Livescope = "0")
 {
@@ -236,9 +234,6 @@ internal sealed record XcReply(XcReplyKind Kind, int Status = 200, string? Lives
 
     /// <summary>Read and never answered; the connection stays open until the client closes it.</summary>
     public static readonly XcReply Never = new(XcReplyKind.Never);
-
-    /// <summary>The connection is closed without an answer.</summary>
-    public static readonly XcReply Close = new(XcReplyKind.Close);
 
     public static XcReply With(int status, string? livescope) => new(XcReplyKind.Answer, status, livescope);
 }
