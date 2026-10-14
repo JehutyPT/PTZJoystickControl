@@ -20,11 +20,13 @@ This app moves physical cameras during live shows. These rules apply to all inpu
 
 - Companion being down, restarting, or slow must never affect joystick → camera control.
 - Log file I/O (writes, flushes, rotation) never runs on the input path. Logging only queues the entry; a background writer does the disk work, and a full queue drops entries instead of waiting. A slow, full or locked disk must never delay joystick → camera control.
+- A speed profile step from Companion never runs on the input path either. Each speed profile change saves `SpeedProfiles.json` before it returns, so the Companion listener applies the step itself, on its own thread, instead of queuing it on `InputQueue`. The movement commands read the active speed profile from an immutable snapshot without locking, so they never wait for a step or its save. A slow save delays only the Companion requests behind it (for example a camera selection pressed right after a step), never joystick → camera control.
 - A SKAARHOJ disconnect must not affect the USB joystick, and vice versa.
 
 ## 4. Threading
 
 - Input from any source (SDL loop, Companion listener, SKAARHOJ socket) must be marshalled onto one input thread or guarded so command execution is never concurrent for the same camera. Input arriving on another thread is queued on `InputQueue` and run by the SDL `UpdateLoop`; the SKAARHOJ panel does the same.
+- A speed profile step from Companion is a settings change, not input: like a change made in the window, it goes through the thread-safe speed profiles service on the thread that makes it (the Companion listener), not through `InputQueue` (see §3).
 - Raise UI-bound `PropertyChanged` on the UI thread.
 
 ## 5. Recoverability

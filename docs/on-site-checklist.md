@@ -6,6 +6,16 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #46: Companion steps and shows the speed profile
+
+Companion can step the active speed profile (#45) and show it on a button. In Companion's generic HTTP connection, set up (see [companion-integration.md](companion-integration.md#companion--app-speed-profiles)) a button whose GET is `http://localhost:12345/?SpeedProfile=faster`, one with `?SpeedProfile=finer`, and a custom variable read from `?SpeedProfile=current` after each step and on a time-interval trigger, shown on a button as the speed profile's name and position.
+
+- [ ] Press **finer**, then **faster**: each press moves the app window's active speed profile one step, and the stick speed changes on the next movement.
+- [ ] Press **finer** until the finest speed profile is active, then twice more: nothing changes and it does not wrap to the fastest. Do the same with **faster** at the fastest. The log (tray menu → **Show log**) has no `WARN` or `ERROR` for these presses.
+- [ ] In a browser on the vMix PC, open `http://localhost:12345/?SpeedProfile=current`: it shows the active speed profile, e.g. `{"position":2,"count":4,"name":"Medium"}`. The Companion button shows the same name and position, updates right after each step press, and follows a change made in the app window within the trigger's interval.
+- [ ] Pan a camera and, while holding the stick, press **faster** and **finer** several times: the camera keeps moving without stopping, stuttering or lagging, its speed changes only on the next stick movement, and it stops on release.
+- [ ] Select each camera from Companion (`?SelectCamera=N`): the app follows. Then press a button whose GET selects a camera and steps in one request (e.g. `?SelectCamera=2&SpeedProfile=faster`): the app selects camera 2 and the speed profile steps.
+
 ### #45: Speed profiles
 
 A **speed profile** sets a top speed for pan, tilt, zoom and focus together. The camera gets the input's own speed (the shaped value × its Max speed or Speed %) × the active speed profile's % for that axis. One ordered list, finest first, applies to every camera; it is edited in the new **Speed profiles** section under the cameras and saved in `%APPDATA%\PTZJoystickControl\SpeedProfiles.json`. With no file, these defaults are used with "Full" active (#52), so the first start moves at the previous build's speeds until a finer speed profile is chosen:
