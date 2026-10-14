@@ -16,7 +16,9 @@ namespace PtzJoystickControl.Tests.Devices;
 
 // ViscaIpDevice sends through the static UdpSocket singleton. Keep the tests that send through a
 // device socket in this class so xUnit runs them one at a time: they measure stop timings, which
-// other sends on the same socket would stretch.
+// other sends on the same socket would stretch. The class runs on its own too: a parallel run
+// starves the repeat timers and pushed the single-axis spreads past 400 ms.
+[Collection(TimingBoundCollection.Name)]
 public class ViscaIpDeviceStopRepeatTests
 {
     private const int MinStopSends = 3;
