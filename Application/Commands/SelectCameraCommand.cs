@@ -24,6 +24,11 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
     }
 
     private ObservableCollection<ICamera> cameras = null!;
+    // The cameras whose renames this command follows, one entry per subscription. A clear raises
+    // Reset with no OldItems, so this is the only record of the cameras the clear removed. Locked:
+    // the camera list is edited on the UI thread, but a controller going away disposes this
+    // command on the input loop.
+    private readonly List<ICamera> subscribedCameras = new();
     private bool disposed;
 
     private ObservableCollection<ICamera> Cameras
@@ -38,7 +43,7 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
             
             cameras.CollectionChanged += OnCamerasChanged;
             foreach (var camera in cameras)
-                camera.PropertyChanged += OnDeviceChange;
+                Subscribe(camera);
             NotifyPropertyChanged();
         }
     }
@@ -50,11 +55,14 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
 
         if (e != null)
         {
+            if (e.Action == NotifyCollectionChangedAction.Reset)
+                UnsubscribeFromRenames();
+
             if (e.OldStartingIndex >= 0)
-                foreach (ICamera device in e.OldItems!) device.PropertyChanged -= OnDeviceChange;
+                foreach (ICamera device in e.OldItems!) Unsubscribe(device);
 
             if (e.NewStartingIndex >= 0)
-                foreach (ICamera device in e.NewItems!) device.PropertyChanged += OnDeviceChange;
+                foreach (ICamera device in e.NewItems!) Subscribe(device);
         }
 
         NotifyCollectionChanged(e!);
@@ -66,14 +74,40 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
             NotifyPropertyChanged(nameof(Options));
     }
 
+    private void Subscribe(ICamera camera)
+    {
+        camera.PropertyChanged += OnDeviceChange;
+        lock (subscribedCameras)
+            subscribedCameras.Add(camera);
+    }
+
+    private void Unsubscribe(ICamera camera)
+    {
+        camera.PropertyChanged -= OnDeviceChange;
+        lock (subscribedCameras)
+            subscribedCameras.Remove(camera);
+    }
+
+    private void UnsubscribeFromRenames()
+    {
+        ICamera[] toUnsubscribe;
+        lock (subscribedCameras)
+        {
+            toUnsubscribe = subscribedCameras.ToArray();
+            subscribedCameras.Clear();
+        }
+
+        foreach (var camera in toUnsubscribe)
+            camera.PropertyChanged -= OnDeviceChange;
+    }
+
     private void UnsubscribeFromCameras()
     {
         if (cameras == null)
             return;
 
         cameras.CollectionChanged -= OnCamerasChanged;
-        foreach (var camera in cameras)
-            camera.PropertyChanged -= OnDeviceChange;
+        UnsubscribeFromRenames();
     }
 
     // Called when the gamepad goes away (unplugged or deactivated). Detaches from the shared
