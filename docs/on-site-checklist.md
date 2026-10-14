@@ -8,7 +8,7 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ### #45: Speed profiles
 
-A **speed profile** sets a top speed for pan, tilt, zoom and focus together. The camera gets the input's own speed (the shaped value × its Max speed or Speed %) × the active speed profile's % for that axis. One ordered list, finest first, applies to every camera; it is edited in the new **Speed profiles** section under the cameras and saved in `%APPDATA%\PTZJoystickControl\SpeedProfiles.json`. With no file, these defaults are used with "Fine" active, so on the first start pan and tilt are much slower than in the previous build until another speed profile is chosen:
+A **speed profile** sets a top speed for pan, tilt, zoom and focus together. The camera gets the input's own speed (the shaped value × its Max speed or Speed %) × the active speed profile's % for that axis. One ordered list, finest first, applies to every camera; it is edited in the new **Speed profiles** section under the cameras and saved in `%APPDATA%\PTZJoystickControl\SpeedProfiles.json`. With no file, these defaults are used with "Full" active (#52), so the first start moves at the previous build's speeds until a finer speed profile is chosen:
 
 | Speed profile | Pan % | Tilt % | Zoom % | Focus % |
 |---|---|---|---|---|
@@ -19,7 +19,7 @@ A **speed profile** sets a top speed for pan, tilt, zoom and focus together. The
 
 The older entries below compare speeds with the previous build: run them with "Full" (100 % on every axis) active, which changes no speed.
 
-- [ ] First start with no `SpeedProfiles.json`: the **Speed profiles** section shows the four speed profiles above in that order, with "Fine" active, and the log (tray menu → **Show log**) has no settings `WARN` or `ERROR` and no `Binding` lines.
+- [ ] First start with no `SpeedProfiles.json`: the **Speed profiles** section shows the four speed profiles above in that order, with "Full" active, and the log (tray menu → **Show log**) has no settings `WARN` or `ERROR` and no `Binding` lines. Pan, tilt, zoom and focus on both CR-N500s run at the previous build's speeds.
 - [ ] At "Fine", full pan and tilt deflection on both CR-N500s is clearly slower than at "Full", and small deflections are usable for framing on air.
 - [ ] Pan a camera and, while holding the stick still, make another speed profile active in the window: the speed changes on the next stick movement, not before, and the camera still stops on release.
 - [ ] Recall the same preset with "Fine" active and then with "Full" active: the preset recall speed is the same on every speed profile.
