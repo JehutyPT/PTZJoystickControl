@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using PtzJoystickControl.Application.Db;
+using PtzJoystickControl.Application.Services;
 using PtzJoystickControl.Core.Model;
 using PtzJoystickControl.Tests.Skaarhoj;
 using Xunit;
@@ -82,6 +83,31 @@ public sealed class SpeedProfileSettingsStoreTests : IDisposable
 
         Assert.Equal(new[] { ("Slow", 5, 6, 7, 8), ("Quick", 90, 91, 92, 93) }, Rows(loaded));
         Assert.Equal(2, loaded.ActivePosition);
+        Assert.Equal(new[] { "SpeedProfiles.json" }, FolderEntries());
+        Assert.DoesNotContain(LoggedAboutThisFile, e => e.Type is TraceEventType.Warning or TraceEventType.Error);
+    }
+
+    // Quit and restart: what the operator changed through the speed profiles service is what the app starts with.
+    [Fact]
+    public void ChangesMadeThroughTheSpeedProfilesService_AreThereAfterARestart()
+    {
+        var service = new SpeedProfilesService(new SpeedProfileSettingsStore(_path));
+        service.Add();
+        service.Edit(5, new SpeedProfile("Wide", 5, 6, 7, 8));
+        service.MoveUp(5);
+        service.SetActive(4);
+
+        var restarted = new SpeedProfilesService(new SpeedProfileSettingsStore(_path));
+
+        Assert.Equal(new[]
+        {
+            ("Fine", 15, 15, 30, 40),
+            ("Medium", 35, 35, 55, 70),
+            ("Fast", 65, 65, 80, 100),
+            ("Wide", 5, 6, 7, 8),
+            ("Full", 100, 100, 100, 100),
+        }, Rows(restarted.Profiles));
+        Assert.Equal(4, restarted.Profiles.ActivePosition);
         Assert.Equal(new[] { "SpeedProfiles.json" }, FolderEntries());
         Assert.DoesNotContain(LoggedAboutThisFile, e => e.Type is TraceEventType.Warning or TraceEventType.Error);
     }
