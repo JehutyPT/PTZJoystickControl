@@ -99,6 +99,142 @@ public class SelectCameraCommandTests
         Assert.Null(Record.Exception(() => gamepad.SelectedCamera = null));
     }
 
+    [Fact]
+    public void AddingANonViscaIpCamera_DoesNotThrow()
+    {
+        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1") };
+        _ = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
+
+        Assert.Null(Record.Exception(() => cameras.Add(new NonViscaIpCamera("Other"))));
+    }
+
+    [Fact]
+    public void RemovingANonViscaIpCamera_DoesNotThrow_AndItsRenamesAreIgnored()
+    {
+        var other = new NonViscaIpCamera("Other");
+        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1"), other };
+        var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
+
+        Assert.Null(Record.Exception(() => cameras.Remove(other)));
+
+        var optionsChanges = CountOptionsChanges(command);
+        other.Name = "Renamed";
+        Assert.Equal(0, optionsChanges());
+    }
+
+    [Fact]
+    public void RenamingANonViscaIpCameraInTheList_NotifiesOptions()
+    {
+        var other = new NonViscaIpCamera("Other");
+        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1") };
+        var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
+        cameras.Add(other);
+        var optionsChanges = CountOptionsChanges(command);
+
+        other.Name = "Renamed";
+
+        Assert.Equal(1, optionsChanges());
+        Assert.Equal(new[] { "Cam 1", "Renamed" }, command.Options.Select(o => o.Name));
+    }
+
+    [Fact]
+    public void ReplacingWithANonViscaIpCamera_AndBack_DoesNotThrow_AndOnlyTheNewEntryNotifies()
+    {
+        var visca = new ViscaIpDevice("Cam 1");
+        var other = new NonViscaIpCamera("Other");
+        var replacement = new ViscaIpDevice("Cam 1b");
+        var cameras = new ObservableCollection<ViscaDeviceBase> { visca };
+        var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
+
+        Assert.Null(Record.Exception(() => cameras[0] = other));
+        var optionsChanges = CountOptionsChanges(command);
+        visca.Name = "Old renamed";
+        Assert.Equal(0, optionsChanges());
+        other.Name = "Other renamed";
+        Assert.Equal(1, optionsChanges());
+
+        Assert.Null(Record.Exception(() => cameras[0] = replacement));
+        other.Name = "Other renamed again";
+        Assert.Equal(1, optionsChanges());
+        replacement.Name = "Cam 1b renamed";
+        Assert.Equal(2, optionsChanges());
+    }
+
+    [Fact]
+    public void MovingANonViscaIpCamera_DoesNotThrow_AndKeepsOneSubscription()
+    {
+        var other = new NonViscaIpCamera("Other");
+        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1"), other };
+        var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
+
+        Assert.Null(Record.Exception(() => cameras.Move(1, 0)));
+        var optionsChanges = CountOptionsChanges(command);
+        other.Name = "Renamed";
+
+        Assert.Equal(1, optionsChanges());
+        Assert.Equal(new[] { "Renamed", "Cam 1" }, command.Options.Select(o => o.Name));
+    }
+
+    [Fact]
+    public void ClearingAListWithANonViscaIpCamera_DoesNotThrow()
+    {
+        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1"), new NonViscaIpCamera("Other") };
+        var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
+
+        Assert.Null(Record.Exception(cameras.Clear));
+        Assert.Empty(command.Options);
+    }
+
+    [Fact]
+    public void MixedList_ListsOptionsInOrder_AndRemovingTheSelectedCameraClearsTheSelection()
+    {
+        var visca = new ViscaIpDevice("Cam 1");
+        var other = new NonViscaIpCamera("Other");
+        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 0"), visca };
+        var gamepad = new TestGamepad(cameras);
+        var command = new SelectCameraCommand(gamepad, new NullCompanionService());
+        cameras.Add(other);
+
+        Assert.Equal(new[] { "Cam 0", "Cam 1", "Other" }, command.Options.Select(o => o.Name));
+
+        gamepad.SelectedCamera = other;
+        cameras.Remove(other);
+        Assert.Null(gamepad.SelectedCamera);
+
+        gamepad.SelectedCamera = visca;
+        cameras.Remove(visca);
+        Assert.Null(gamepad.SelectedCamera);
+    }
+
+    private static Func<int> CountOptionsChanges(SelectCameraCommand command)
+    {
+        var count = 0;
+        command.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(SelectCameraCommand.Options))
+                count++;
+        };
+        return () => count;
+    }
+
+    // A camera that is not the VISCA-over-IP device, standing in for any other camera type.
+    private sealed class NonViscaIpCamera : ViscaDeviceBase
+    {
+        public NonViscaIpCamera(string name) : base(name) { }
+
+        public override void Power(Power byteVal) { }
+        public override void Pan(byte panSpeed, PanDir panDir) { }
+        public override void Tilt(byte tiltSpeed, TiltDir tiltDir) { }
+        public override void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir) { }
+        public override void Zoom(byte zoomSpeed, ZoomDir zoomDir) { }
+        public override void Focus(byte focusSpeed, FocusDir focusDir) { }
+        public override void FocusMode(FocusMode focusMode) { }
+        public override void FocusLock(FocusLock focusMode) { }
+        public override void Preset(Preset preset, byte presetNumber) { }
+        public override void PresetRecallSpeed(byte value) { }
+        public override void Stop() { }
+    }
+
     private sealed class NullCompanionService : IBitfocusCompanionService
     {
         public event EventHandler<BitfocusCompanionEvent>? ReceivedBitfocusCommand { add { } remove { } }

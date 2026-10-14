@@ -5,7 +5,6 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using PtzJoystickControl.Core.Model;
-using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Core.Services;
 
 namespace PtzJoystickControl.Application.Commands;
@@ -52,10 +51,10 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
         if (e != null)
         {
             if (e.OldStartingIndex >= 0)
-                foreach (ViscaIpDevice device in e.OldItems!) device.PropertyChanged -= OnDeviceChange;
+                foreach (ViscaDeviceBase device in e.OldItems!) device.PropertyChanged -= OnDeviceChange;
 
             if (e.NewStartingIndex >= 0)
-                foreach (ViscaIpDevice device in e.NewItems!) device.PropertyChanged += OnDeviceChange;
+                foreach (ViscaDeviceBase device in e.NewItems!) device.PropertyChanged += OnDeviceChange;
         }
 
         NotifyCollectionChanged(e!);
