@@ -1,0 +1,3 @@
+# Cameras are protocol-neutral and take a speed fraction
+
+The app was built for VISCA only: camera methods took a VISCA speed byte and commands hard-coded VISCA ranges (pan 1..24, tilt 1..20). Adding Canon XC (pan/tilt speed 10..10000) for finer manual control, we chose to put every camera type behind one protocol-neutral camera abstraction and pass movement speed as a fraction of the axis's full range, with each camera type mapping it onto its own protocol. The alternative, an XC class squeezed into the VISCA base type and byte API, would have thrown away the resolution XC was added for and kept VISCA casts all over the app. Consequence: per-input "Max speed" is a percentage, and saved VISCA step values are migrated (#41).

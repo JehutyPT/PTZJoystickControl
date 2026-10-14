@@ -16,6 +16,10 @@ No open items. Moving the app's outbound calls to Companion's current HTTP API (
 - Panel as a Companion Satellite surface (buttons, LED colors, display text).
 - HWC mapping configuration.
 
+## Phase 4: Canon XC
+
+Canon XC protocol cameras alongside VISCA, and global speed profiles stepped from Companion (#41, label `phase 4: xc`). Order: camera-selection cast fix (#42), speed fractions (#43), camera abstraction (#44), speed profiles (#45) and Companion stepping (#46), then the XC camera (#47, #48, #49).
+
 ## Later
 
-- Exponential response curve option per axis for finer control near center.
+Nothing queued.
