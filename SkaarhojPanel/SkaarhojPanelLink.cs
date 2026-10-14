@@ -339,8 +339,12 @@ public sealed class SkaarhojPanelLink : IDisposable
                     return "the panel closed the connection";
 
                 var dropped = framer.DroppedLines;
+                var droppedEnded = framer.EndedDroppedLines;
                 foreach (var line in framer.Append(buffer, 0, read))
                     Handle(line, deadMan);
+                // An over-long line the framer discards is still a complete line from the panel.
+                if (framer.EndedDroppedLines != droppedEnded)
+                    deadMan.LineHeard(Stopwatch.GetTimestamp());
                 if (framer.DroppedLines != dropped)
                     Trace.TraceWarning($"SKAARHOJ panel: dropped an over-long line from {Endpoint} ({framer.DroppedLines} so far on this connection)");
             }

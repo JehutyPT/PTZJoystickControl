@@ -197,6 +197,37 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     }
 
     [Fact]
+    public async Task OverLongLinesTheLinkDiscards_StillCountAsHearingFromThePanel()
+    {
+        // The panel never answers a ping: only the over-long lines can keep the link up.
+        _panel.AnswerPings = false;
+        _panel.Greeting = Array.Empty<string>();
+        var timeout = TimeSpan.FromMilliseconds(600);
+        var grace = TimeSpan.FromMilliseconds(50);
+        var link = Start(grace: grace, ping: TimeSpan.FromMilliseconds(300), timeout: timeout);
+        Assert.True(await WaitUntil(() => Count("up") == 1 && _panel.OpenClients == 1, TimeSpan.FromSeconds(2)));
+
+        var tooLong = new string('x', LineFramer.DefaultMaxLineLength + 16);
+        using var stop = new CancellationTokenSource();
+        var sender = Task.Factory.StartNew(() =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                _panel.Send(tooLong);
+                Thread.Sleep(150);
+            }
+        }, TaskCreationOptions.LongRunning);
+
+        await Task.Delay(grace + timeout * 2);
+        stop.Cancel();
+        await sender;
+
+        Assert.Equal(0, Count("down"));
+        Assert.True(link.IsUp);
+        Assert.Contains(_trace.Messages, m => m.Contains($":{_panel.Port}") && m.Contains("dropped an over-long line"));
+    }
+
+    [Fact]
     public async Task AQuietPanel_GetsAPingEveryPingInterval_CountedFromTheLastLineHeard()
     {
         // The panel answers each ping with an ack and sends nothing else.
