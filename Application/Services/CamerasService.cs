@@ -21,7 +21,8 @@ public class CamerasService : ICamerasService
     public void LoadCamerasFromDb()
     {
         var storedCameras = _camerasDb.GetAllCameras();
-        foreach(var camera in Cameras)
+        // Iterate a snapshot: RemoveCamera changes Cameras.
+        foreach (var camera in Cameras.ToList())
             RemoveCamera(camera);
 
         if (storedCameras != null)
