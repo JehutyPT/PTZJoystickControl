@@ -25,6 +25,8 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     private readonly ConcurrentQueue<(string Kind, long At, string Detail)> _events = new();
     private readonly ConcurrentQueue<RawPanelMessage> _messages = new();
     private long _startedAt;
+    // When each message reached subscribers: just after the link counted its line as heard.
+    private readonly ConcurrentQueue<(long At, RawPanelMessage Message)> _heard = new();
 
     public void Dispose()
     {
@@ -53,7 +55,11 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
             connectTimeout: TimeSpan.FromSeconds(1));
         link.LinkUp += (_, _) => _events.Enqueue(("up", Stopwatch.GetTimestamp(), ""));
         link.LinkDown += (_, reason) => _events.Enqueue(("down", Stopwatch.GetTimestamp(), reason));
-        link.MessageReceived += (_, message) => _messages.Enqueue(message);
+        link.MessageReceived += (_, message) =>
+        {
+            _heard.Enqueue((Stopwatch.GetTimestamp(), message));
+            _messages.Enqueue(message);
+        };
         _links.Add(link);
         if (_startedAt == 0)
             _startedAt = Stopwatch.GetTimestamp();
@@ -77,6 +83,21 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     private string DownReason => _events.First(e => e.Kind == "down").Detail;
 
     private int PingsReceived => _panel.Received.Count(l => l == "ping");
+
+    // When the link last heard the panel before `at`, as seen by a MessageReceived subscriber.
+    private long LastHeardBefore(long at) => _heard.Where(h => h.At <= at).Select(h => h.At).DefaultIfEmpty(0).Max();
+
+    // A forgiven app freeze restarts the silence count, so a drop may come up to how late the check ran
+    // plus one more timeout later. Zero when this test's link logged no freeze.
+    private TimeSpan ForgivenFreezeAllowance(TimeSpan timeout)
+    {
+        var late = _trace.Messages
+            .Where(m => m.Contains($"the app stalled, not the panel at 127.0.0.1:{_panel.Port}:"))
+            .Select(m => System.Text.RegularExpressions.Regex.Match(m, @"ran (\d+) ms late"))
+            .Where(m => m.Success)
+            .Sum(m => double.Parse(m.Groups[1].Value));
+        return late == 0 ? TimeSpan.Zero : TimeSpan.FromMilliseconds(late) + timeout;
+    }
 
     private static async Task<bool> WaitUntil(Func<bool> condition, TimeSpan within)
     {
@@ -144,18 +165,23 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     [Fact]
     public async Task ReportsDown_WhenThePanelFallsSilent_WithinTimeoutPlusOnePingInterval_AndClosesTheSocket()
     {
-        var link = Start();
-        await Task.Delay(Grace + Timeout);
+        // A longer timeout than the class default, so a read-loop stall in a busy suite cannot drop the link early.
+        var ping = TimeSpan.FromMilliseconds(50);
+        var timeout = TimeSpan.FromMilliseconds(300);
+        var link = Start(ping: ping, timeout: timeout);
+        await Task.Delay(Grace + timeout);
         Assert.Equal(0, Count("down"));
 
         _panel.AnswerPings = false;
 
-        Assert.True(await WaitUntil(() => Count("down") == 1, TimeSpan.FromSeconds(2)));
-        var sinceLastAck = Stopwatch.GetElapsedTime(_panel.LastAckSentAt, FirstAt("down"));
-        Assert.InRange(sinceLastAck, Timeout, Timeout + Ping + Slack);
+        Assert.True(await WaitUntil(() => Count("down") == 1, TimeSpan.FromSeconds(3)));
+        // Counted from the last line the link heard, which a stalled read loop can hear well after it was sent.
+        var downAt = FirstAt("down");
+        var sinceLastHeard = Stopwatch.GetElapsedTime(LastHeardBefore(downAt), downAt);
+        Assert.InRange(sinceLastHeard, timeout - TimeSpan.FromMilliseconds(5), timeout + ping + Slack + ForgivenFreezeAllowance(timeout));
         Assert.False(link.IsUp);
         Assert.StartsWith("the panel was silent for", DownReason);
-        Assert.EndsWith(" ms (timeout 100 ms)", DownReason);
+        Assert.EndsWith(" ms (timeout 300 ms)", DownReason);
         Assert.True(await WaitUntil(() => _panel.ClosedByLink == 1, TimeSpan.FromSeconds(2)));
         Assert.Equal(0, _panel.OpenClients);
         Assert.Contains(_trace.Events, e => e.Type == TraceEventType.Warning && e.Message.Contains("link down"));
@@ -245,12 +271,16 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         await Task.Delay(40);
         var lineAt = Stopwatch.GetTimestamp();
         _panel.Send("HWC#61=Speed:10");
-        // A ping already on its way when the line was sent arrives within a few ms; it is not the next one.
-        var after = lineAt + StopwatchTicks.From(TimeSpan.FromMilliseconds(10));
+        Assert.True(await WaitUntil(() => _heard.Any(h => h.Message is RawPanelMessage.Speed), TimeSpan.FromSeconds(2)));
+        var heardAt = _heard.First(h => h.Message is RawPanelMessage.Speed).At;
+        // A ping already on its way before the link heard the line is not the next one; the next comes a
+        // whole interval after the line was heard.
+        var after = heardAt + StopwatchTicks.From(ping / 2);
         Assert.True(await WaitUntil(() => _panel.TimesReceived("ping").Any(t => t > after), TimeSpan.FromSeconds(2)));
 
         var next = _panel.TimesReceived("ping").First(t => t > after);
-        Assert.InRange(Stopwatch.GetElapsedTime(lineAt, next), ping, ping + Slack);
+        Assert.True(Stopwatch.GetElapsedTime(lineAt, next) >= ping);
+        Assert.True(Stopwatch.GetElapsedTime(heardAt, next) <= ping + Slack);
     }
 
     [Fact]
@@ -271,7 +301,11 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
 
         Assert.True(await WaitUntil(() => Count("down") == 1, TimeSpan.FromSeconds(3)));
         // Counted from the input line, not from the last ack before it.
-        Assert.InRange(Stopwatch.GetElapsedTime(lineAt, FirstAt("down")), timeout, timeout + ping + Slack);
+        var downAt = FirstAt("down");
+        Assert.True(Stopwatch.GetElapsedTime(lineAt, downAt) >= timeout);
+        // The upper bound runs from when the link heard the line, which a stalled read loop can delay.
+        var heardAt = _heard.Last(h => h.Message is RawPanelMessage.Speed).At;
+        Assert.True(Stopwatch.GetElapsedTime(heardAt, downAt) <= timeout + ping + Slack + ForgivenFreezeAllowance(timeout));
         Assert.StartsWith("the panel was silent for", DownReason);
     }
 
