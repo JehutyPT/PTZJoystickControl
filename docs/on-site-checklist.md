@@ -13,7 +13,7 @@ Companion can step the active speed profile (#45) and show it on a button. In Co
 - [ ] Press **finer**, then **faster**: each press moves the app window's active speed profile one step, and the stick speed changes on the next movement.
 - [ ] Press **finer** until the finest speed profile is active, then twice more: nothing changes and it does not wrap to the fastest. Do the same with **faster** at the fastest. The log (tray menu → **Show log**) has no `WARN` or `ERROR` for these presses.
 - [ ] In a browser on the vMix PC, open `http://localhost:12345/?SpeedProfile=current`: it shows the active speed profile, e.g. `{"position":2,"count":4,"name":"Medium"}`. The Companion button shows the same name and position, updates right after each step press, and follows a change made in the app window within the trigger's interval.
-- [ ] Pan a camera and, while holding the stick, press **faster** and **finer** several times: the camera keeps moving without stopping, stuttering or lagging, its speed changes only on the next stick movement, and it stops on release.
+- [ ] Pan a camera and, while holding the stick, press **faster** and **finer** several times: the camera keeps moving without stopping, stuttering or lagging, and it stops on release. Its speed changes from the stick's next movement, even a slight one while it is held.
 - [ ] Select each camera from Companion (`?SelectCamera=N`): the app follows. Then press a button whose GET selects a camera and steps in one request (e.g. `?SelectCamera=2&SpeedProfile=faster`): the app selects camera 2 and the speed profile steps.
 
 ### #45: Speed profiles
