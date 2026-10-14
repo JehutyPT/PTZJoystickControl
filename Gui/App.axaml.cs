@@ -39,6 +39,7 @@ namespace PtzJoystickControl.Gui
             var mainWindowViewModel = new MainWindowViewModel(
                 Locator.Current.GetServiceOrThrow<GamepadsViewModel>(),
                 camerasViewModel,
+                Locator.Current.GetServiceOrThrow<SpeedProfilesViewModel>(),
                 mainWindow,
                 Locator.Current.GetServiceOrThrow<IBitfocusCompanionService>());
             mainWindow.DataContext = mainWindowViewModel;

@@ -149,6 +149,8 @@ internal class Program
         services.Register(() => new CamerasViewModel(
             resolver.GetServiceOrThrow<ICamerasService>(),
             resolver.GetServiceOrThrow<GamepadsViewModel>()));
+        services.RegisterLazySingleton(() => new SpeedProfilesViewModel(
+            resolver.GetServiceOrThrow<ISpeedProfilesService>()));
         services.RegisterConstant(log);
         services.RegisterLazySingleton(() => new LogWindowViewModel(
             resolver.GetServiceOrThrow<AppLogListener>()));
