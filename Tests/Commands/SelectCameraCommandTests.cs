@@ -206,6 +206,18 @@ public class SelectCameraCommandTests
         Assert.Null(gamepad.SelectedCamera);
     }
 
+    [Fact]
+    public void ExecutingANonViscaIpCamerasOption_SelectsIt()
+    {
+        var other = new NonViscaIpCamera("Other");
+        var gamepad = new TestGamepad(new ObservableCollection<ICamera> { new ViscaIpDevice("Cam 1"), other });
+        var command = new SelectCameraCommand(gamepad, new NullCompanionService());
+
+        command.Execute(command.Options.Single(o => o.Name == "Other").Value);
+
+        Assert.Same(other, gamepad.SelectedCamera);
+    }
+
     private static Func<int> CountOptionsChanges(SelectCameraCommand command)
     {
         var count = 0;
