@@ -55,6 +55,8 @@ public sealed class SkaarhojPanelLink : IDisposable
     private Task? _loop;
 
     private volatile bool _isUp;
+    // Whether the current connection has received an ack: only then does the reconnect backoff start over.
+    private volatile bool _acked;
     private int _unknownLines;
 
     public SkaarhojPanelLink(string host, int port)
@@ -187,7 +189,7 @@ public sealed class SkaarhojPanelLink : IDisposable
     // The link's only task. Runs until disposed; nothing may escape it.
     private async Task RunAsync(CancellationToken stopping)
     {
-        // Consecutive connections that ended without hearing a single line, and consecutive connect failures.
+        // Consecutive connections that ended without a single ack, and consecutive connect failures.
         var attempt = 0;
         var connectFailures = 0;
         while (!stopping.IsCancellationRequested)
@@ -200,9 +202,9 @@ public sealed class SkaarhojPanelLink : IDisposable
                 else
                     connectFailures = 0;
 
-                // A connection the panel sent anything on was healthy: start the backoff over. One that heard
-                // nothing keeps growing it, so a panel that accepts and then says nothing is not hammered.
-                if (outcome == ConnectionOutcome.Heard)
+                // A connection the panel answered was healthy: start the backoff over. One that never got
+                // an ack keeps growing it, so a panel that accepts and then stalls is not hammered.
+                if (outcome == ConnectionOutcome.Acked)
                     attempt = 0;
                 attempt++;
 
@@ -240,7 +242,7 @@ public sealed class SkaarhojPanelLink : IDisposable
         }
     }
 
-    private enum ConnectionOutcome { ConnectFailed, NothingHeard, Heard }
+    private enum ConnectionOutcome { ConnectFailed, NoAck, Acked }
 
     // One connection: connect, run until it goes down, close. Throws only OperationCanceledException on stopping.
     private async Task<(ConnectionOutcome Outcome, string? ConnectError)> RunConnectionAsync(CancellationToken stopping)
@@ -252,7 +254,7 @@ public sealed class SkaarhojPanelLink : IDisposable
             {
                 // Dispose is cancelling the loop; its wait below ends at once.
                 client.Dispose();
-                return (ConnectionOutcome.NothingHeard, null);
+                return (ConnectionOutcome.NoAck, null);
             }
             _client = client;
         }
@@ -284,6 +286,7 @@ public sealed class SkaarhojPanelLink : IDisposable
     private async Task<ConnectionOutcome> RunSessionAsync(TcpClient client, CancellationToken stopping)
     {
         var deadMan = new PanelDeadMan(Endpoint, Stopwatch.GetTimestamp(), _pingInterval, _silenceTimeout, _connectGrace);
+        _acked = false;
         _isUp = true;
         Trace.TraceInformation($"SKAARHOJ panel: link up to {Endpoint}");
         Raise(LinkUp, EventArgs.Empty, nameof(LinkUp));
@@ -319,7 +322,7 @@ public sealed class SkaarhojPanelLink : IDisposable
             Trace.TraceWarning($"SKAARHOJ panel: link down from {Endpoint}: {reason}");
         Raise(LinkDown, reason, nameof(LinkDown));
 
-        return deadMan.HasHeard ? ConnectionOutcome.Heard : ConnectionOutcome.NothingHeard;
+        return _acked ? ConnectionOutcome.Acked : ConnectionOutcome.NoAck;
     }
 
     // Returns why the connection should go down. Never throws.
@@ -372,6 +375,9 @@ public sealed class SkaarhojPanelLink : IDisposable
 
         switch (message)
         {
+            case RawPanelMessage.Ack:
+                _acked = true;
+                break;
             case RawPanelMessage.Reply { Key: "isSleeping", Value: "0" }:
                 // Waking stalls the panel for longer than the timeout: give it the same grace as a connect.
                 deadMan.Woke(heardAt);

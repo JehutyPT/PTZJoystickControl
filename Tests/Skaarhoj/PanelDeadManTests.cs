@@ -94,7 +94,6 @@ public sealed class PanelDeadManTests
 
         Assert.True(verdict.Drop);
         Assert.Equal("the panel was silent for 2125 ms since connecting (timeout 1000 ms after the 1000 ms connect grace)", verdict.DropReason);
-        Assert.False(deadMan.HasHeard);
     }
 
     [Fact]
@@ -108,7 +107,6 @@ public sealed class PanelDeadManTests
 
         Assert.True(verdict.Drop);
         Assert.Equal("the panel was silent for 2025 ms (timeout 1000 ms)", verdict.DropReason);
-        Assert.True(deadMan.HasHeard);
     }
 
     [Fact]

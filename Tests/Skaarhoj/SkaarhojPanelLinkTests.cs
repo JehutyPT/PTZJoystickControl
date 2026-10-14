@@ -372,6 +372,26 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     }
 
     [Fact]
+    public async Task AConnectionThatHearsLinesButNoAck_StillGrowsTheReconnectDelay()
+    {
+        // The panel greets every connection with map= lines but never answers a ping: only an ack
+        // shows a healthy connection, so the backoff is not started over.
+        _panel.AnswerPings = false;
+        Start(grace: TimeSpan.FromMilliseconds(20), timeout: TimeSpan.FromMilliseconds(40),
+            reconnectInitial: TimeSpan.FromMilliseconds(30), reconnectMax: TimeSpan.FromMilliseconds(120));
+
+        Assert.True(await WaitUntil(() => _panel.Accepted >= 4 && Count("down") >= 3, TimeSpan.FromSeconds(3)));
+        Assert.Contains(_messages, m => m is RawPanelMessage.Map);
+
+        // Each wait runs from a link down to the next connect.
+        var downs = _events.Where(e => e.Kind == "down").Select(e => e.At).ToArray();
+        var accepted = _panel.AcceptedAt;
+        var expected = new[] { 30, 60, 120 }.Select(ms => TimeSpan.FromMilliseconds(ms)).ToArray();
+        for (var i = 0; i < expected.Length; i++)
+            Assert.InRange(Stopwatch.GetElapsedTime(downs[i], accepted[i + 1]), expected[i] - TimeSpan.FromMilliseconds(5), expected[i] + Slack);
+    }
+
+    [Fact]
     public async Task AfterASilenceTimeout_ReconnectsToTheSamePanel_AndNeverHoldsTwoConnections()
     {
         var link = Start(reconnectInitial: TimeSpan.FromMilliseconds(50), reconnectMax: TimeSpan.FromMilliseconds(200));

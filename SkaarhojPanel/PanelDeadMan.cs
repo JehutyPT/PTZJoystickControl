@@ -54,16 +54,6 @@ internal sealed class PanelDeadMan
     /// <summary>How often the link runs <see cref="Check"/>.</summary>
     public TimeSpan CheckInterval { get; }
 
-    /// <summary>Whether any line has arrived from the panel on this connection.</summary>
-    public bool HasHeard
-    {
-        get
-        {
-            lock (_lock)
-                return _lastHeard.HasValue;
-        }
-    }
-
     /// <summary>When the next <c>ping</c> is due: a ping interval after the later of the last line heard and the last send.</summary>
     public long NextPingDue
     {
