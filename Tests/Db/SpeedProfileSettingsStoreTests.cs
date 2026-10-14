@@ -58,15 +58,28 @@ public sealed class SpeedProfileSettingsStoreTests : IDisposable
         ("Full", 100, 100, 100, 100),
     };
 
+    // The fastest, last, is active (#52): the first start after the upgrade moves at the previous build's speeds.
     [Fact]
-    public void WithNoFile_TheDefaultProfilesAreUsed_WithFineActive_AndNothingIsWarnedOrWritten()
+    public void WithNoFile_TheDefaultProfilesAreUsed_WithFullActive_AndNothingIsWarnedOrWritten()
     {
         var profiles = Load(null);
 
         Assert.Equal(DefaultRows, Rows(profiles));
-        Assert.Equal(1, profiles.ActivePosition);
+        Assert.Equal(4, profiles.ActivePosition);
+        Assert.Equal("Full", profiles.Active.Name);
         Assert.DoesNotContain(LoggedAboutThisFile, e => e.Type is TraceEventType.Warning or TraceEventType.Error);
         Assert.False(File.Exists(_path));
+    }
+
+    // What the app starts on when nothing is saved: the speed profiles service over the real store.
+    [Fact]
+    public void WithNothingSaved_TheSpeedProfilesServiceStartsOnFull_TheLastProfile_AndWritesNothing()
+    {
+        var service = new SpeedProfilesService(new SpeedProfileSettingsStore(_path));
+
+        Assert.Equal("Full", service.Profiles.Active.Name);
+        Assert.Equal(service.Profiles.Count, service.Profiles.ActivePosition);
+        Assert.Empty(FolderEntries());
     }
 
     [Fact]
@@ -126,12 +139,13 @@ public sealed class SpeedProfileSettingsStoreTests : IDisposable
     [InlineData("{'ActivePosition':1,'Profiles':[{'Name':'Fine','Pan':1,'Tilt':2,'Zoom':3,'Focus':4},{'Name':'Fast','Pan':1,'Tilt':2,'Zoom':3}]}")]
     [InlineData("{'ActivePosition':1,'Profiles':[{'Name':'Fine','Pan':1,'Tilt':2,'Zoom':3,'Focus':4},{'Name':'Fast','Pan':15.5,'Tilt':2,'Zoom':3,'Focus':4}]}")]
     [InlineData("{'ActivePosition':1,'Profiles':[{'Name':'Fine','Pan':1,'Tilt':2,'Zoom':3,'Focus':4},{'Name':'Fast','Pan':'15','Tilt':2,'Zoom':3,'Focus':4}]}")]
-    public void AFileThatCannotBeUsed_LogsAnErrorNamingTheFile_AndTheDefaultsAreUsed(string contents)
+    public void AFileThatCannotBeUsed_LogsAnErrorNamingTheFile_AndTheDefaultsAreUsed_WithFullActive(string contents)
     {
         var profiles = Load(contents.Replace('\'', '"'));
 
         Assert.Equal(DefaultRows, Rows(profiles));
-        Assert.Equal(1, profiles.ActivePosition);
+        Assert.Equal(4, profiles.ActivePosition);
+        Assert.Equal("Full", profiles.Active.Name);
         Assert.Contains(LoggedAboutThisFile, e => e.Type == TraceEventType.Error);
     }
 

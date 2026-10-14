@@ -6,14 +6,20 @@ namespace PtzJoystickControl.Core.Model;
 /// </summary>
 public sealed class SpeedProfileList
 {
-    /// <summary>The list used when none is saved: the finest profile is active.</summary>
-    public static SpeedProfileList Defaults { get; } = new(new[]
+    private static readonly SpeedProfile[] DefaultProfiles =
     {
         new SpeedProfile("Fine", 15, 15, 30, 40),
         new SpeedProfile("Medium", 35, 35, 55, 70),
         new SpeedProfile("Fast", 65, 65, 80, 100),
         new SpeedProfile("Full", 100, 100, 100, 100),
-    }, activePosition: 1);
+    };
+
+    /// <summary>
+    /// The list used when none is saved, or the saved one cannot be used. The fastest profile, "Full"
+    /// (the last, 100 % on every axis), is active, so the cameras move at the speeds they had before
+    /// speed profiles until a finer one is chosen (#52).
+    /// </summary>
+    public static SpeedProfileList Defaults { get; } = new(DefaultProfiles, activePosition: DefaultProfiles.Length);
 
     /// <param name="profiles">At least one profile, finest first.</param>
     /// <param name="activePosition">The active profile's 1-based position in <paramref name="profiles"/>.</param>
