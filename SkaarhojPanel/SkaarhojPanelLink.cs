@@ -97,13 +97,19 @@ public sealed class SkaarhojPanelLink : IDisposable
 
     public bool IsUp => _isUp;
 
+    /// <summary>The panel's address, as configured.</summary>
+    public string Host => _host;
+
+    public int Port => _port;
+
     private string Endpoint => $"{_host}:{_port}";
 
     /// <summary>
-    /// Reads <paramref name="settingsFilePath"/> and starts a link when it names a panel; returns null,
-    /// and logs nothing, when no address is set. Never throws.
+    /// Reads <paramref name="settingsFilePath"/> and returns a link, not yet started, when it names a
+    /// panel; returns null, and logs nothing, when no address is set. Subscribe, then call
+    /// <see cref="Start"/>. Never throws.
     /// </summary>
-    public static SkaarhojPanelLink? StartIfConfigured(string settingsFilePath)
+    public static SkaarhojPanelLink? CreateIfConfigured(string settingsFilePath)
     {
         try
         {
@@ -119,9 +125,7 @@ public sealed class SkaarhojPanelLink : IDisposable
 
             var address = settings.Address!.Trim();
             Trace.TraceInformation($"SKAARHOJ panel: connecting to {address}:{settings.Port}");
-            var link = new SkaarhojPanelLink(address, settings.Port);
-            link.Start();
-            return link;
+            return new SkaarhojPanelLink(address, settings.Port);
         }
         catch (Exception e)
         {

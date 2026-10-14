@@ -47,4 +47,4 @@ Inbound transport stays HTTP on localhost (simple to trigger from Companion's HT
 
 ### Surfaces
 
-The SKAARHOJ panel connects to Companion as a surface through the **Satellite API**. See [skaarhoj-integration.md](skaarhoj-integration.md).
+The SKAARHOJ panel's buttons, encoders, LEDs and displays reach Companion through a separate [Companion surface plugin](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel), not through this app. This app reads only the panel's joystick and zoom rocker. See [skaarhoj-integration.md](skaarhoj-integration.md#coexisting-with-the-companion-surface-plugin).

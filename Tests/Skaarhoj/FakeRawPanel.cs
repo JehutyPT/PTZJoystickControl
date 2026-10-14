@@ -74,6 +74,16 @@ internal sealed class FakeRawPanel : IDisposable
         }
     }
 
+    /// <summary>
+    /// Closes every connection but keeps listening, as when the panel restarts: the link sees the
+    /// close at once, without waiting for its ping timeout, and reconnects.
+    /// </summary>
+    public void DropConnections()
+    {
+        foreach (var client in _clients.Keys)
+            client.Dispose();
+    }
+
     public void Dispose()
     {
         _stopping.Cancel();
@@ -96,13 +106,14 @@ internal sealed class FakeRawPanel : IDisposable
                 return;
             }
 
+            // Registered for Send before it is counted, so a test that waits on OpenClients can send.
+            _clients[client] = 0;
             _acceptedAt.Enqueue(Stopwatch.GetTimestamp());
             lock (_countLock)
             {
                 _open++;
                 _maxOpen = Math.Max(_maxOpen, _open);
             }
-            _clients[client] = 0;
             _ = Serve(client);
         }
     }
