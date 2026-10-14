@@ -151,6 +151,23 @@ public sealed class PanelDeadManTests
         Assert.True(deadMan.Check(At(2350), At(2100)).Drop);
     }
 
+    [Theory]
+    [InlineData(200, false)]
+    [InlineData(251, true)]
+    public void TheFreezeThreshold_Stays250ms_WithShortenedTimings(long lateMs, bool freeze)
+    {
+        // The link tests' timings: 20 ms ping, 100 ms timeout, 250 ms grace.
+        var deadMan = new PanelDeadMan(Endpoint, connectedAt: At(0),
+            TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(250));
+        deadMan.LineHeard(At(300));
+
+        // Past the 100 ms timeout either way: only a freeze restarts the count and keeps the link.
+        var verdict = deadMan.Check(At(300 + lateMs), At(300));
+
+        Assert.Equal(freeze, verdict.FreezeWarning != null);
+        Assert.Equal(!freeze, verdict.Drop);
+    }
+
     [Fact]
     public void ASecondFreeze_WithNothingHeardSinceTheFirst_DoesNotRestartTheCount()
     {

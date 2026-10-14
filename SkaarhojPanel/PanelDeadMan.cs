@@ -9,14 +9,17 @@ namespace PtzJoystickControl.SkaarhojPanel;
 /// </summary>
 internal sealed class PanelDeadMan
 {
+    /// <summary>A check running later than this means the app froze, not the panel. Fixed, whatever the timings.</summary>
+    internal static readonly TimeSpan FreezeThreshold = TimeSpan.FromMilliseconds(250);
+
+    private static readonly long FreezeThresholdTicks = StopwatchTicks.From(FreezeThreshold);
+
     private readonly object _lock = new();
     private readonly string _endpoint;
     private readonly long _connectedAt;
     private readonly long _pingInterval;
     private readonly long _silenceTimeout;
     private readonly long _grace;
-    // A check running later than this means the app froze, not the panel: a quarter of the timeout.
-    private readonly long _freezeThreshold;
     private readonly TimeSpan _silenceTimeoutSpan;
     private readonly TimeSpan _graceSpan;
 
@@ -38,7 +41,6 @@ internal sealed class PanelDeadMan
         _pingInterval = StopwatchTicks.From(pingInterval);
         _silenceTimeout = StopwatchTicks.From(silenceTimeout);
         _grace = StopwatchTicks.From(grace);
-        _freezeThreshold = _silenceTimeout / 4;
         _silenceTimeoutSpan = silenceTimeout;
         _graceSpan = grace;
         _lastSent = connectedAt;
@@ -99,7 +101,7 @@ internal sealed class PanelDeadMan
     /// <summary>
     /// The dead-man check the link scheduled for <paramref name="scheduledAt"/>, running at <paramref name="now"/>.
     /// The panel's silence is counted from the latest of the last line heard, the grace end and the last
-    /// restart. A check more than a quarter of the timeout late means the app froze, so the panel had no
+    /// restart. A check more than <see cref="FreezeThreshold"/> late means the app froze, so the panel had no
     /// chance to answer: the count restarts from it, but only if the panel has been heard since the last
     /// restart (or there was none), so continued app slowness cannot hide a panel that is gone.
     /// </summary>
@@ -107,7 +109,7 @@ internal sealed class PanelDeadMan
     {
         lock (_lock)
         {
-            var frozen = now - scheduledAt > _freezeThreshold;
+            var frozen = now - scheduledAt > FreezeThresholdTicks;
             if (frozen && (_restartAt is null || _heardSinceRestart))
             {
                 _restartAt = now;
