@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
@@ -8,16 +9,29 @@ using PtzJoystickControl.Core.Services;
 namespace PtzJoystickControl.Tests.Skaarhoj;
 
 /// <summary>
-/// A camera that records every motion command and stop, and keeps the base class's last-sent state
-/// the way <c>ViscaIpDevice</c> does, so <see cref="ViscaDeviceBase.IsMoving"/> reflects what was driven.
+/// A camera that records every motion command and stop, and keeps the last-sent motion state
+/// the way <c>ViscaIpDevice</c> does, so <see cref="ICamera.IsMoving"/> reflects what was driven.
 /// Thread-safe to read from the test thread.
 /// </summary>
-internal sealed class MotionRecordingCamera : ViscaDeviceBase
+internal sealed class MotionRecordingCamera : ICamera
 {
     private readonly ConcurrentQueue<string> _calls = new();
     private int _stopCalls;
+    private PanDir panDir = PanDir.Stop;
+    private TiltDir tiltDir = TiltDir.Stop;
+    private ZoomDir zoomDir = ZoomDir.Stop;
+    private FocusDir focusDir = FocusDir.Stop;
 
-    public MotionRecordingCamera(string name) : base(name) { }
+    public MotionRecordingCamera(string name) => Name = name;
+
+    public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+    public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }
+
+    public string Name { get; }
+    public int? CompanionNumber { get; set; }
+    public bool Connected => true;
+    public bool IsMoving =>
+        panDir != PanDir.Stop || tiltDir != TiltDir.Stop || zoomDir != ZoomDir.Stop || focusDir != FocusDir.Stop;
 
     /// <summary>Motion commands in order, with speed fractions, e.g. <c>Pan 1 Right</c>, <c>Zoom 0.5 Tele</c>.</summary>
     public IReadOnlyList<string> Calls => _calls.ToArray();
@@ -27,51 +41,44 @@ internal sealed class MotionRecordingCamera : ViscaDeviceBase
     // Speed fractions, culture-independent: 1, 0.5, 0.333.
     private static string F(double speed) => speed.ToString("0.###", CultureInfo.InvariantCulture);
 
-    public override void Stop()
+    public void Stop()
     {
         Interlocked.Increment(ref _stopCalls);
         panDir = PanDir.Stop;
         tiltDir = TiltDir.Stop;
-        zoomCmd = (byte)ZoomDir.Stop;
-        focusCmd = (byte)FocusDir.Stop;
+        zoomDir = ZoomDir.Stop;
+        focusDir = FocusDir.Stop;
     }
 
-    public override void Pan(double panSpeed, PanDir panDir)
+    public void Pan(double panSpeed, PanDir panDir)
     {
         this.panDir = panDir;
         _calls.Enqueue($"Pan {F(panSpeed)} {panDir}");
     }
 
-    public override void Tilt(double tiltSpeed, TiltDir tiltDir)
+    public void Tilt(double tiltSpeed, TiltDir tiltDir)
     {
         this.tiltDir = tiltDir;
         _calls.Enqueue($"Tilt {F(tiltSpeed)} {tiltDir}");
     }
 
-    public override void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir)
+    public void Zoom(double zoomSpeed, ZoomDir zoomDir)
     {
-        this.panDir = panDir;
-        this.tiltDir = tiltDir;
-        _calls.Enqueue($"PanTilt {F(panSpeed)} {F(tiltSpeed)} {panDir} {tiltDir}");
-    }
-
-    public override void Zoom(double zoomSpeed, ZoomDir zoomDir)
-    {
-        zoomCmd = zoomDir == ZoomDir.Stop ? (byte)0x00 : (byte)zoomDir;
+        this.zoomDir = zoomDir;
         _calls.Enqueue($"Zoom {F(zoomSpeed)} {zoomDir}");
     }
 
-    public override void Focus(double focusSpeed, FocusDir focusDir)
+    public void Focus(double focusSpeed, FocusDir focusDir)
     {
-        focusCmd = focusDir == FocusDir.Stop ? (byte)0x00 : (byte)focusDir;
+        this.focusDir = focusDir;
         _calls.Enqueue($"Focus {F(focusSpeed)} {focusDir}");
     }
 
-    public override void Power(Power byteVal) { }
-    public override void FocusMode(FocusMode focusMode) { }
-    public override void FocusLock(FocusLock focusMode) { }
-    public override void Preset(Preset preset, byte presetNumber) { }
-    public override void PresetRecallSpeed(byte value) { }
+    public void Power(Power power) { }
+    public void FocusMode(FocusMode focusMode) { }
+    public void FocusLock(FocusLock focusLock) { }
+    public void Preset(Preset preset, byte presetNumber) { }
+    public void PresetRecallSpeed(byte speed) { }
 }
 
 internal sealed class FakeCamerasService : ICamerasService
