@@ -28,8 +28,9 @@ internal sealed class PanelDeadMan
     // The check at which the count last restarted after an app freeze; null before the first.
     private long? _restartAt;
     private bool _heardSinceRestart;
-    // Whether the last check ran late: a run of back-to-back late checks is one freeze to log.
-    private bool _lastCheckLate;
+    // When the last late check ran; a series of late checks (one freeze to log) ends only once a full
+    // silence timeout passes with no late check. Null before the first.
+    private long? _lastLateAt;
 
     public PanelDeadMan(long connectedAt, TimeSpan pingInterval, TimeSpan silenceTimeout, TimeSpan grace)
     {
@@ -104,8 +105,13 @@ internal sealed class PanelDeadMan
                 _heardSinceRestart = false;
             }
 
-            TimeSpan? stall = frozen && !_lastCheckLate ? Stopwatch.GetElapsedTime(scheduledAt, now) : null;
-            _lastCheckLate = frozen;
+            TimeSpan? stall = null;
+            if (frozen)
+            {
+                if (_lastLateAt is not { } lastLate || now - lastLate > _silenceTimeout)
+                    stall = Stopwatch.GetElapsedTime(scheduledAt, now);
+                _lastLateAt = now;
+            }
 
             var countFrom = Math.Max(Math.Max(_graceEnd, _lastHeard ?? long.MinValue), _restartAt ?? long.MinValue);
             if (now - countFrom <= _silenceTimeout)
@@ -120,6 +126,9 @@ internal sealed class PanelDeadMan
     /// <paramref name="NothingHeard"/>, since connecting. Null to keep the link.
     /// </param>
     /// <param name="NothingHeard">No line has arrived from the panel on this connection.</param>
-    /// <param name="Stall">How late this check ran, when it is the first late check of a series (one <c>WARN</c> each); otherwise null.</param>
+    /// <param name="Stall">
+    /// How late this check ran, when it is the first late check of a series (one <c>WARN</c> each); otherwise
+    /// null. A series ends once a full silence timeout passes with no late check.
+    /// </param>
     internal readonly record struct Verdict(TimeSpan? Silence, bool NothingHeard, TimeSpan? Stall);
 }

@@ -220,7 +220,7 @@ public sealed class PanelDeadManTests
     }
 
     [Fact]
-    public void OnlyTheFirstLateCheckInARun_GivesAWarning_UntilAnOnTimeCheckEndsTheRun()
+    public void LateAndOnTimeChecks_Alternating_LogOnce_AsOneSeries()
     {
         var deadMan = Connected();
         deadMan.LineHeard(At(1100));
@@ -228,11 +228,26 @@ public sealed class PanelDeadManTests
 
         Assert.Equal(375, Ms(deadMan.Check(At(2000), At(1625)).Stall));
         deadMan.LineHeard(At(2010));
-        Assert.Null(deadMan.Check(At(2400), At(2125)).Stall);
-        Assert.Null(deadMan.Check(At(2800), At(2525)).Stall);
+        Assert.Null(OnTimeCheck(deadMan, 2125).Stall);
+        Assert.Null(deadMan.Check(At(2550), At(2250)).Stall);
+        Assert.Null(OnTimeCheck(deadMan, 2675).Stall);
+        // 1000 ms after the last late check (2550): not yet a full timeout, so still the same series.
+        Assert.Null(deadMan.Check(At(3550), At(3250)).Stall);
+    }
 
-        // An on-time check ends the run; the next late check starts a new one.
-        Assert.Null(OnTimeCheck(deadMan, 2925).Stall);
-        Assert.Equal(1400, Ms(deadMan.Check(At(4450), At(3050)).Stall));
+    [Fact]
+    public void ASeriesOfLateChecks_EndsOnlyOnceAFull1sPassesWithNoLateCheck()
+    {
+        var deadMan = Connected();
+        deadMan.LineHeard(At(1100));
+
+        Assert.Equal(375, Ms(deadMan.Check(At(2000), At(1625)).Stall));
+        deadMan.LineHeard(At(2010));
+        Assert.Null(OnTimeCheck(deadMan, 2125).Stall);
+        Assert.Null(OnTimeCheck(deadMan, 2250).Stall);
+
+        // 1001 ms after the last late check: a new series, and a new warning.
+        deadMan.LineHeard(At(2700));
+        Assert.Equal(300, Ms(deadMan.Check(At(3001), At(2701)).Stall));
     }
 }
