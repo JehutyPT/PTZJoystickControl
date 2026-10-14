@@ -16,6 +16,10 @@ public class InputSettings
     public float Expo { get; set; }
     public InputSettings? SecondInputSettings { get; set; }
 
+    // Marks CommandValue of a speed (dynamic) command as a percentage. Missing in files from
+    // before speeds were percentages: false, so the value is read as a VISCA step and migrated.
+    public bool SpeedIsPercentage { get; set; }
+
     public InputSettings()
     {
     }
@@ -33,5 +37,6 @@ public class InputSettings
         DeadZoneLow = input.DeadZone;
         Expo = input.Expo;
         SecondInputSettings = input.SecondInput != null ? new InputSettings(input.SecondInput) : null;
+        SpeedIsPercentage = true;
     }
 }
