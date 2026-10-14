@@ -6,6 +6,14 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### VISCA UDP reply listeners follow address and port changes
+
+Each VISCA camera over UDP now listens for replies on the IP:port it registered, so changing a camera's address or port no longer leaves a stale listener behind, and loading `Cameras.json` can no longer fail with "Only one callback is allowed for each remote endpoint" and start with no cameras. Two cameras on the same IP:port no longer throw: the first opened keeps the replies, and the second logs a `WARN` and still sends its commands.
+
+- [ ] Start the new build with the existing `Cameras.json`: both CR-N500 rows load with their settings, and the log (tray menu → **Show log**) has no settings `WARN` or `ERROR`. Pan, tilt, zoom and focus each camera: it moves and stops on release.
+- [ ] In a UDP camera row, change the **Port** to another number and back, then the **IP Address** to another address and back: no `WARN` or `ERROR` in the log, and the camera still moves and stops on release.
+- [ ] Set camera 2's **IP Address** and **Port** to camera 1's: one `WARN` line says another camera already receives the replies from that IP:port, both rows stay in the list, and the app keeps running. Undo it: camera 2 moves and stops again. Quit and restart the app: both rows load as before.
+
 ### #47: XC cameras (pan and tilt over HTTP)
 
 The camera list now has **Add VISCA camera** and **Add XC camera** buttons. An XC camera drives a CR-N500 over Canon's XC protocol (HTTP) instead of VISCA, for pan and tilt only: zoom, focus and presets on an XC camera do nothing yet (#48) and only log an `INFO` line. VISCA cameras are unchanged. Back up `%APPDATA%\PTZJoystickControl\Cameras.json` before starting the new build, and keep the log open (tray menu → **Show log**): XC request failures are logged at `WARN` with the reason.

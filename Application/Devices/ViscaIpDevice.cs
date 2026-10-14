@@ -32,6 +32,10 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
     // reading its Token after Dispose stays safe; it holds no timer or other resource.
     private readonly CancellationTokenSource disposeCancellation = new();
 
+    // The endpoint this camera receives UDP replies from, as registered: ViscaIpEndpont changes in
+    // place when the address or port is set, before EndSocket runs. Null when not registered.
+    private IPEndPoint? listenerEndpoint;
+
     public ViscaIpDevice(string name) : this(name, null) { }
 
     public ViscaIpDevice(string name, IPEndPoint? viscaEndpint) : base(name, viscaEndpint) { }
@@ -46,7 +50,11 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
             if (protocol == Protocol.Udp)
             {
                 socket = UdpSocket.GetInstance();
-                UdpSocket.AddListenerCallback(ViscaIpEndpont, ParseViscaIPReply);
+                var endpoint = new IPEndPoint(ViscaIpEndpont.Address, ViscaIpEndpont.Port);
+                if (UdpSocket.AddListenerCallback(endpoint, ParseViscaIPReply))
+                    listenerEndpoint = endpoint;
+                else
+                    Trace.TraceWarning($"Camera {name}: another camera already receives the replies from {endpoint}; this one still sends its commands but ignores replies");
                 return;
             }
             socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
@@ -131,7 +139,11 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
             if (!socket.Connected || !socket.DisconnectAsync(socketAsyncEvArgs))
                 onComplete.Invoke(null, null!);
         }
-        UdpSocket.RemoveListenerCallback(ViscaIpEndpont);
+        if (listenerEndpoint != null)
+        {
+            UdpSocket.RemoveListenerCallback(listenerEndpoint, ParseViscaIPReply);
+            listenerEndpoint = null;
+        }
     }
 
     public void ParseViscaIPReply(byte[] buffer, int length)
