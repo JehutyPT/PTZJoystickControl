@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Tests.Skaarhoj;
@@ -388,6 +389,116 @@ public class XcCameraLoginTests
         await XcTestCameras.WaitForLogAsync(trace, name, "refused the username and password", count: 2);
     }
 
+    // Log in applies the username and password together, as one change. The camera's next request, a
+    // probe as soon as the gap allows, carries the new login once the camera challenges it, and no
+    // request carries one field of the new login with the other of the old.
+    [Fact]
+    public async Task ApplyingALogin_SendsAPromptProbe_WithTheNewUsernameAndPasswordTogether()
+    {
+        const string otherUser = "fake-xc-other-user", otherSecret = "fake-xc-other-password";
+        using var trace = new TraceRecorder();
+        var name = XcTestCameras.UniqueName();
+        using var fake = new FakeXcCamera { Login = new XcLogin { Username = User, Password = Secret, Basic = true } };
+        // The probe interval is long: a probe after the change comes from the change itself.
+        using var camera = XcTestCameras.CameraFor(fake, name, probeInterval: LongTimeout, username: User, password: Secret);
+        await XcTestCameras.WaitForLogAsync(trace, name, "is connected");
+        var before = fake.Requests.Count;
+        fake.Login = new XcLogin { Username = otherUser, Password = otherSecret, Basic = true };
+
+        camera.SetLogin(otherUser, otherSecret);
+
+        await fake.WaitUntilAsync(r => r.Skip(before).Any(x => !x.Challenged), "a request with the new login, accepted");
+        await Task.Delay(SettleTime);
+        var requests = fake.Requests;
+        var described = FakeXcCamera.Describe(requests);
+        // One attempt: the probe, without credentials until the camera challenges it, then repeated with
+        // the new login.
+        var after = requests.Skip(before).ToList();
+        Assert.Equal(2, after.Count);
+        Assert.True(after[0].IsProbe && after[0].Authorization == null && after[0].Challenged, described);
+        Assert.True(after[1].IsProbe && !after[1].Challenged, described);
+        Assert.Equal($"{otherUser}:{otherSecret}", BasicLogin(after[1]));
+        Assert.All(requests.Where(r => r.Authorization != null), r =>
+            Assert.Contains(BasicLogin(r), new[] { $"{User}:{Secret}", $"{otherUser}:{otherSecret}" }));
+        Assert.True(camera.Connected);
+        Assert.DoesNotContain(XcTestCameras.LogFor(trace, name), l => l.Type == TraceEventType.Warning);
+    }
+
+    // The login the camera already has is no change: no prompt probe, and the challenge is kept.
+    [Fact]
+    public async Task ApplyingTheLoginTheCameraHas_SendsNothing()
+    {
+        using var trace = new TraceRecorder();
+        var name = XcTestCameras.UniqueName();
+        using var fake = new FakeXcCamera { Login = new XcLogin { Username = User, Password = Secret, Basic = true } };
+        // The probe interval is long: an idle camera sends nothing of its own during the test.
+        using var camera = XcTestCameras.CameraFor(fake, name, probeInterval: LongTimeout, username: User, password: Secret);
+        await XcTestCameras.WaitForLogAsync(trace, name, "is connected");
+        var before = fake.Requests.Count;
+
+        camera.SetLogin(User, Secret);
+        await Task.Delay(SettleTime);
+
+        Assert.Equal(before, fake.Requests.Count);
+        // The challenge was kept: the next request carries the login up front.
+        camera.Pan(0.5, PanDir.Right);
+        var requests = await fake.WaitUntilAsync(r => r.Count > before, "the pan");
+        Assert.True(requests[before].IsControl && requests[before].Authorization != null && !requests[before].Challenged, FakeXcCamera.Describe(requests));
+    }
+
+    // A login the camera refuses makes one attempt, and its login warning is logged at once.
+    [Fact]
+    public async Task ApplyingARefusedLogin_MakesOneAttempt_AndLogsTheRefusalAtOnce()
+    {
+        using var trace = new TraceRecorder();
+        var name = XcTestCameras.UniqueName();
+        using var fake = new FakeXcCamera { Login = new XcLogin { Username = User, Password = Secret, Basic = true } };
+        // The probe interval is long: a probe after the change comes from the change itself.
+        using var camera = XcTestCameras.CameraFor(fake, name, probeInterval: LongTimeout, username: User, password: Secret);
+        await XcTestCameras.WaitForLogAsync(trace, name, "is connected");
+        var before = fake.Requests.Count;
+
+        camera.SetLogin(User, "fake-xc-wrong-password");
+
+        await XcTestCameras.WaitForLogAsync(trace, name, "refused the username and password");
+        await Task.Delay(SettleTime);
+        var requests = fake.Requests;
+        var described = FakeXcCamera.Describe(requests);
+        // The probe, without credentials until the camera challenges it, then repeated with the new
+        // login and refused.
+        var after = requests.Skip(before).ToList();
+        Assert.Equal(2, after.Count);
+        Assert.True(after[0].IsProbe && after[0].Authorization == null && after[0].Challenged, described);
+        Assert.True(after[1].IsProbe && after[1].Challenged, described);
+        Assert.Equal($"{User}:fake-xc-wrong-password", BasicLogin(after[1]));
+        Assert.Single(XcTestCameras.LogFor(trace, name), l => l.Type == TraceEventType.Warning);
+    }
+
+    // An empty login is guest control: the next request carries no credentials, and the camera's
+    // challenge is the "requires a login" failure, not repeated.
+    [Fact]
+    public async Task ApplyingAnEmptyLogin_SendsNoCredentials_AndTheChallengeAsksForALogin()
+    {
+        using var trace = new TraceRecorder();
+        var name = XcTestCameras.UniqueName();
+        using var fake = new FakeXcCamera { Login = new XcLogin { Username = User, Password = Secret, Basic = true } };
+        // The probe interval is long: a probe after the change comes from the change itself.
+        using var camera = XcTestCameras.CameraFor(fake, name, probeInterval: LongTimeout, username: User, password: Secret);
+        await XcTestCameras.WaitForLogAsync(trace, name, "is connected");
+        var before = fake.Requests.Count;
+
+        camera.SetLogin("", "");
+
+        await XcTestCameras.WaitForLogAsync(trace, name, "camera requires a login; set username and password");
+        await Task.Delay(SettleTime);
+        var requests = fake.Requests;
+        var after = requests.Skip(before).ToList();
+        var request = Assert.Single(after);
+        Assert.True(request.IsProbe && request.Authorization == null && request.Challenged, FakeXcCamera.Describe(requests));
+        Assert.Equal("", camera.Username);
+        Assert.Equal("", camera.Password);
+    }
+
     // The challenge belongs to the address and port that gave it: pointed elsewhere, the camera sends
     // no credentials there before that camera challenges.
     [Fact]
@@ -546,6 +657,13 @@ public class XcCameraLoginTests
             Assert.True(gap >= XcCamera.StopRepeatInterval,
                 $"Requests {i - perSend} and {i} arrived {gap.TotalMilliseconds:0.0} ms apart. {FakeXcCamera.Describe(requests)}");
         }
+    }
+
+    // The "username:password" a request's Basic credentials carry.
+    private static string BasicLogin(XcRequest request)
+    {
+        Assert.StartsWith("Basic ", request.Authorization);
+        return Encoding.UTF8.GetString(Convert.FromBase64String(request.Authorization!["Basic ".Length..]));
     }
 
     // Pans and stops; returns every request once the pan and three stops were accepted.

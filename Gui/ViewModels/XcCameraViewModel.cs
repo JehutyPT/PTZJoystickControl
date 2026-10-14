@@ -10,25 +10,41 @@ using System.Runtime.CompilerServices;
 
 namespace PtzJoystickControl.Gui.ViewModels;
 
-/// <summary>The settings panel of an XC camera: name, address, port, login, reachability and Companion number.</summary>
+/// <summary>
+/// The settings panel of an XC camera: name, address, port, login, reachability, failure reason and
+/// Companion number. The login typed in the panel is the camera's only once Log in applies it.
+/// </summary>
 public class XcCameraViewModel : ViewModelBase, INotifyPropertyChanged
 {
     private readonly XcCameraBase _camera;
     private readonly IEnumerable<ICamera> _allCameras;
+    // The login typed in the panel, which only LogIn applies; the camera's login until something is
+    // typed. A rejected username is not kept: _usernameRejected says the field holds one.
+    private string _username;
+    private string _password;
+    private bool _usernameRejected;
 
     /// <param name="allCameras">Every camera, to reject a Companion number another camera already has.</param>
     public XcCameraViewModel(XcCameraBase camera, IEnumerable<ICamera> allCameras)
     {
         _camera = camera;
         _allCameras = allCameras;
+        _username = camera.Username;
+        _password = camera.Password;
         WeakEventHandlerManager.Subscribe<INotifyPropertyChanged, PropertyChangedEventArgs, XcCameraViewModel>(camera, nameof(camera.PropertyChanged), OnCameraPropertyChanged);
     }
 
-    // Connected changes are raised on the camera's send loop; bindings need the UI thread.
+    // Connected and FailureReason changes are raised on the camera's send loop; bindings need the UI
+    // thread. A login change also changes whether Log in has anything to apply.
     private void OnCameraPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         var propertyName = e?.PropertyName ?? "";
-        UiThread.Post(() => NotifyPropertyChanged(propertyName));
+        UiThread.Post(() =>
+        {
+            NotifyPropertyChanged(propertyName);
+            if (propertyName is nameof(XcCameraBase.Username) or nameof(XcCameraBase.Password))
+                NotifyPropertyChanged(nameof(CanLogIn));
+        });
     }
 
     public ICamera Camera { get => _camera; }
@@ -73,32 +89,50 @@ public class XcCameraViewModel : ViewModelBase, INotifyPropertyChanged
         }
     }
 
-    // Empty for guest control. Unlike the address, a rejected value is not logged: it is part of the login.
+    // Empty for guest control. Typing changes only the panel: LogIn applies it. Checked by the camera's
+    // rule as it is typed; unlike the address, a rejected value is not logged: it is part of the login.
     public string Username
     {
-        get => _camera.Username;
+        get => _username;
         set
         {
-            try
-            {
-                _camera.Username = value;
-            }
-            catch (Exception e)
-            {
-                Trace.TraceInformation($"Camera {Name}: invalid username: {e.Message}");
+            value ??= "";
+            _usernameRejected = !XcCameraBase.IsUsername(value);
+            if (!_usernameRejected)
+                _username = value;
+            NotifyPropertyChanged(nameof(CanLogIn));
+            if (_usernameRejected)
                 throw new DataValidationException("No control characters");
-            }
         }
     }
 
-    // Any text; never logged.
+    // Any text; never logged. Typing changes only the panel: LogIn applies it.
     public string Password
     {
-        get => _camera.Password;
-        set => _camera.Password = value;
+        get => _password;
+        set
+        {
+            _password = value ?? "";
+            NotifyPropertyChanged(nameof(CanLogIn));
+        }
+    }
+
+    // Whether LogIn would change the camera's login: the typed one differs from it, and its username is
+    // valid.
+    public bool CanLogIn { get => !_usernameRejected && (_username != _camera.Username || _password != _camera.Password); }
+
+    // Applies the typed username and password together as the camera's login, which is saved. The
+    // camera's next request carries it; the result shows in Connected and FailureReason.
+    public void LogIn()
+    {
+        if (CanLogIn)
+            _camera.SetLogin(_username, _password);
     }
 
     public bool Connected { get => _camera.Connected; }
+
+    // Why the camera's requests fail, in the words of the log's warning; null while they succeed.
+    public string? FailureReason { get => _camera.FailureReason; }
 
     // Validated against every camera so Companion never sees two cameras with one number.
     public int? CompanionNumber

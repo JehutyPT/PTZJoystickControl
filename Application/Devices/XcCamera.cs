@@ -130,6 +130,9 @@ public class XcCamera : XcCameraBase, IDisposable
     // Set by an address, port or login change: probe as soon as the gap allows, not after the probe
     // interval.
     private bool _probeNow;
+    // The username and password requests carry, as one pair taken when the login changes, so no
+    // request carries one of them without the other; null when no username is set.
+    private NetworkCredential? _login;
     // The camera's last login challenge, answered up front by every request with the current login to
     // the address and port it came from; null until the camera challenges, after an address, port or
     // login change, and after it challenged with nothing the app can answer. Only the send loop
@@ -164,6 +167,20 @@ public class XcCamera : XcCameraBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// Why requests to the current address, port and login fail, in the words of the failure's WARN,
+    /// whether or not that WARN was logged again; null while they succeed, and after the address or
+    /// port changed. Changes are raised as <see cref="Connected"/>'s are.
+    /// </summary>
+    public override string? FailureReason
+    {
+        get
+        {
+            lock (_lock)
+                return _failure;
+        }
+    }
+
     public override bool IsMoving
     {
         get
@@ -178,9 +195,11 @@ public class XcCamera : XcCameraBase, IDisposable
     protected override void OnEndpointChanged()
     {
         string? information = null;
+        bool failureChanged;
         lock (_lock)
         {
             OnReconfiguredLocked();
+            failureChanged = _failure != null;
             _failure = null;
             if (_connected)
             {
@@ -192,17 +211,23 @@ public class XcCamera : XcCameraBase, IDisposable
         if (information != null)
         {
             Trace.TraceInformation(information);
-            RaiseConnectedChanged();
+            RaiseChanged(nameof(Connected));
         }
+        if (failureChanged)
+            RaiseChanged(nameof(FailureReason));
     }
 
     // The next request carries the new login, or none, with a probe as soon as nothing else is wanted.
     // A request in flight with the old login finishes or times out, and its outcome is ignored. Unlike
-    // an address change, Connected keeps its value until a request with the new login settles it.
+    // an address change, Connected and FailureReason keep their values until a request with the new
+    // login settles them.
     protected override void OnLoginChanged()
     {
         lock (_lock)
+        {
+            _login = Username.Length > 0 ? new NetworkCredential(Username, Password) : null;
             OnReconfiguredLocked();
+        }
     }
 
     // After an address, port or login change: the outcome of a request sent before is ignored, no
@@ -539,7 +564,7 @@ public class XcCamera : XcCameraBase, IDisposable
 
         // Built before any state changes, so a failure here leaves the request wanted.
         var uri = recall ? RecallUri(_recall!.Value) : control ? ControlUri() : ProbeUri();
-        var login = Username.Length > 0 ? new NetworkCredential(Username, Password) : null;
+        var login = _login;
         // Answered only at the address and port it came from: the base class sets a new address or
         // port before OnEndpointChanged forgets the challenge, and a request built in between goes to
         // the new one.
@@ -718,6 +743,7 @@ public class XcCamera : XcCameraBase, IDisposable
         string? warning = null;
         string? information = null;
         var connectedChanged = false;
+        var failureChanged = false;
         lock (_lock)
         {
             var now = Stopwatch.GetTimestamp();
@@ -746,12 +772,14 @@ public class XcCamera : XcCameraBase, IDisposable
                     information = $"Camera {Name}: requests to the XC camera at {Address}:{Port} succeed again{(connectedChanged ? "; it is connected" : "")}";
                 else if (connectedChanged)
                     information = $"Camera {Name}: the XC camera at {Address}:{Port} is connected";
+                failureChanged = _failure != null;
                 _failure = null;
             }
             else
             {
                 if (loginFailure ? LoginFailureLogDueLocked(now) : failure != _failure)
                     warning = $"Camera {Name}: request to the XC camera at {Address}:{Port} failed: {failure}";
+                failureChanged = failure != _failure;
                 _failure = failure;
                 if (_connected && now - _lastSuccessAt >= StopwatchTicks(_probeInterval))
                 {
@@ -767,7 +795,9 @@ public class XcCamera : XcCameraBase, IDisposable
         if (information != null)
             Trace.TraceInformation(information);
         if (connectedChanged)
-            RaiseConnectedChanged();
+            RaiseChanged(nameof(Connected));
+        if (failureChanged)
+            RaiseChanged(nameof(FailureReason));
     }
 
     // Settles the stops a completed request sent or took the place of. A stop ends once it was sent
@@ -806,17 +836,17 @@ public class XcCamera : XcCameraBase, IDisposable
         return true;
     }
 
-    // Raised outside _lock (a subscriber reads the camera's state); a failing subscriber is logged,
-    // never thrown into the send loop or a setter's caller.
-    private void RaiseConnectedChanged()
+    // Raises a Connected or FailureReason change. Raised outside _lock (a subscriber reads the camera's
+    // state); a failing subscriber is logged, never thrown into the send loop or a setter's caller.
+    private void RaiseChanged(string propertyName)
     {
         try
         {
-            NotifyPropertyChanged(nameof(Connected));
+            NotifyPropertyChanged(propertyName);
         }
         catch (Exception e)
         {
-            Trace.TraceError($"Camera {Name}: a {nameof(Connected)} subscriber failed: {e}");
+            Trace.TraceError($"Camera {Name}: a {propertyName} subscriber failed: {e}");
         }
     }
 

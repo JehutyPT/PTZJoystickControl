@@ -262,8 +262,9 @@ public class XcCameraReachabilityTests
         Assert.True(camera.Connected);
         await XcTestCameras.WaitForLogAsync(trace, name, "refused the username and password");
         Assert.True(camera.Connected);
+        // The refused login also raises the failure reason; only Connected changes count here.
         lock (changes)
-            Assert.Equal(new[] { nameof(XcCamera.Password) }, changes);
+            Assert.DoesNotContain(nameof(ICamera.Connected), changes);
     }
 
     // Completes when the camera raises a Connected change to the given value.
