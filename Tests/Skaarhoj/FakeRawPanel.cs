@@ -95,6 +95,16 @@ internal sealed class FakeRawPanel : IDisposable
             client.Dispose();
     }
 
+    /// <summary>
+    /// Stops listening, then closes every connection, as when the panel is switched off: the link
+    /// sees the close at once and its reconnects are refused, so it stays down.
+    /// </summary>
+    public void TurnOff()
+    {
+        _listener.Stop();
+        DropConnections();
+    }
+
     public void Dispose()
     {
         _stopping.Cancel();

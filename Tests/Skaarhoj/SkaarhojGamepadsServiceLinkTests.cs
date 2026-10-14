@@ -122,7 +122,9 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
         Assert.True(_camB.IsMoving);
         var stopsA = _camA.StopCalls;
 
-        _panel.DropConnections();
+        // Off rather than dropped: a reconnect 50 ms later would race RunPending and bring a fresh
+        // gamepad back up before the asserts.
+        _panel.TurnOff();
         Assert.True(await WaitUntil(() => Count("down") == 1, Within));
         _queue.RunPending();
 
@@ -131,6 +133,7 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
         Assert.Empty(_service.ActiveGamepads);
         Assert.False(gamepad.IsConnected);
         Assert.False(_service.Gamepads.Single().IsConnected);
+        Assert.Equal(1, Count("up"));
     }
 
     [Fact]
