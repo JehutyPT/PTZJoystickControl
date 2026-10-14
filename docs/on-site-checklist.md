@@ -17,6 +17,13 @@ An XC camera's preset recall now goes out in the next request, instead of waitin
 - [ ] Pan, pull the cable, release the stick and at once recall a preset. Plug the cable back about 2 s later (longer pulls are #53's check). The camera stops within about a second of the network returning, and does not go to the preset: the failed recall restored the stop, and was not sent again itself. The log shows the failure `WARN` and, once the network returns, the recovery `INFO`.
 - [ ] On each XC camera, open `http://<camera address>/-wvhttp-01-/info.cgi`. Check `p.<n>.content.ptz=enabled` for every camera preset the show recalls from the app, and note `p.<n>.content.focus`. Report any preset without PTZ before the show: a successful recall of it may leave running a manual move whose stop the recall replaced.
 
+### #40: SKAARHOJ dead-man rides out an app freeze
+
+Needs the panel at 192.168.1.163 set up as in the #35 entry, with no other Raw Panel client connected. The link now counts any line from the panel as hearing from it, sends `ping` only after 500 ms of quiet and drops after 1 s of silence; a freeze of the app itself restarts that count instead of dropping the link. These checks change no panel setting.
+
+- [ ] With the link up and no camera moving (leave the stick alone), freeze the app for about 1.5 s, then let it run. On the vMix PC: Resource Monitor (`resmon`) → **CPU** → right-click `Gui.exe` → **Suspend Process**, wait about 1.5 s, then **Resume Process** (or Sysinternals `pssuspend Gui.exe`, then `pssuspend -r Gui.exe`). On a Mac: `kill -STOP <pid>`, wait about 1.5 s, `kill -CONT <pid>`. The log shows exactly one `WARN` "the app stalled, not the panel at 192.168.1.163:9923: a dead-man check ran … ms late", and **no** "link down".
+- [ ] Pull the panel's Ethernet cable: a `WARN` "link down … the panel was silent for …" line appears within about 1.1 s. Plug it back in: "link up" follows without restarting the app.
+
 ### #49: XC camera login
 
 An XC camera row now has **Username** and **Password** fields, for a camera that requires a login instead of allowing guest control. With the username empty, the app drives the camera as a guest, as before. With a login set, the app answers the camera's login challenge (HTTP 401) with Digest or Basic authentication, then sends its requests already logged in. The login is saved unencrypted, in plain text, in `Cameras.json`: treat that file, and any backup of it, like a password. VISCA cameras are unchanged. Keep the log open (tray menu → **Show log**).
@@ -108,7 +115,7 @@ Everything outside the VISCA camera now works with a protocol-neutral camera (`I
 - [ ] Select each camera from its Companion button, then by clicking its row in the main window: the selected controller drives it, and the tray icon follows the selection.
 - [ ] Pan camera 1 and, while holding the stick, select camera 2 from Companion: camera 1 stops, and the stick now drives camera 2.
 - [ ] Pan a camera and, while holding the stick, unplug the USB joystick: the camera stops. Plug it back in, pan again and, while holding the stick, select the SKAARHOJ panel in the controller list (which deactivates the joystick): the camera stops.
-- [ ] With the panel selected, repeat the Companion switch check with the panel's stick. Then pan a camera and, while holding the stick, pull the panel's Ethernet cable: the camera stops within about half a second. The stop when the panel falls asleep is the same stop; the #39 held-still check covers it, run with this build.
+- [ ] With the panel selected, repeat the Companion switch check with the panel's stick. Then pan a camera and, while holding the stick, pull the panel's Ethernet cable: the camera stops within about 1 s. The stop when the panel falls asleep is the same stop; the #39 held-still check covers it, run with this build.
 
 ### #43: Max speed is a percentage
 
@@ -125,7 +132,7 @@ Pan, tilt, zoom and focus **Max speed** (axes) and **Speed** (buttons) are now p
 Needs the panel set up as in the #37 entry, with the panel selected as the controller and its stick mapped. The app never changes the panel's sleep timer; a short one must be set beforehand, and **only once agreed** (ask before changing any panel setting): with the app quit, have the Companion surface plugin or a test tool send `SleepTimer=60000`, then disconnect the tool. This is the same setup as the #37 sleep check; run both together. If the panel's timer is left short it sleeps every minute during the show, so restore it at the end.
 
 - [ ] Start the app and leave the stick alone until the log shows `INFO … asleep`. The controller list shows **SKAARHOJ panel (192.168.1.163) (Asleep: press a panel button)**, not "(Disconnected)". Deflect the stick: nothing moves.
-- [ ] Press any panel button: the log shows `INFO … awake` with **no** "link down" or "link up" around it, the list shows the panel connected again (no "Asleep", no "Disconnected"), and the stick drives the cameras. If a "link down … no ack" appears right before or after "awake", note on #39 whether it came before the `awake` line (the panel stalls before reporting the wake) or after.
+- [ ] Press any panel button: the log shows `INFO … awake` with **no** "link down" or "link up" around it, the list shows the panel connected again (no "Asleep", no "Disconnected"), and the stick drives the cameras. If a "link down … silent" appears right before or after "awake", note on #39 whether it came before the `awake` line (the panel stalls before reporting the wake) or after.
 - [ ] Each sleep and each wake logs exactly one `INFO` line.
 - [ ] Held-still check: pan a camera and hold the stick deflected and still, without moving it, until past the timer (over a minute). Either the panel stays awake and the camera keeps moving until release, or the panel sleeps and the camera stops within about half a second. Note which in docs/skaarhoj-integration.md ("Sleep").
 - [ ] Afterwards, set the timer back to 4 hours (`SleepTimer=14400000`, again only once agreed) or power-cycle the panel (a reboot also restores 4 hours).
@@ -141,7 +148,7 @@ Needs the SKAARHOJ PTZ Extreme at 192.168.1.163 with `SkaarhojPanel.json` set up
 - [ ] Pan camera 1 and, while holding the stick, select camera 2 from Companion: camera 1 stops, and the stick now drives camera 2.
 - [ ] Turn on **Advanced** and set `LR`'s **Expo** to 50 %: small stick deflections pan noticeably slower, full deflection still reaches max speed, and release stops the camera.
 - [ ] Quit and restart the app: the panel is still the selected controller, with the same mappings and Expo.
-- [ ] Pan a camera and, while holding the stick, pull the panel's Ethernet cable: the camera stops within about half a second, the log shows "link down", and the panel shows disconnected in the list.
+- [ ] Pan a camera and, while holding the stick, pull the panel's Ethernet cable: the camera stops within about 1 s, the log shows "link down", and the panel shows disconnected in the list.
 - [ ] Plug the cable back in without touching the stick: after "link up" (within about 30 s) nothing moves. Then move the stick: the camera follows again.
 - [ ] Sleep. Beforehand, with the app quit, use a test tool to send `SleepTimer=60000` to the panel, then disconnect the tool. Start the app and leave the stick alone until the log shows `INFO … asleep`. Deflect the stick: nothing moves. Press any panel button: the log shows `INFO … awake`, and the stick drives the cameras again. The timer runs from the last activity, so it expires a minute after the app connects even if connecting wakes the panel; if the panel never sleeps, note it on #39. Afterwards, set `SleepTimer=` back (4 hours is `14400000`), or power-cycle the panel. How the list shows the asleep panel, and the wake without a reconnect, are checked in the #39 entry.
 - [ ] Select the USB joystick in the list: the panel's stick moves nothing, and the USB joystick drives both cameras and stops on release. Select the panel again: the USB joystick moves nothing.
@@ -193,7 +200,7 @@ Needs the SKAARHOJ PTZ Extreme at 192.168.1.163, with no other Raw Panel client 
 - [ ] Quit the app. In the settings folder (`%APPDATA%\PTZJoystickControl`), open `SkaarhojPanel.json` (start and quit the app once if it is missing) and set `"Address": "192.168.1.163"`, keeping `"Port": 9923`. Start the app.
 - [ ] Tray menu → **Show log**: an `INFO [SkaarhojPanelLink]` "link up to 192.168.1.163:9923" line, then `_model=SK_PTZEXTREMEV2` and `_version=…`. No "link down" in the first few seconds (the ~0.5 s post-connect stall must not trip it).
 - [ ] The logged `_connections=` reply lists only the vMix PC's address.
-- [ ] Pull the panel's Ethernet cable: within about half a second a `WARN` "link down … no ack for ~300 ms" line appears. The joystick still drives both cameras.
+- [ ] Pull the panel's Ethernet cable: within about 1 s a `WARN` "link down … the panel was silent for …" line appears (about 1000–1100 ms). The joystick still drives both cameras.
 - [ ] Plug the cable back in: within about 30 s an `INFO` "link up" line appears without restarting the app, followed by `_connections=` listing only the vMix PC. A single further down/up right after reconnecting is acceptable (seen in the protocol tests); repeated flapping is not.
 - [ ] Quit from the tray: the log ends with "link down … (stopped)" then `PTZJoystickControl stopped`, and the panel's own lights come back.
 - [ ] Set `"Address": ""`, start the app: no `SkaarhojPanelLink` lines in the log, and the joystick and Companion work as before.
