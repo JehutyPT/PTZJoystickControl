@@ -24,6 +24,10 @@ public class CameraToCameraViewConverter : IValueConverter
             return new IPCameraViewModel(camera,
                 Locator.Current.GetService<ICamerasService>()?.Cameras ?? Enumerable.Empty<ICamera>());
 
+        if (value is XcCameraBase xcCamera)
+            return new XcCameraViewModel(xcCamera,
+                Locator.Current.GetService<ICamerasService>()?.Cameras ?? Enumerable.Empty<ICamera>());
+
         return null;
     }
 

@@ -268,6 +268,37 @@ public class DrivenCamerasTests
         Assert.Equal(1, camB.StopCalls);
     }
 
+    [Fact]
+    public async Task SwitchingAwayFromAPanningXcCamera_SendsItStopRequests()
+    {
+        using var fake = new FakeXcCamera();
+        using var xc = XcTestCameras.CameraFor(fake);
+        var gamepad = new TestGamepad { SelectedCamera = xc };
+        _ = new DrivenCameras(gamepad);
+        xc.Pan(0.5, PanDir.Left);
+        await fake.WaitForControlAsync(1);
+
+        // Nothing releases the pan: only the switch can stop the XC camera.
+        gamepad.SelectedCamera = new RecordingCamera("B");
+
+        await fake.WaitUntilAsync(r => r.Count(x => x.IsStop) >= 3, "three stops");
+    }
+
+    [Fact]
+    public async Task StopAll_SendsStopRequestsToAnXcCamera()
+    {
+        using var fake = new FakeXcCamera();
+        using var xc = XcTestCameras.CameraFor(fake);
+        var gamepad = new TestGamepad { SelectedCamera = xc };
+        var driven = new DrivenCameras(gamepad);
+        xc.Pan(0.5, PanDir.Left);
+        await fake.WaitForControlAsync(1);
+
+        driven.StopAll();
+
+        await fake.WaitUntilAsync(r => r.Count(x => x.IsStop) >= 3, "three stops");
+    }
+
     // A camera of another camera type: it implements only the camera abstraction, not the VISCA base type.
     private sealed class RecordingCamera : ICamera
     {

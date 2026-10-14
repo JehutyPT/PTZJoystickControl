@@ -56,8 +56,13 @@ public class CamerasViewModel : ViewModelBase, INotifyPropertyChanged
         }
     }
 
-    public void AddCamera() =>
+    // VISCA and XC cameras share one list, so one numbering.
+    public void AddViscaCamera() =>
         _camerasService.AddCamera(new ViscaIpDevice($"Camera {Cameras.Count() + 1}"));
+
+    // With no address: it sends nothing until one is entered.
+    public void AddXcCamera() =>
+        _camerasService.AddCamera(new XcCamera($"Camera {Cameras.Count() + 1}"));
 
     public void RemoveCamera(object camera)
     {

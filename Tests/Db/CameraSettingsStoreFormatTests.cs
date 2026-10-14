@@ -1,8 +1,11 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Text.Json;
 using PtzJoystickControl.Application.Db;
 using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Core.Devices;
+using PtzJoystickControl.Tests.Devices;
+using PtzJoystickControl.Tests.Skaarhoj;
 using Xunit;
 
 namespace PtzJoystickControl.Tests.Db;
@@ -88,11 +91,110 @@ public sealed class CameraSettingsStoreFormatTests : IDisposable
         Assert.Equal(4, other.CompanionNumber);
     }
 
-    private static void AssertSameKeysAndValues(string expectedJson, string actualJson)
+    // An XC camera (#47) is saved with the same keys as every other entry, its address and port under
+    // the VISCA connection keys, and loads back as an XC camera.
+    [Fact]
+    public void XcAndViscaCameras_SaveAndLoadBack_WithTheViscaEntriesUnchanged()
     {
-        var expected = Entries(expectedJson);
-        var actual = Entries(actualJson);
+        // The XC camera's requests go to this fake, not out to the network.
+        using var fake = new FakeXcCamera();
+        File.WriteAllText(_path, CamerasJsonBeforeTheAbstraction);
+        var store = new CameraSettingsStore(_path);
+        var visca = store.GetAllCameras().ToList();
+        using var addressed = new XcCamera("XC 1") { CompanionNumber = 2, Port = fake.Port, Address = "127.0.0.1" };
+        using var unaddressed = new XcCamera("XC 2") { CompanionNumber = 4 };
 
+        Assert.True(store.SaveCameras(visca.Concat(new ICamera[] { addressed, unaddressed })));
+        var saved = Entries(File.ReadAllText(_path));
+        var loaded = new CameraSettingsStore(_path).GetAllCameras().ToList();
+        try
+        {
+            AssertSameKeysAndValues(Entries(CamerasJsonBeforeTheAbstraction), saved.Take(2).ToList());
+            Assert.All(saved.Skip(2), entry =>
+            {
+                Assert.Equal(saved[0].Keys.Order(), entry.Keys.Order());
+                Assert.Equal(typeof(XcCamera).AssemblyQualifiedName, entry[TypeNameKey].GetString());
+            });
+
+            Assert.Equal(4, loaded.Count);
+            Assert.Equal(new[] { "Cam 1", "Cam 2" }, loaded.Take(2).Select(c => Assert.IsType<ViscaIpDevice>(c).Name));
+            var first = Assert.IsType<XcCamera>(loaded[2]);
+            Assert.Equal(("XC 1", (int?)2, "127.0.0.1", fake.Port), (first.Name, first.CompanionNumber, first.Address, first.Port));
+            var second = Assert.IsType<XcCamera>(loaded[3]);
+            Assert.Equal(("XC 2", (int?)4, "", XcCameraBase.DefaultPort), (second.Name, second.CompanionNumber, second.Address, second.Port));
+        }
+        finally
+        {
+            foreach (var camera in loaded.OfType<IDisposable>())
+                camera.Dispose();
+        }
+    }
+
+    // A camera type from a newer build, an empty entry or a value the camera rejects must not lose the
+    // other cameras: the app would otherwise start with none.
+    [Fact]
+    public void AnEntryThatCannotBeLoaded_IsSkippedWithAWarningNamingIt_AndTheOthersLoad()
+    {
+        using var trace = new TraceRecorder();
+        var visca = JsonDocument.Parse(CamerasJsonBeforeTheAbstraction).RootElement.EnumerateArray().Select(e => e.GetRawText()).ToList();
+        var unknownType = $"{{\"{TypeNameKey}\":\"PtzJoystickControl.Application.Devices.FutureCamera, Application\",\"Name\":\"Future cam\",\"CompanionNumber\":5}}";
+        var rejectedAddress = $"{{\"{TypeNameKey}\":\"{typeof(XcCamera).AssemblyQualifiedName}\",\"IpAddress\":\"not an address\",\"Name\":\"Bad XC\",\"Port\":80,\"CompanionNumber\":6}}";
+        File.WriteAllText(_path, $"[{visca[0]},{unknownType},null,{rejectedAddress},{visca[1]}]");
+
+        var loaded = new CameraSettingsStore(_path).GetAllCameras().ToList();
+
+        Assert.Equal(new[] { "Cam 1", "Cam 2" }, loaded.Select(c => c.Name));
+        // Filtered to this file: other test classes log through the same global Trace in parallel.
+        var warnings = trace.Events.Where(e => e.Type == TraceEventType.Warning && e.Message.Contains(_path)).Select(e => e.Message).ToList();
+        Assert.Equal(3, warnings.Count);
+        Assert.Contains(warnings, m => m.Contains("Future cam") && m.Contains("FutureCamera"));
+        Assert.Contains(warnings, m => m.Contains("Bad XC"));
+        Assert.DoesNotContain(trace.Events, e => e.Type == TraceEventType.Error && e.Message.Contains(_path));
+    }
+
+    // Valid JSON whose entry does not fit the format: a value of the wrong type, or no object at all.
+    [Fact]
+    public void AnEntryThatDoesNotFitTheFormat_IsSkippedWithAWarningNamingIt_AndTheOthersLoad()
+    {
+        using var trace = new TraceRecorder();
+        var visca = JsonDocument.Parse(CamerasJsonBeforeTheAbstraction).RootElement.EnumerateArray().Select(e => e.GetRawText()).ToList();
+        var textPort = $"{{\"{TypeNameKey}\":\"{typeof(XcCamera).AssemblyQualifiedName}\",\"IpAddress\":\"\",\"Name\":\"Text port\",\"Port\":\"80\",\"CompanionNumber\":6}}";
+        File.WriteAllText(_path, $"[{visca[0]},{textPort},5,{visca[1]}]");
+
+        var loaded = new CameraSettingsStore(_path).GetAllCameras().ToList();
+
+        Assert.Equal(new[] { "Cam 1", "Cam 2" }, loaded.Select(c => c.Name));
+        var warnings = trace.Events.Where(e => e.Type == TraceEventType.Warning && e.Message.Contains(_path)).Select(e => e.Message).ToList();
+        Assert.Equal(2, warnings.Count);
+        Assert.Contains(warnings, m => m.Contains("Text port") && m.Contains("entry 2"));
+        Assert.Contains(warnings, m => m.Contains("entry 3"));
+        Assert.DoesNotContain(trace.Events, e => e.Type == TraceEventType.Error && e.Message.Contains(_path));
+    }
+
+    // The file names the type the store constructs, so a type that is not a camera must never be
+    // constructed: a StreamWriter, for one, creates a file at the path given as the camera's name.
+    [Fact]
+    public void AnEntryWhoseTypeIsNotACamera_IsSkippedWithAWarning_WithoutConstructingIt()
+    {
+        using var trace = new TraceRecorder();
+        var visca = JsonDocument.Parse(CamerasJsonBeforeTheAbstraction).RootElement.EnumerateArray().Select(e => e.GetRawText()).ToList();
+        var fileAStreamWriterWouldCreate = Path.Combine(_dir, "created by the load.txt");
+        var notACamera = $"{{\"{TypeNameKey}\":\"{typeof(StreamWriter).AssemblyQualifiedName}\",\"Name\":{JsonSerializer.Serialize(fileAStreamWriterWouldCreate)}}}";
+        File.WriteAllText(_path, $"[{visca[0]},{notACamera},{visca[1]}]");
+
+        var loaded = new CameraSettingsStore(_path).GetAllCameras().ToList();
+
+        Assert.Equal(new[] { "Cam 1", "Cam 2" }, loaded.Select(c => c.Name));
+        Assert.False(File.Exists(fileAStreamWriterWouldCreate));
+        var warning = Assert.Single(trace.Events, e => e.Type == TraceEventType.Warning && e.Message.Contains(_path));
+        Assert.Contains("entry 2", warning.Message);
+    }
+
+    private static void AssertSameKeysAndValues(string expectedJson, string actualJson) =>
+        AssertSameKeysAndValues(Entries(expectedJson), Entries(actualJson));
+
+    private static void AssertSameKeysAndValues(List<Dictionary<string, JsonElement>> expected, List<Dictionary<string, JsonElement>> actual)
+    {
         Assert.Equal(expected.Count, actual.Count);
         for (var i = 0; i < expected.Count; i++)
         {
