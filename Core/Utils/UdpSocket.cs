@@ -6,6 +6,8 @@ namespace PtzJoystickControl.Core.Utils;
 
 public class UdpSocket
 {
+    // Cameras add and remove listeners from the UI thread and the send path while OnRecieve reads them.
+    private static readonly object receiveCallbacksLock = new();
     private static readonly Dictionary<EndPoint, Action<byte[], int>> receiveCallbacks = new();
     private static Socket? socket;
     private static int port = 0;
@@ -53,8 +55,11 @@ public class UdpSocket
             var length = socket?.EndReceiveFrom(res, ref remoteEndPoint) ?? 0;
 
             Debug.WriteLine($"UDP OnReceive: {remoteEndPoint} - {BitConverter.ToString(_buffer, 0, length)}");
-            if (length > 0 && receiveCallbacks.TryGetValue(remoteEndPoint, out var callback))
-                callback(_buffer, length);
+            Action<byte[], int>? callback = null;
+            if (length > 0)
+                lock (receiveCallbacksLock)
+                    receiveCallbacks.TryGetValue(remoteEndPoint, out callback);
+            callback?.Invoke(_buffer, length);
 
             remoteEndPoint = remoteReceiveFromEndPoint;
             socket?.BeginReceiveFrom(_buffer, 0, _buffer.Length, SocketFlags.None, ref remoteEndPoint, new AsyncCallback(OnRecieve), null);
@@ -72,19 +77,51 @@ public class UdpSocket
     }
 
     /// <summary>
-    /// Add callback to receive UDP packets from remote endpint
+    /// Add callback to receive UDP packets from remote endpint. The registry keeps a copy of the
+    /// endpoint, so a caller changing its own endpoint afterwards cannot move or orphan the entry.
     /// </summary>
     /// <param name="remoteEndpint">Remote endpoint to receive packets from</param>
     /// <param name="callback">Callback wich recived buffer and content length as parameters</param>
-    public static void AddListenerCallback(EndPoint remoteEndpint, Action<byte[], int> callback)
+    /// <returns>
+    /// False, adding nothing, when another callback already receives from this endpoint: replies
+    /// from one endpoint cannot be told apart, so the first callback keeps them.
+    /// </returns>
+    public static bool AddListenerCallback(EndPoint remoteEndpint, Action<byte[], int> callback)
     {
-        if (receiveCallbacks.ContainsKey(remoteEndpint))
-            throw new ArgumentException("Only one callback is allowed for each remote endpoint.");
-        receiveCallbacks.Add(remoteEndpint, callback);
+        lock (receiveCallbacksLock)
+        {
+            if (receiveCallbacks.TryGetValue(remoteEndpint, out var existing))
+                return existing.Equals(callback);
+            receiveCallbacks.Add(Copy(remoteEndpint), callback);
+            return true;
+        }
     }
 
-    public static void RemoveListenerCallback(EndPoint remoteEndpint)
+    /// <summary>
+    /// Removes the callback for remote endpoint, only if it is <paramref name="callback"/>, so
+    /// closing one camera never stops another camera on the same endpoint receiving.
+    /// </summary>
+    public static void RemoveListenerCallback(EndPoint remoteEndpint, Action<byte[], int> callback)
     {
-        receiveCallbacks.Remove(remoteEndpint);
+        lock (receiveCallbacksLock)
+        {
+            if (receiveCallbacks.TryGetValue(remoteEndpint, out var existing) && existing.Equals(callback))
+                receiveCallbacks.Remove(remoteEndpint);
+        }
     }
+
+    internal static EndPoint[] ListenerEndpoints()
+    {
+        lock (receiveCallbacksLock)
+            return receiveCallbacks.Keys.ToArray();
+    }
+
+    internal static Action<byte[], int>? ListenerFor(EndPoint remoteEndpoint)
+    {
+        lock (receiveCallbacksLock)
+            return receiveCallbacks.TryGetValue(remoteEndpoint, out var callback) ? callback : null;
+    }
+
+    private static EndPoint Copy(EndPoint endPoint) =>
+        endPoint is IPEndPoint ip ? new IPEndPoint(ip.Address, ip.Port) : endPoint;
 }

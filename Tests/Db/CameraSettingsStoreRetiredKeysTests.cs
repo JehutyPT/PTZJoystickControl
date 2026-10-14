@@ -14,6 +14,9 @@ public sealed class CameraSettingsStoreRetiredKeysTests : IDisposable
     private readonly RecordingTraceListener _trace = new();
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "PtzCameraSettingsStoreRetiredKeysTests", Guid.NewGuid().ToString("N"));
     private readonly string _path;
+    // Loaded cameras listen for UDP replies on the shared socket until closed. Each test loads Cam 1
+    // on the same address, and a camera still listening there would make the next one warn.
+    private readonly List<ICamera> _loaded = new();
 
     public CameraSettingsStoreRetiredKeysTests()
     {
@@ -24,8 +27,17 @@ public sealed class CameraSettingsStoreRetiredKeysTests : IDisposable
 
     public void Dispose()
     {
+        foreach (var camera in _loaded.OfType<IDisposable>())
+            camera.Dispose();
         Trace.Listeners.Remove(_trace);
         try { Directory.Delete(_dir, recursive: true); } catch (IOException) { }
+    }
+
+    private List<ICamera> Load(CameraSettingsStore store)
+    {
+        var cameras = store.GetAllCameras().ToList();
+        _loaded.AddRange(cameras);
+        return cameras;
     }
 
     private static string Camera(string name, string ip, int companionNumber, string bitfocusKeys)
@@ -43,7 +55,7 @@ public sealed class CameraSettingsStoreRetiredKeysTests : IDisposable
             "]";
         File.WriteAllText(_path, contents);
 
-        var cameras = new CameraSettingsStore(_path).GetAllCameras().Cast<ViscaIPDeviceBase>().ToList();
+        var cameras = Load(new CameraSettingsStore(_path)).Cast<ViscaIPDeviceBase>().ToList();
 
         Assert.Equal(new[] { "Cam 1", "Cam 2" }, cameras.Select(c => c.Name));
         Assert.Equal(new[] { "192.168.1.11", "192.168.1.12" }, cameras.Select(c => c.IPAddress));
@@ -65,7 +77,7 @@ public sealed class CameraSettingsStoreRetiredKeysTests : IDisposable
         var contents = "[" + Camera("Cam 1", "192.168.1.11", 1, "\"OnSelectedBitfocusButtonNumber\":5,\"OnSelectedBitfocusPageNumber\":2,") + "]";
         File.WriteAllText(_path, contents);
 
-        _ = new CameraSettingsStore(_path).GetAllCameras().ToList();
+        _ = Load(new CameraSettingsStore(_path));
 
         Assert.Equal(contents, File.ReadAllText(_path));
     }
@@ -79,7 +91,7 @@ public sealed class CameraSettingsStoreRetiredKeysTests : IDisposable
         File.WriteAllText(_path, contents);
         var store = new CameraSettingsStore(_path);
 
-        var camera = Assert.IsAssignableFrom<ViscaIPDeviceBase>(Assert.Single(store.GetAllCameras().ToList()));
+        var camera = Assert.IsAssignableFrom<ViscaIPDeviceBase>(Assert.Single(Load(store)));
 
         Assert.Equal("Cam 1", camera.Name);
         Assert.Equal("192.168.1.11", camera.IPAddress);

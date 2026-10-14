@@ -8,14 +8,15 @@ using PtzJoystickControl.Core.Commands;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
 using PtzJoystickControl.Core.Services;
+using PtzJoystickControl.Core.Utils;
 using PtzJoystickControl.Tests.Services;
 using Xunit;
 
 namespace PtzJoystickControl.Tests.Devices;
 
-// ViscaIpDevice sends through the static UdpSocket singleton, whose listener registry is not
-// thread-safe. Keep every test that opens a device socket in this class so xUnit runs them
-// sequentially.
+// ViscaIpDevice sends through the static UdpSocket singleton. Keep the tests that send through a
+// device socket in this class so xUnit runs them one at a time: they measure stop timings, which
+// other sends on the same socket would stretch.
 public class ViscaIpDeviceStopRepeatTests
 {
     private const int MinStopSends = 3;
@@ -149,10 +150,8 @@ public class ViscaIpDeviceStopRepeatTests
         Assert.True(packets.Count(p => IsZoomStop(p.Payload)) < MinStopSends, Describe(packets));
         Assert.True(packets.Count(p => IsFocusStop(p.Payload)) < MinStopSends, Describe(packets));
         Assert.False(camera.Device.Connected);
-        // A repeat that reopened the socket would have re-registered this endpoint's listener,
-        // and registering another device on it would throw.
-        using var successor = new ViscaIpDevice("Successor", endpoint);
-        successor.BeginSocket();
+        // A repeat that reopened the socket would have re-registered this endpoint's listener.
+        Assert.Null(UdpSocket.ListenerFor(endpoint));
     }
 
     [Fact]
