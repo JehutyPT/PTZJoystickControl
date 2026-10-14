@@ -71,6 +71,94 @@ public class XcCameraTests
     }
 
     [Fact]
+    public async Task AZoomMove_SendsOnlyTheZoom_LeavingOutAPanThatDidNotChange()
+    {
+        using var fake = new FakeXcCamera();
+        using var camera = XcTestCameras.CameraFor(fake);
+        camera.Pan(0.5, PanDir.Right);
+        await fake.WaitForControlAsync(1);
+
+        camera.Zoom(0.5, ZoomDir.Tele);
+
+        // 0 + floor(0.5 · 15 + 1e-6) = 7. The pan keeps moving but did not change, so the request leaves it out.
+        var request = await fake.WaitForControlAsync(2);
+        Assert.Equal("c.1.zoom.speed.dir=7&c.1.zoom=tele", request.Query);
+    }
+
+    // A moving focus sends floor(f · 2 + 1e-6) on the CR-N500's manual-focus speeds 0..2: fraction 0
+    // still focuses at 0, a half is 1, 1 is 2, and out-of-range and NaN fractions are clamped. Far is
+    // the command's high direction, near its low.
+    [Theory]
+    [InlineData(0.0, FocusDir.Far, "c.1.focus.speed=0&c.1.focus.action=far")]
+    [InlineData(0.0, FocusDir.Near, "c.1.focus.speed=0&c.1.focus.action=near")]
+    [InlineData(0.0001, FocusDir.Far, "c.1.focus.speed=0&c.1.focus.action=far")]
+    [InlineData(0.0001, FocusDir.Near, "c.1.focus.speed=0&c.1.focus.action=near")]
+    [InlineData(0.4999, FocusDir.Near, "c.1.focus.speed=0&c.1.focus.action=near")]
+    [InlineData(0.5, FocusDir.Far, "c.1.focus.speed=1&c.1.focus.action=far")]
+    [InlineData(0.5, FocusDir.Near, "c.1.focus.speed=1&c.1.focus.action=near")]
+    [InlineData(1.0, FocusDir.Far, "c.1.focus.speed=2&c.1.focus.action=far")]
+    [InlineData(1.0, FocusDir.Near, "c.1.focus.speed=2&c.1.focus.action=near")]
+    [InlineData(1.5, FocusDir.Far, "c.1.focus.speed=2&c.1.focus.action=far")]
+    [InlineData(-0.5, FocusDir.Near, "c.1.focus.speed=0&c.1.focus.action=near")]
+    [InlineData(double.NaN, FocusDir.Far, "c.1.focus.speed=0&c.1.focus.action=far")]
+    public async Task AFocusMoveAtASpeedFraction_SendsTheMatchingStepAndDirection(double fraction, FocusDir direction, string expectedQuery)
+    {
+        using var fake = new FakeXcCamera();
+        using var camera = XcTestCameras.CameraFor(fake);
+
+        camera.Focus(fraction, direction);
+
+        var request = await fake.WaitForControlAsync(1);
+        Assert.Equal(expectedQuery, request.Query);
+    }
+
+    [Fact]
+    public async Task PanAndZoomChangedTogether_GoOutInOneRequest_PanAndTiltFirst()
+    {
+        using var fake = new FakeXcCamera { Responder = XcTestCameras.HoldingTheFirstControlRequest() };
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout);
+        camera.Tilt(0.5, TiltDir.Up);
+        await fake.WaitForControlAsync(1);
+
+        // Zoom changes before pan while the first request is held.
+        camera.Zoom(1.0, ZoomDir.Wide);
+        camera.Pan(0.5, PanDir.Right);
+        fake.Release();
+        var next = await fake.WaitForControlAsync(2);
+        await Task.Delay(SettleTime);
+
+        Assert.Equal("c.1.pan.speed.dir=5005&c.1.pan=right&c.1.tilt.speed.dir=5005&c.1.tilt=up&c.1.zoom.speed.dir=15&c.1.zoom=wide", next.Query);
+        Assert.Equal(2, fake.ControlRequests.Count);
+    }
+
+    // A moving zoom sends floor(f · 15 + 1e-6) on the CR-N500's 0..15: fraction 0 still zooms at 0
+    // rather than stopping, a fraction on a step (2/15) gets that step, 1 is 15, and out-of-range and
+    // NaN fractions are clamped. Tele is the command's high direction, wide its low.
+    [Theory]
+    [InlineData(0.0, ZoomDir.Tele, "c.1.zoom.speed.dir=0&c.1.zoom=tele")]
+    [InlineData(0.0, ZoomDir.Wide, "c.1.zoom.speed.dir=0&c.1.zoom=wide")]
+    [InlineData(0.0001, ZoomDir.Tele, "c.1.zoom.speed.dir=0&c.1.zoom=tele")]
+    [InlineData(0.0001, ZoomDir.Wide, "c.1.zoom.speed.dir=0&c.1.zoom=wide")]
+    [InlineData(2.0 / 15, ZoomDir.Wide, "c.1.zoom.speed.dir=2&c.1.zoom=wide")]
+    [InlineData(0.5, ZoomDir.Tele, "c.1.zoom.speed.dir=7&c.1.zoom=tele")]
+    [InlineData(0.5, ZoomDir.Wide, "c.1.zoom.speed.dir=7&c.1.zoom=wide")]
+    [InlineData(1.0, ZoomDir.Tele, "c.1.zoom.speed.dir=15&c.1.zoom=tele")]
+    [InlineData(1.0, ZoomDir.Wide, "c.1.zoom.speed.dir=15&c.1.zoom=wide")]
+    [InlineData(1.5, ZoomDir.Tele, "c.1.zoom.speed.dir=15&c.1.zoom=tele")]
+    [InlineData(-0.5, ZoomDir.Wide, "c.1.zoom.speed.dir=0&c.1.zoom=wide")]
+    [InlineData(double.NaN, ZoomDir.Tele, "c.1.zoom.speed.dir=0&c.1.zoom=tele")]
+    public async Task AZoomMoveAtASpeedFraction_SendsTheMatchingStepAndDirection(double fraction, ZoomDir direction, string expectedQuery)
+    {
+        using var fake = new FakeXcCamera();
+        using var camera = XcTestCameras.CameraFor(fake);
+
+        camera.Zoom(fraction, direction);
+
+        var request = await fake.WaitForControlAsync(1);
+        Assert.Equal(expectedQuery, request.Query);
+    }
+
+    [Fact]
     public async Task MovementAndStopCalls_ReturnWhileTheCameraStillHoldsTheRequest()
     {
         using var fake = new FakeXcCamera { Responder = r => r.IsControl ? XcReply.Held : XcReply.Ok };
@@ -94,11 +182,7 @@ public class XcCameraTests
     [Fact]
     public async Task ChangesWhileARequestIsInFlight_SendOnlyTheNewestStateNext()
     {
-        var held = 0;
-        using var fake = new FakeXcCamera
-        {
-            Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
-        };
+        using var fake = new FakeXcCamera { Responder = XcTestCameras.HoldingTheFirstControlRequest() };
         using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout);
         camera.Pan(0.1, PanDir.Right);
         await fake.WaitForControlAsync(1);
@@ -267,7 +351,7 @@ public class XcCameraTests
     }
 
     [Fact]
-    public async Task OperationsOtherThanPanTiltAndStop_SendNothing_AndLogOncePerKind()
+    public async Task FocusModeFocusLockPowerAndPresetSetOrReset_SendNothing_AndLogOncePerKind()
     {
         using var trace = new TraceRecorder();
         var name = XcTestCameras.UniqueName();
@@ -280,13 +364,11 @@ public class XcCameraTests
         {
             for (var i = 0; i < 3; i++)
             {
-                camera.Zoom(0.5, ZoomDir.Tele);
-                camera.Focus(0.5, FocusDir.Far);
                 camera.FocusMode(FocusMode.Auto);
                 camera.FocusLock(FocusLock.Lock);
                 camera.Power(Power.On);
-                camera.Preset(Preset.Recall, 1);
-                camera.PresetRecallSpeed(10);
+                camera.Preset(Preset.Set, 1);
+                camera.Preset(Preset.Reset, 1);
             }
         });
         await Task.Delay(SettleTime);
@@ -294,8 +376,8 @@ public class XcCameraTests
         Assert.Null(calls);
         Assert.Single(fake.Requests);
         var unsupported = XcTestCameras.LogFor(trace, name).Where(l => l.Message.Contains("not supported")).ToList();
-        Assert.Equal(7, unsupported.Count);
+        Assert.Equal(5, unsupported.Count);
         Assert.All(unsupported, l => Assert.Equal(TraceEventType.Information, l.Type));
-        Assert.Equal(7, unsupported.Select(l => l.Message).Distinct().Count());
+        Assert.Equal(5, unsupported.Select(l => l.Message).Distinct().Count());
     }
 }

@@ -285,6 +285,22 @@ public class DrivenCamerasTests
     }
 
     [Fact]
+    public async Task SwitchingAwayFromAZoomingXcCamera_SendsItZoomStopRequests()
+    {
+        using var fake = new FakeXcCamera();
+        using var xc = XcTestCameras.CameraFor(fake);
+        var gamepad = new TestGamepad { SelectedCamera = xc };
+        _ = new DrivenCameras(gamepad);
+        xc.Zoom(0.5, ZoomDir.Tele);
+        await fake.WaitForControlAsync(1);
+
+        // Nothing releases the zoom: only the switch can stop the XC camera.
+        gamepad.SelectedCamera = new RecordingCamera("B");
+
+        await fake.WaitUntilAsync(r => r.Count(x => x.Zoom == "stop") >= 3, "three zoom stops");
+    }
+
+    [Fact]
     public async Task StopAll_SendsStopRequestsToAnXcCamera()
     {
         using var fake = new FakeXcCamera();
