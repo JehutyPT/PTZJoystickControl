@@ -8,8 +8,9 @@ namespace PtzJoystickControl.SkaarhojPanel;
 /// Owns the one TCP connection to a SKAARHOJ panel's Raw Panel server (docs/skaarhoj-integration.md).
 /// Reports the link up as soon as TCP connects (without waiting for <c>RDY</c>), sends <c>ping</c> every
 /// ping interval and reports it down when no <c>ack</c> arrives within the timeout, counted only after a
-/// grace period from connect (the panel stalls for ~0.5 s after every connect). On down it closes the
-/// socket and reconnects with capped backoff. Every line received is parsed and raised as a message.
+/// grace period from connect and again from <c>_isSleeping=0</c> (the panel stalls for ~0.5 s after every
+/// connect and for more than the timeout when it wakes). On down it closes the socket and reconnects
+/// with capped backoff. Every line received is parsed and raised as a message.
 /// <para>
 /// Everything runs on one background task; events are raised there, and a subscriber that throws is
 /// logged. Nothing escapes onto a thread-pool thread (live-safety §2). Moves no camera.
@@ -55,6 +56,9 @@ public sealed class SkaarhojPanelLink : IDisposable
     private volatile bool _isUp;
     // Stopwatch timestamp of the last ack on the current connection; 0 before the first.
     private long _lastAckAt;
+    // Stopwatch timestamp the dead-man timer counts from at the earliest: the end of the grace after
+    // connect, moved on by each wake.
+    private long _graceEnd;
     private int _unknownLines;
 
     public SkaarhojPanelLink(string host, int port)
@@ -288,6 +292,7 @@ public sealed class SkaarhojPanelLink : IDisposable
     {
         var connectedAt = Stopwatch.GetTimestamp();
         Interlocked.Exchange(ref _lastAckAt, 0);
+        Interlocked.Exchange(ref _graceEnd, connectedAt + GraceTicks);
         _isUp = true;
         Trace.TraceInformation($"SKAARHOJ panel: link up to {Endpoint}");
         Raise(LinkUp, EventArgs.Empty, nameof(LinkUp));
@@ -299,7 +304,7 @@ public sealed class SkaarhojPanelLink : IDisposable
             var stream = client.GetStream();
             var reading = ReadAsync(stream, session.Token);
             var pinging = PingAsync(stream, session.Token);
-            var watching = WatchAsync(connectedAt, session.Token);
+            var watching = WatchAsync(session.Token);
 
             var first = await Task.WhenAny(reading, pinging, watching).ConfigureAwait(false);
             reason = stopping.IsCancellationRequested ? "stopped" : await first.ConfigureAwait(false);
@@ -375,6 +380,10 @@ public sealed class SkaarhojPanelLink : IDisposable
             case RawPanelMessage.Ack:
                 Interlocked.Exchange(ref _lastAckAt, Stopwatch.GetTimestamp());
                 break;
+            case RawPanelMessage.Reply { Key: "isSleeping", Value: "0" }:
+                // Waking stalls the panel for longer than the timeout: give it the same grace as a connect.
+                Interlocked.Exchange(ref _graceEnd, Stopwatch.GetTimestamp() + GraceTicks);
+                break;
             case RawPanelMessage.Reply reply when LoggedReplies.Contains(reply.Key):
                 Trace.TraceInformation($"SKAARHOJ panel {Endpoint}: _{reply.Key}={reply.Value}");
                 break;
@@ -411,21 +420,21 @@ public sealed class SkaarhojPanelLink : IDisposable
     }
 
     // The dead-man timer: kept apart from the pings, so a stalled send cannot delay it. Never throws.
-    private async Task<string> WatchAsync(long connectedAt, CancellationToken session)
+    private async Task<string> WatchAsync(CancellationToken session)
     {
         try
         {
-            var graceEnd = connectedAt + (long)(_connectGrace.TotalSeconds * Stopwatch.Frequency);
             var timeout = (long)(_ackTimeout.TotalSeconds * Stopwatch.Frequency);
             while (true)
             {
                 await Task.Delay(_watchdogInterval, session).ConfigureAwait(false);
                 var now = Stopwatch.GetTimestamp();
+                var graceEnd = Interlocked.Read(ref _graceEnd);
                 if (now < graceEnd)
                     continue;
 
                 // Counted from the last ack, but never from before the grace ends: an ack during the
-                // post-connect stall must not arm the timer early.
+                // post-connect or wake stall must not arm the timer early.
                 var lastAck = Interlocked.Read(ref _lastAckAt);
                 var since = Math.Max(lastAck, graceEnd);
                 if (now - since > timeout)
@@ -445,6 +454,8 @@ public sealed class SkaarhojPanelLink : IDisposable
             return $"dead-man timer failed: {e.Message}";
         }
     }
+
+    private long GraceTicks => (long)(_connectGrace.TotalSeconds * Stopwatch.Frequency);
 
     private void Raise<T>(EventHandler<T>? handler, T args, string name)
     {

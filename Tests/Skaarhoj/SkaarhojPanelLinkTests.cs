@@ -160,6 +160,58 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     }
 
     [Fact]
+    public async Task StaysUp_ThroughAWakeStallShorterThanTheGrace_ThenTimesOutAfterIt()
+    {
+        Start();
+        await Task.Delay(Grace + Timeout);
+        Assert.Equal(0, Count("down"));
+
+        // The panel wakes and stalls longer than the timeout, but within the grace re-armed by the wake.
+        _panel.SilentUntil = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 180 / 1000;
+        _panel.Send("_isSleeping=0");
+
+        await Task.Delay(Grace + Timeout * 2);
+        Assert.Equal(1, Count("up"));
+        Assert.Equal(0, Count("down"));
+
+        _panel.AnswerPings = false;
+
+        Assert.True(await WaitUntil(() => Count("down") == 1, TimeSpan.FromSeconds(2)));
+        Assert.InRange(Stopwatch.GetElapsedTime(_panel.LastAckSentAt, FirstAt("down")), Timeout, Timeout + Ping + Slack);
+    }
+
+    [Fact]
+    public async Task AfterWake_ASilenceLongerThanTheGrace_StillReportsDown_OnlyAfterGracePlusTimeout()
+    {
+        Start();
+        await Task.Delay(Grace + Timeout);
+        Assert.Equal(0, Count("down"));
+
+        _panel.AnswerPings = false;
+        _panel.Send("_isSleeping=0");
+        Assert.True(await WaitUntil(() => _messages.OfType<RawPanelMessage.Reply>().Any(), TimeSpan.FromSeconds(2)));
+        var wokeAt = Stopwatch.GetTimestamp();
+
+        Assert.True(await WaitUntil(() => Count("down") == 1, TimeSpan.FromSeconds(2)));
+
+        // Seen by the test just after the link re-armed its grace, so allow a few ms below.
+        Assert.InRange(Stopwatch.GetElapsedTime(wokeAt, FirstAt("down")), Grace + Timeout - TimeSpan.FromMilliseconds(10), Grace + Timeout + Ping + Slack);
+    }
+
+    [Fact]
+    public async Task SleepReport_DoesNotRearmTheGrace()
+    {
+        Start();
+        await Task.Delay(Grace + Timeout);
+
+        _panel.AnswerPings = false;
+        _panel.Send("_isSleeping=1");
+
+        Assert.True(await WaitUntil(() => Count("down") == 1, TimeSpan.FromSeconds(2)));
+        Assert.InRange(Stopwatch.GetElapsedTime(_panel.LastAckSentAt, FirstAt("down")), Timeout, Timeout + Ping + Slack);
+    }
+
+    [Fact]
     public async Task WithoutAnyAck_ReportsDownOnlyAfterGracePlusTimeout()
     {
         _panel.AnswerPings = false;
