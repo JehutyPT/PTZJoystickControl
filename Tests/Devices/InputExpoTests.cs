@@ -421,6 +421,27 @@ public sealed class InputExpoTests
         Assert.Equal(Direction.Stop, input.CurrentDirection);
     }
 
+    // Full deflection reads exactly the Max speed. At 29, 57 and 58 % (pan step 14 migrates to 57 %)
+    // the speed × 100 lands a hair below the whole number (28.999999999999996), so the readout must
+    // round, not truncate.
+    [Theory]
+    [InlineData(29)]
+    [InlineData(50)]
+    [InlineData(57)]
+    [InlineData(58)]
+    [InlineData(100)]
+    public void AtFullDeflection_TheOutputValue_IsTheMaxSpeed(int percent)
+    {
+        var input = Axis();
+        input.CommandValue = input.Values!.Single(v => v.Value == percent);
+
+        input.InputValue = 1;
+        Assert.Equal((Direction.High, percent), (input.CurrentDirection, input.CurrentValue));
+
+        input.InputValue = -1;
+        Assert.Equal((Direction.Low, percent), (input.CurrentDirection, input.CurrentValue));
+    }
+
     [Theory]
     [InlineData(double.NaN, 0.0)]
     [InlineData(double.PositiveInfinity, 1.0)]
