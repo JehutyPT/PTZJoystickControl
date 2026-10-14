@@ -6,6 +6,16 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #39: SKAARHOJ panel shows asleep and survives waking
+
+Needs the panel set up as in the #37 entry, with the panel selected as the controller and its stick mapped. The app never changes the panel's sleep timer; a short one must be set beforehand, and **only once agreed** (ask before changing any panel setting): with the app quit, have the Companion surface plugin or a test tool send `SleepTimer=60000`, then disconnect the tool. This is the same setup as the #37 sleep check; run both together. If the panel's timer is left short it sleeps every minute during the show, so restore it at the end.
+
+- [ ] Start the app and leave the stick alone until the log shows `INFO … asleep`. The controller list shows **SKAARHOJ panel (192.168.1.163) (Asleep: press a panel button)**, not "(Disconnected)". Deflect the stick: nothing moves.
+- [ ] Press any panel button: the log shows `INFO … awake` with **no** "link down" or "link up" around it, the list shows the panel connected again (no "Asleep", no "Disconnected"), and the stick drives the cameras. If a "link down … no ack" appears right before or after "awake", note on #39 whether it came before the `awake` line (the panel stalls before reporting the wake) or after.
+- [ ] Each sleep and each wake logs exactly one `INFO` line.
+- [ ] Held-still check: pan a camera and hold the stick deflected and still, without moving it, until past the timer (over a minute). Either the panel stays awake and the camera keeps moving until release, or the panel sleeps and the camera stops within about half a second. Note which in docs/skaarhoj-integration.md ("Sleep").
+- [ ] Afterwards, set the timer back to 4 hours (`SleepTimer=14400000`, again only once agreed) or power-cycle the panel (a reboot also restores 4 hours).
+
 ### #37: SKAARHOJ joystick drives cameras
 
 Needs the SKAARHOJ PTZ Extreme at 192.168.1.163 with `SkaarhojPanel.json` set up as in the #35 entry, both CR-N500s, and no other Raw Panel client connected (close SKAARHOJ's updater app and any test tool). The app only reads the panel: its buttons, knobs, lights and displays do nothing, and a dark panel is expected. Camera selection comes from Companion.
@@ -19,7 +29,7 @@ Needs the SKAARHOJ PTZ Extreme at 192.168.1.163 with `SkaarhojPanel.json` set up
 - [ ] Quit and restart the app: the panel is still the selected controller, with the same mappings and Expo.
 - [ ] Pan a camera and, while holding the stick, pull the panel's Ethernet cable: the camera stops within about half a second, the log shows "link down", and the panel shows disconnected in the list.
 - [ ] Plug the cable back in without touching the stick: after "link up" (within about 30 s) nothing moves. Then move the stick: the camera follows again.
-- [ ] Sleep. Beforehand, with the app quit, use a test tool to send `SleepTimer=60000` to the panel, then disconnect the tool. Start the app and leave the stick alone until the log shows `INFO … asleep`. Deflect the stick: nothing moves, and the panel shows disconnected in the list. Press any panel button: the log shows `INFO … awake`, and the stick drives the cameras again (wait out the wake stall; a single "link down/up" at that moment is #39). The timer runs from the last activity, so it expires a minute after the app connects even if connecting wakes the panel; if the panel never sleeps, note it on #39. Afterwards, set `SleepTimer=` back (4 hours is `14400000`), or power-cycle the panel.
+- [ ] Sleep. Beforehand, with the app quit, use a test tool to send `SleepTimer=60000` to the panel, then disconnect the tool. Start the app and leave the stick alone until the log shows `INFO … asleep`. Deflect the stick: nothing moves. Press any panel button: the log shows `INFO … awake`, and the stick drives the cameras again. The timer runs from the last activity, so it expires a minute after the app connects even if connecting wakes the panel; if the panel never sleeps, note it on #39. Afterwards, set `SleepTimer=` back (4 hours is `14400000`), or power-cycle the panel. How the list shows the asleep panel, and the wake without a reconnect, are checked in the #39 entry.
 - [ ] Select the USB joystick in the list: the panel's stick moves nothing, and the USB joystick drives both cameras and stops on release. Select the panel again: the USB joystick moves nothing.
 - [ ] With the panel selected, unplug the USB joystick and plug it back in: the panel keeps working, and the USB joystick does not become active. With the USB joystick selected, pull the panel's cable: the USB joystick keeps working.
 - [ ] Set `"Address": ""` in `SkaarhojPanel.json` and restart: the controller list shows only the USB joystick, and it works as before. Put the address back.
