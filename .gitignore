@@ -363,3 +363,6 @@ MigrationBackup/
 FodyWeavers.xsd
 # macOS
 .DS_Store
+
+# Vendor specs (copyrighted, kept local only)
+docs/vendor/
