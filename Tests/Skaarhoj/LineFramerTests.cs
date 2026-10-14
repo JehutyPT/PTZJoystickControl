@@ -65,6 +65,19 @@ public class LineFramerTests
     }
 
     [Fact]
+    public void ADroppedLine_CountsAsEnded_OnlyOnceItsNewlineArrives()
+    {
+        var framer = new LineFramer(maxLineLength: 8);
+
+        Feed(framer, "0123456789");
+        Assert.Equal(0, framer.EndedDroppedLines);
+        Feed(framer, "abc\nack\n");
+        Assert.Equal(1, framer.EndedDroppedLines);
+        Feed(framer, "ok\n");
+        Assert.Equal(1, framer.EndedDroppedLines);
+    }
+
+    [Fact]
     public void NonAsciiBytes_DoNotThrow()
     {
         var framer = new LineFramer();

@@ -24,6 +24,9 @@ internal sealed class LineFramer
     /// <summary>Lines dropped because they exceeded the maximum length.</summary>
     public int DroppedLines { get; private set; }
 
+    /// <summary>Dropped lines whose ending newline has arrived: complete lines, though too long to keep.</summary>
+    public int EndedDroppedLines { get; private set; }
+
     /// <summary>Adds <paramref name="count"/> bytes from <paramref name="buffer"/> and returns the lines they complete.</summary>
     public IReadOnlyList<string> Append(byte[] buffer, int offset, int count)
     {
@@ -34,7 +37,10 @@ internal sealed class LineFramer
             if (b == (byte)'\n')
             {
                 if (_discarding)
+                {
                     _discarding = false;
+                    EndedDroppedLines++;
+                }
                 else
                     lines.Add(Encoding.ASCII.GetString(_pending.ToArray()));
                 _pending.Clear();
