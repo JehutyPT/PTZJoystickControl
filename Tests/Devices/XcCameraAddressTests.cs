@@ -1,7 +1,6 @@
 using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Core.Devices;
 using Xunit;
-using static PtzJoystickControl.Tests.Devices.XcCameraTests;
 
 namespace PtzJoystickControl.Tests.Devices;
 
@@ -12,7 +11,7 @@ public class XcCameraAddressTests
     [Fact]
     public void ANewCamera_HasNoAddress_AndPort80()
     {
-        using var camera = new XcCamera(UniqueName());
+        using var camera = new XcCamera(XcTestCameras.UniqueName());
 
         Assert.Equal("", camera.Address);
         Assert.Equal(80, camera.Port);
@@ -99,7 +98,7 @@ public class XcCameraAddressTests
     // Disposed first, so giving it an address sends nothing: these tests exercise only the setters.
     private static XcCamera SetterOnlyCamera()
     {
-        var camera = new XcCamera(UniqueName());
+        var camera = new XcCamera(XcTestCameras.UniqueName());
         camera.Dispose();
         return camera;
     }

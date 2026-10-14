@@ -272,7 +272,7 @@ public class DrivenCamerasTests
     public async Task SwitchingAwayFromAPanningXcCamera_SendsItStopRequests()
     {
         using var fake = new FakeXcCamera();
-        using var xc = XcCameraTests.CameraFor(fake);
+        using var xc = XcTestCameras.CameraFor(fake);
         var gamepad = new TestGamepad { SelectedCamera = xc };
         _ = new DrivenCameras(gamepad);
         xc.Pan(0.5, PanDir.Left);
@@ -288,7 +288,7 @@ public class DrivenCamerasTests
     public async Task StopAll_SendsStopRequestsToAnXcCamera()
     {
         using var fake = new FakeXcCamera();
-        using var xc = XcCameraTests.CameraFor(fake);
+        using var xc = XcTestCameras.CameraFor(fake);
         var gamepad = new TestGamepad { SelectedCamera = xc };
         var driven = new DrivenCameras(gamepad);
         xc.Pan(0.5, PanDir.Left);

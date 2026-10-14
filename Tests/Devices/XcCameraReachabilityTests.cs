@@ -4,7 +4,6 @@ using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Tests.Skaarhoj;
 using Xunit;
-using static PtzJoystickControl.Tests.Devices.XcCameraTests;
 
 namespace PtzJoystickControl.Tests.Devices;
 
@@ -21,7 +20,7 @@ public class XcCameraReachabilityTests
     public async Task ACameraAnsweringProbes_TurnsConnected_AndRaisesTheChange()
     {
         using var trace = new TraceRecorder();
-        var name = UniqueName();
+        var name = XcTestCameras.UniqueName();
         using var fake = new FakeXcCamera();
         using var camera = new XcCamera(name, ShortTimeout, Interval);
         var connected = ConnectedBecomes(camera, true);
@@ -32,15 +31,15 @@ public class XcCameraReachabilityTests
         await connected.WaitAsync(Wait);
         Assert.True(camera.Connected);
         Assert.Equal("item=s", fake.Probes[0].Query);
-        await WaitForLogAsync(trace, name, "connected");
-        Assert.Single(LogFor(trace, name));
+        await XcTestCameras.WaitForLogAsync(trace, name, "connected");
+        Assert.Single(XcTestCameras.LogFor(trace, name));
     }
 
     [Fact]
     public async Task AnIdleCamera_IsProbedNoMoreOftenThanTheInterval()
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake, requestTimeout: ShortTimeout, probeInterval: Interval);
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: ShortTimeout, probeInterval: Interval);
 
         var probes = (await fake.WaitUntilAsync(r => r.Count(x => x.IsProbe) >= 3, "three probes")).Where(r => r.IsProbe).ToList();
 
@@ -55,7 +54,7 @@ public class XcCameraReachabilityTests
     public async Task ACameraThatStopsAnswering_TurnsUnreachable_LoggedOnce()
     {
         using var trace = new TraceRecorder();
-        var name = UniqueName();
+        var name = XcTestCameras.UniqueName();
         var answering = 1;
         using var fake = new FakeXcCamera { Responder = _ => Volatile.Read(ref answering) == 1 ? XcReply.Ok : XcReply.Never };
         using var camera = new XcCamera(name, ShortTimeout, Interval);
@@ -69,17 +68,17 @@ public class XcCameraReachabilityTests
 
         await unreachable.WaitAsync(Wait);
         Assert.False(camera.Connected);
-        await WaitForLogAsync(trace, name, "not reachable");
+        await XcTestCameras.WaitForLogAsync(trace, name, "not reachable");
         await Task.Delay(3 * (Interval + ShortTimeout));
-        Assert.Single(LogFor(trace, name), l => l.Message.Contains("not reachable"));
-        Assert.Single(LogFor(trace, name), l => l.Type == TraceEventType.Warning);
+        Assert.Single(XcTestCameras.LogFor(trace, name), l => l.Message.Contains("not reachable"));
+        Assert.Single(XcTestCameras.LogFor(trace, name), l => l.Type == TraceEventType.Warning);
     }
 
     [Fact]
     public async Task NoProbeStarts_WhileAControlRequestIsInFlight()
     {
         using var fake = new FakeXcCamera { Responder = r => r.IsControl ? XcReply.Held : XcReply.Ok };
-        using var camera = CameraFor(fake, requestTimeout: LongTimeout, probeInterval: Interval);
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongTimeout, probeInterval: Interval);
         camera.Pan(0.5, PanDir.Right);
         var control = await fake.WaitForControlAsync(1);
 
@@ -93,7 +92,7 @@ public class XcCameraReachabilityTests
     public async Task AStopWantedWhileAProbeIsHeld_GoesOutOnceTheProbeReturns()
     {
         using var fake = new FakeXcCamera { Responder = r => r.IsProbe ? XcReply.Held : XcReply.Ok };
-        using var camera = CameraFor(fake, requestTimeout: LongTimeout, probeInterval: Interval);
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongTimeout, probeInterval: Interval);
         await fake.WaitForProbeAsync(1);
 
         camera.Stop();
@@ -110,7 +109,7 @@ public class XcCameraReachabilityTests
     {
         using var fake = new FakeXcCamera { Responder = r => r.IsProbe ? XcReply.Never : XcReply.Ok };
         // The probe interval is long: only the probe's timeout can free the stop.
-        using var camera = CameraFor(fake, requestTimeout: TimeSpan.FromMilliseconds(300), probeInterval: LongTimeout);
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: TimeSpan.FromMilliseconds(300), probeInterval: LongTimeout);
         await fake.WaitForProbeAsync(1);
 
         camera.Stop();
@@ -125,7 +124,7 @@ public class XcCameraReachabilityTests
         // Holds its probes, so the camera cannot reconnect before the asserts on the reset.
         using var second = new FakeXcCamera { Responder = r => r.IsProbe ? XcReply.Held : XcReply.Ok };
         // The probe interval is long: a prompt probe to the new port comes from the change itself.
-        using var camera = new XcCamera(UniqueName(), ShortTimeout, LongTimeout);
+        using var camera = new XcCamera(XcTestCameras.UniqueName(), ShortTimeout, LongTimeout);
         var connected = ConnectedBecomes(camera, true);
         camera.Port = first.Port;
         camera.Address = "127.0.0.1";

@@ -2,7 +2,6 @@ using System.Diagnostics;
 using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Core.Devices;
 using Xunit;
-using static PtzJoystickControl.Tests.Devices.XcCameraTests;
 
 namespace PtzJoystickControl.Tests.Devices;
 
@@ -19,7 +18,7 @@ public class XcCameraStopTests
     public async Task APanTiltStop_IsSentAtLeastThreeTimes_StopRepeatIntervalApart()
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
         camera.Pan(0.4, PanDir.Left);
         camera.Tilt(0.5, TiltDir.Up);
         await fake.WaitUntilAsync(r => r.Any(x => x.Pan == "left" && x.Tilt == "up"), "the move");
@@ -36,7 +35,7 @@ public class XcCameraStopTests
     public async Task AStoppedAxis_SendsStopAtSpeed10_WhateverTheFraction()
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
         camera.Pan(0.5, PanDir.Left);
         await fake.WaitForControlAsync(1);
 
@@ -54,7 +53,7 @@ public class XcCameraStopTests
         {
             Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
         };
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
         camera.Pan(0.4, PanDir.Left);
         await fake.WaitForControlAsync(1);
 
@@ -77,7 +76,7 @@ public class XcCameraStopTests
         {
             Responder = r => r.IsStop && Interlocked.Increment(ref refusedStops) <= 4 ? XcReply.With(200, "301") : XcReply.Ok,
         };
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
         camera.Pan(0.4, PanDir.Left);
         await fake.WaitForControlAsync(1);
 
@@ -98,7 +97,7 @@ public class XcCameraStopTests
         {
             Responder = r => r.IsStop && Interlocked.Increment(ref silentStops) <= MinStopSends ? XcReply.Never : XcReply.Ok,
         };
-        using var camera = CameraFor(fake, requestTimeout: TimeSpan.FromMilliseconds(150));
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: TimeSpan.FromMilliseconds(150));
         camera.Pan(0.4, PanDir.Left);
         await fake.WaitForControlAsync(1);
 
@@ -112,7 +111,7 @@ public class XcCameraStopTests
     public async Task RedeflectingWithinTheRepeatWindow_EndsWithTheMove()
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
         camera.Pan(0.4, PanDir.Left);
         await fake.WaitForControlAsync(1);
 
@@ -129,7 +128,7 @@ public class XcCameraStopTests
     public async Task PanStoppingWhileTiltMoves_RepeatsTheStopAndKeepsTilting()
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
         camera.Pan(0.4, PanDir.Left);
         camera.Tilt(0.5, TiltDir.Up);
         await fake.WaitUntilAsync(r => r.Any(x => x.Pan == "left" && x.Tilt == "up"), "the move");
@@ -149,7 +148,7 @@ public class XcCameraStopTests
     public async Task Stop_SendsRepeatedStops_EvenWhenAlreadyStopped()
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
 
         camera.Stop();
         await fake.WaitUntilAsync(r => r.Count(x => x.IsStop) >= MinStopSends, "three stops");
@@ -162,7 +161,7 @@ public class XcCameraStopTests
     public async Task Stop_StopsAMovingCamera()
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
         camera.Pan(0.4, PanDir.Left);
         camera.Tilt(0.5, TiltDir.Down);
         await fake.WaitUntilAsync(r => r.Any(x => x.Pan == "left" && x.Tilt == "down"), "the move");
@@ -178,7 +177,7 @@ public class XcCameraStopTests
     [Fact]
     public void IsMoving_FollowsTheWantedPanAndTilt()
     {
-        using var camera = new XcCamera(UniqueName());
+        using var camera = new XcCamera(XcTestCameras.UniqueName());
         Assert.False(camera.IsMoving);
 
         camera.Pan(0.4, PanDir.Left);
@@ -196,7 +195,7 @@ public class XcCameraStopTests
     public async Task ACameraWithNoAddress_SendsNothing()
     {
         using var fake = new FakeXcCamera();
-        using var camera = new XcCamera(UniqueName()) { Port = fake.Port };
+        using var camera = new XcCamera(XcTestCameras.UniqueName()) { Port = fake.Port };
 
         camera.Pan(0.4, PanDir.Left);
         camera.Tilt(0.5, TiltDir.Up);

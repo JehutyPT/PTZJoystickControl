@@ -19,7 +19,7 @@ public class XcCameraTests
     public async Task APanMove_SendsOneCombinedRequestCarryingBothAxes()
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
 
         camera.Pan(0.5, PanDir.Right);
 
@@ -42,7 +42,7 @@ public class XcCameraTests
     public async Task APanMoveAtASpeedFraction_SendsTheMatchingXcSpeed(double fraction, int expectedSpeed)
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
 
         camera.Pan(fraction, PanDir.Right);
 
@@ -55,7 +55,7 @@ public class XcCameraTests
     public async Task EachChange_CarriesBothAxesCurrentDirectionAndSpeed()
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
 
         camera.Pan(1.0, PanDir.Left);
         var first = await fake.WaitForControlAsync(1);
@@ -74,7 +74,7 @@ public class XcCameraTests
     public async Task MovementAndStopCalls_ReturnWhileTheCameraStillHoldsTheRequest()
     {
         using var fake = new FakeXcCamera { Responder = r => r.IsControl ? XcReply.Held : XcReply.Ok };
-        using var camera = CameraFor(fake, requestTimeout: LongRequestTimeout);
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout);
         camera.Pan(0.5, PanDir.Right);
         await fake.WaitForControlAsync(1);
 
@@ -99,7 +99,7 @@ public class XcCameraTests
         {
             Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
         };
-        using var camera = CameraFor(fake, requestTimeout: LongRequestTimeout);
+        using var camera = XcTestCameras.CameraFor(fake, requestTimeout: LongRequestTimeout);
         camera.Pan(0.1, PanDir.Right);
         await fake.WaitForControlAsync(1);
 
@@ -123,7 +123,7 @@ public class XcCameraTests
     public async Task ConsecutiveRequests_StartAtLeastTheMinimumGapApart()
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
 
         // Faster than the gap, like a stick moved continuously at the input-loop rate.
         for (var i = 1; i <= 20; i++)
@@ -145,7 +145,7 @@ public class XcCameraTests
     public async Task RequestsToOneCamera_ReuseOneConnection()
     {
         using var fake = new FakeXcCamera();
-        using var camera = CameraFor(fake);
+        using var camera = XcTestCameras.CameraFor(fake);
 
         camera.Pan(0.5, PanDir.Right);
         await fake.WaitForControlAsync(1);
@@ -163,8 +163,8 @@ public class XcCameraTests
         // Answers probes: a probe sent before the pan would otherwise hold the pan back.
         using var silent = new FakeXcCamera { Responder = r => r.IsControl ? XcReply.Never : XcReply.Ok };
         using var answering = new FakeXcCamera();
-        using var stuck = CameraFor(silent, requestTimeout: LongRequestTimeout);
-        using var other = CameraFor(answering, requestTimeout: LongRequestTimeout);
+        using var stuck = XcTestCameras.CameraFor(silent, requestTimeout: LongRequestTimeout);
+        using var other = XcTestCameras.CameraFor(answering, requestTimeout: LongRequestTimeout);
         stuck.Pan(0.5, PanDir.Right);
         await silent.WaitForControlAsync(1);
 
@@ -178,29 +178,29 @@ public class XcCameraTests
     public async Task ARunOfNoControlRightAnswers_LogsOneWarning_AndTheRecoveryOneLine()
     {
         using var trace = new TraceRecorder();
-        var name = UniqueName();
+        var name = XcTestCameras.UniqueName();
         var refusing = 1;
         using var fake = new FakeXcCamera
         {
             Responder = r => r.IsControl && Volatile.Read(ref refusing) == 1 ? XcReply.With(200, "301") : XcReply.Ok,
         };
-        using var camera = CameraFor(fake, name);
+        using var camera = XcTestCameras.CameraFor(fake, name);
 
         for (var i = 1; i <= 3; i++)
         {
             camera.Pan(i / 10.0, PanDir.Right);
             await fake.WaitForControlAsync(i);
         }
-        await WaitForLogAsync(trace, name, "no camera control right");
+        await XcTestCameras.WaitForLogAsync(trace, name, "no camera control right");
         Volatile.Write(ref refusing, 0);
         camera.Pan(0.5, PanDir.Right);
         await fake.WaitForControlAsync(4);
         camera.Pan(0.6, PanDir.Right);
         await fake.WaitForControlAsync(5);
-        await WaitForLogAsync(trace, name, "succeed again");
+        await XcTestCameras.WaitForLogAsync(trace, name, "succeed again");
         await Task.Delay(SettleTime);
 
-        var lines = LogFor(trace, name);
+        var lines = XcTestCameras.LogFor(trace, name);
         var warning = Assert.Single(lines, l => l.Type == TraceEventType.Warning);
         Assert.Contains("no camera control right: another client may hold control", warning.Message);
         var afterWarning = lines.SkipWhile(l => l != warning).Skip(1).ToList();
@@ -219,13 +219,13 @@ public class XcCameraTests
     public async Task AnAnswerOtherThanSuccess_IsAFailureLoggedWithItsReason(int status, string? livescope, string reason)
     {
         using var trace = new TraceRecorder();
-        var name = UniqueName();
+        var name = XcTestCameras.UniqueName();
         using var fake = new FakeXcCamera { Responder = r => r.IsControl ? XcReply.With(status, livescope) : XcReply.Ok };
-        using var camera = CameraFor(fake, name);
+        using var camera = XcTestCameras.CameraFor(fake, name);
 
         camera.Pan(0.5, PanDir.Right);
 
-        var warning = await WaitForLogAsync(trace, name, "failed");
+        var warning = await XcTestCameras.WaitForLogAsync(trace, name, "failed");
         Assert.Equal(TraceEventType.Warning, warning.Type);
         Assert.Contains(reason, warning.Message);
     }
@@ -234,13 +234,13 @@ public class XcCameraTests
     public async Task ARequestWithNoAnswerWithinTheTimeout_IsAFailure()
     {
         using var trace = new TraceRecorder();
-        var name = UniqueName();
+        var name = XcTestCameras.UniqueName();
         using var fake = new FakeXcCamera { Responder = r => r.IsControl ? XcReply.Never : XcReply.Ok };
-        using var camera = CameraFor(fake, name, requestTimeout: TimeSpan.FromMilliseconds(200));
+        using var camera = XcTestCameras.CameraFor(fake, name, requestTimeout: TimeSpan.FromMilliseconds(200));
 
         camera.Pan(0.5, PanDir.Right);
 
-        var warning = await WaitForLogAsync(trace, name, "failed");
+        var warning = await XcTestCameras.WaitForLogAsync(trace, name, "failed");
         Assert.Equal(TraceEventType.Warning, warning.Type);
         Assert.Contains("no answer within 200 ms", warning.Message);
     }
@@ -249,31 +249,31 @@ public class XcCameraTests
     public async Task AFailureWhoseReasonChanges_IsLoggedAgain()
     {
         using var trace = new TraceRecorder();
-        var name = UniqueName();
+        var name = XcTestCameras.UniqueName();
         var answer = XcReply.With(200, "301");
         using var fake = new FakeXcCamera { Responder = r => r.IsControl ? Volatile.Read(ref answer) : XcReply.Ok };
-        using var camera = CameraFor(fake, name);
+        using var camera = XcTestCameras.CameraFor(fake, name);
 
         camera.Pan(0.2, PanDir.Right);
-        await WaitForLogAsync(trace, name, "no camera control right");
+        await XcTestCameras.WaitForLogAsync(trace, name, "no camera control right");
         Volatile.Write(ref answer, XcReply.With(401, null));
         camera.Pan(0.4, PanDir.Right);
-        await WaitForLogAsync(trace, name, "HTTP 401");
+        await XcTestCameras.WaitForLogAsync(trace, name, "HTTP 401");
         camera.Pan(0.6, PanDir.Right);
         await fake.WaitForControlAsync(3);
         await Task.Delay(SettleTime);
 
-        Assert.Equal(2, LogFor(trace, name).Count(l => l.Type == TraceEventType.Warning));
+        Assert.Equal(2, XcTestCameras.LogFor(trace, name).Count(l => l.Type == TraceEventType.Warning));
     }
 
     [Fact]
     public async Task OperationsOtherThanPanTiltAndStop_SendNothing_AndLogOncePerKind()
     {
         using var trace = new TraceRecorder();
-        var name = UniqueName();
+        var name = XcTestCameras.UniqueName();
         using var fake = new FakeXcCamera();
         // The probe interval is long: the first probe is the only request the camera makes by itself.
-        using var camera = CameraFor(fake, name, probeInterval: LongRequestTimeout);
+        using var camera = XcTestCameras.CameraFor(fake, name, probeInterval: LongRequestTimeout);
         await fake.WaitForProbeAsync(1);
 
         var calls = Record.Exception(() =>
@@ -293,41 +293,9 @@ public class XcCameraTests
 
         Assert.Null(calls);
         Assert.Single(fake.Requests);
-        var unsupported = LogFor(trace, name).Where(l => l.Message.Contains("not supported")).ToList();
+        var unsupported = XcTestCameras.LogFor(trace, name).Where(l => l.Message.Contains("not supported")).ToList();
         Assert.Equal(7, unsupported.Count);
         Assert.All(unsupported, l => Assert.Equal(TraceEventType.Information, l.Type));
         Assert.Equal(7, unsupported.Select(l => l.Message).Distinct().Count());
-    }
-
-    internal static XcCamera CameraFor(FakeXcCamera fake, string? name = null, TimeSpan? requestTimeout = null, TimeSpan? probeInterval = null)
-    {
-        var camera = new XcCamera(name ?? UniqueName(), requestTimeout ?? XcCamera.DefaultRequestTimeout, probeInterval ?? XcCamera.DefaultProbeInterval);
-        camera.Port = fake.Port;
-        camera.Address = "127.0.0.1";
-        return camera;
-    }
-
-    // Trace listeners are global and test classes run in parallel: log assertions filter on this name.
-    internal static string UniqueName() => $"XC test {Guid.NewGuid():N}";
-
-    internal static List<(TraceEventType Type, string Message)> LogFor(TraceRecorder trace, string name) =>
-        trace.Events.Where(e => e.Message.Contains(name)).ToList();
-
-    /// <summary>Waits for the camera's first log line containing <paramref name="text"/> and returns it.</summary>
-    internal static async Task<(TraceEventType Type, string Message)> WaitForLogAsync(TraceRecorder trace, string name, string text)
-    {
-        var deadline = Stopwatch.GetTimestamp() + 5 * Stopwatch.Frequency;
-        while (true)
-        {
-            var lines = LogFor(trace, name);
-            foreach (var line in lines)
-            {
-                if (line.Message.Contains(text))
-                    return line;
-            }
-            if (Stopwatch.GetTimestamp() > deadline)
-                throw new TimeoutException($"No log line with '{text}'. Logged: {string.Join(" | ", lines.Select(l => $"{l.Type}: {l.Message}"))}");
-            await Task.Delay(5);
-        }
     }
 }
