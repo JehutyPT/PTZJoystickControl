@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Core.Devices;
 using Xunit;
@@ -31,7 +30,7 @@ public class XcCameraStopTests
         await fake.WaitUntilAsync(r => r.Count(x => x.IsStop) >= MinStopSends, "three stops");
         await Task.Delay(SettleTime);
 
-        AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
+        XcTestCameras.AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
     }
 
     [Fact]
@@ -46,7 +45,7 @@ public class XcCameraStopTests
         await fake.WaitUntilAsync(r => r.Count(x => x.Zoom == "stop") >= MinStopSends, "three zoom stops");
         await Task.Delay(SettleTime);
 
-        AssertRepeatedStops(fake.ControlRequests, r => r.Zoom == "stop");
+        XcTestCameras.AssertRepeatedStops(fake.ControlRequests, r => r.Zoom == "stop");
         Assert.All(fake.ControlRequests.Where(r => r.Zoom == "stop"),
             r => Assert.Equal("c.1.zoom.speed.dir=0&c.1.zoom=stop", r.Query));
     }
@@ -109,7 +108,7 @@ public class XcCameraStopTests
         Assert.Equal(held.Target, control[1].Target);
         Assert.All(control.Skip(1), r => Assert.False(r.Challenged, described));
         Assert.All(control.Skip(2), r => Assert.True(r.IsStop, described));
-        AssertRepeatedStops(control, r => r.IsStop);
+        XcTestCameras.AssertRepeatedStops(control, r => r.IsStop);
         Assert.Equal(1, fake.MaxInFlight);
     }
 
@@ -130,7 +129,7 @@ public class XcCameraStopTests
         await Task.Delay(SettleTime);
 
         Assert.Equal("c.1.pan.speed.dir=5005&c.1.pan=left&c.1.tilt.speed.dir=10&c.1.tilt=stop&c.1.zoom.speed.dir=0&c.1.zoom=stop", next.Query);
-        AssertRepeatedStops(fake.ControlRequests, r => r.Zoom == "stop");
+        XcTestCameras.AssertRepeatedStops(fake.ControlRequests, r => r.Zoom == "stop");
     }
 
     [Fact]
@@ -151,7 +150,7 @@ public class XcCameraStopTests
 
         // Four refused, then the fifth succeeded: nothing more after it.
         Assert.Equal(5, fake.ControlRequests.Count(r => r.IsStop));
-        AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
+        XcTestCameras.AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
     }
 
     [Fact]
@@ -174,7 +173,7 @@ public class XcCameraStopTests
         var stops = fake.ControlRequests.Where(r => r.Focus == "stop").ToList();
         Assert.Equal(5, stops.Count);
         Assert.All(stops, r => Assert.Equal("c.1.focus.speed=0&c.1.focus.action=stop", r.Query));
-        AssertRepeatedStops(fake.ControlRequests, r => r.Focus == "stop");
+        XcTestCameras.AssertRepeatedStops(fake.ControlRequests, r => r.Focus == "stop");
     }
 
     [Fact]
@@ -245,7 +244,7 @@ public class XcCameraStopTests
 
         var requests = fake.ControlRequests;
         var sinceStop = requests.SkipWhile(r => r.Pan != "stop").ToList();
-        AssertRepeatedStops(requests, r => r.Pan == "stop" && r.Tilt == "up");
+        XcTestCameras.AssertRepeatedStops(requests, r => r.Pan == "stop" && r.Tilt == "up");
         Assert.DoesNotContain(sinceStop, r => r.Tilt == "stop");
         Assert.Equal("c.1.pan.speed.dir=10&c.1.pan=stop&c.1.tilt.speed.dir=5005&c.1.tilt=up", requests.Last().Query);
     }
@@ -260,7 +259,7 @@ public class XcCameraStopTests
         await fake.WaitUntilAsync(r => r.Count(x => x.IsStop) >= MinStopSends, "three stops");
         await Task.Delay(SettleTime);
 
-        AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
+        XcTestCameras.AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
     }
 
     [Fact]
@@ -276,7 +275,7 @@ public class XcCameraStopTests
         await fake.WaitUntilAsync(r => r.Count(x => x.IsStop) >= MinStopSends, "three stops");
         await Task.Delay(SettleTime);
 
-        AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
+        XcTestCameras.AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
         Assert.True(fake.ControlRequests.Last().IsStop, FakeXcCamera.Describe(fake.Requests));
     }
 
@@ -297,7 +296,7 @@ public class XcCameraStopTests
         Assert.All(stops, r => Assert.Equal(
             "c.1.pan.speed.dir=10&c.1.pan=stop&c.1.tilt.speed.dir=10&c.1.tilt=stop&c.1.zoom.speed.dir=0&c.1.zoom=stop&c.1.focus.speed=0&c.1.focus.action=stop",
             r.Query));
-        AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
+        XcTestCameras.AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
         Assert.True(fake.ControlRequests.Last().IsStop, FakeXcCamera.Describe(fake.Requests));
     }
 
@@ -354,18 +353,5 @@ public class XcCameraStopTests
 
         Assert.Empty(fake.Requests);
         Assert.False(camera.Connected);
-    }
-
-    /// <summary>Asserts at least 3 requests match, consecutive matches at least StopRepeatInterval apart.</summary>
-    private static void AssertRepeatedStops(IReadOnlyList<XcRequest> requests, Func<XcRequest, bool> isStop)
-    {
-        var stops = requests.Where(isStop).ToList();
-        Assert.True(stops.Count >= MinStopSends, FakeXcCamera.Describe(requests));
-        for (var i = 1; i < stops.Count; i++)
-        {
-            var gap = Stopwatch.GetElapsedTime(stops[i - 1].ArrivedAt, stops[i].ArrivedAt);
-            Assert.True(gap >= XcCamera.StopRepeatInterval,
-                $"Stops {i - 1} and {i} arrived {gap.TotalMilliseconds:0.0} ms apart. {FakeXcCamera.Describe(requests)}");
-        }
     }
 }

@@ -282,6 +282,9 @@ internal sealed record XcReply(XcReplyKind Kind, int Status = 200, string? Lives
     /// <summary>Read and never answered; the connection stays open until the client closes it.</summary>
     public static readonly XcReply Never = new(XcReplyKind.Never);
 
+    /// <summary>HTTP 200 with <c>livescope-status: 301</c>: another client holds the camera control right.</summary>
+    public static readonly XcReply Refused = With(200, "301");
+
     /// <summary>The <c>WWW-Authenticate</c> challenges the answer carries, one header each.</summary>
     public IReadOnlyList<string> Challenges { get; init; } = Array.Empty<string>();
 
