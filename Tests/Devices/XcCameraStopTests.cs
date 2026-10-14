@@ -32,6 +32,23 @@ public class XcCameraStopTests
     }
 
     [Fact]
+    public async Task AZoomStop_IsSentAtLeastThreeTimes_StopRepeatIntervalApart_AtSpeed0()
+    {
+        using var fake = new FakeXcCamera();
+        using var camera = XcTestCameras.CameraFor(fake);
+        camera.Zoom(0.5, ZoomDir.Tele);
+        await fake.WaitUntilAsync(r => r.Any(x => x.Zoom == "tele"), "the zoom");
+
+        camera.Zoom(0.5, ZoomDir.Stop);
+        await fake.WaitUntilAsync(r => r.Count(x => x.Zoom == "stop") >= MinStopSends, "three zoom stops");
+        await Task.Delay(SettleTime);
+
+        AssertRepeatedStops(fake.ControlRequests, r => r.Zoom == "stop");
+        Assert.All(fake.ControlRequests.Where(r => r.Zoom == "stop"),
+            r => Assert.Equal("c.1.zoom.speed.dir=0&c.1.zoom=stop", r.Query));
+    }
+
+    [Fact]
     public async Task AStoppedAxis_SendsStopAtSpeed10_WhateverTheFraction()
     {
         using var fake = new FakeXcCamera();
@@ -69,6 +86,30 @@ public class XcCameraStopTests
     }
 
     [Fact]
+    public async Task AZoomStopBehindAPendingPanMove_GoesOutInTheNextRequest()
+    {
+        var held = 0;
+        using var fake = new FakeXcCamera
+        {
+            Responder = r => r.IsControl && Interlocked.Exchange(ref held, 1) == 0 ? XcReply.Held : XcReply.Ok,
+        };
+        using var camera = XcTestCameras.CameraFor(fake);
+        camera.Zoom(0.5, ZoomDir.Tele);
+        await fake.WaitForControlAsync(1);
+
+        // While the zoom request is held, the pan starts and the zoom is released.
+        camera.Pan(0.5, PanDir.Left);
+        camera.Zoom(0.5, ZoomDir.Stop);
+        fake.Release();
+        var next = await fake.WaitForControlAsync(2);
+        await fake.WaitUntilAsync(r => r.Count(x => x.Zoom == "stop") >= MinStopSends, "three zoom stops");
+        await Task.Delay(SettleTime);
+
+        Assert.Equal("c.1.pan.speed.dir=5005&c.1.pan=left&c.1.tilt.speed.dir=10&c.1.tilt=stop&c.1.zoom.speed.dir=0&c.1.zoom=stop", next.Query);
+        AssertRepeatedStops(fake.ControlRequests, r => r.Zoom == "stop");
+    }
+
+    [Fact]
     public async Task AStopAnsweredWithFailures_IsRetriedUntilOneSucceeds()
     {
         var refusedStops = 0;
@@ -87,6 +128,47 @@ public class XcCameraStopTests
         // Four refused, then the fifth succeeded: nothing more after it.
         Assert.Equal(5, fake.ControlRequests.Count(r => r.IsStop));
         AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
+    }
+
+    [Fact]
+    public async Task AFocusStopAnsweredWithFailures_IsRetriedUntilOneSucceeds_AtSpeed0()
+    {
+        var refusedStops = 0;
+        using var fake = new FakeXcCamera
+        {
+            Responder = r => r.Focus == "stop" && Interlocked.Increment(ref refusedStops) <= 4 ? XcReply.With(200, "301") : XcReply.Ok,
+        };
+        using var camera = XcTestCameras.CameraFor(fake);
+        camera.Focus(0.5, FocusDir.Near);
+        await fake.WaitForControlAsync(1);
+
+        camera.Focus(0.5, FocusDir.Stop);
+        await fake.WaitUntilAsync(r => r.Count(x => x.Focus == "stop") >= 5, "four refused focus stops and a fifth");
+        await Task.Delay(SettleTime);
+
+        // Four refused, then the fifth succeeded: nothing more after it.
+        var stops = fake.ControlRequests.Where(r => r.Focus == "stop").ToList();
+        Assert.Equal(5, stops.Count);
+        Assert.All(stops, r => Assert.Equal("c.1.focus.speed=0&c.1.focus.action=stop", r.Query));
+        AssertRepeatedStops(fake.ControlRequests, r => r.Focus == "stop");
+    }
+
+    [Fact]
+    public async Task AFocusMove_SupersedesARefusedFocusStop()
+    {
+        using var fake = new FakeXcCamera { Responder = r => r.Focus == "stop" ? XcReply.With(200, "301") : XcReply.Ok };
+        using var camera = XcTestCameras.CameraFor(fake);
+        camera.Focus(0.5, FocusDir.Near);
+        await fake.WaitForControlAsync(1);
+        camera.Focus(0.5, FocusDir.Stop);
+        await fake.WaitUntilAsync(r => r.Count(x => x.Focus == "stop") >= MinStopSends, "three refused focus stops");
+
+        camera.Focus(1.0, FocusDir.Far);
+        await fake.WaitUntilAsync(r => r.Any(x => x.Focus == "far"), "the new focus move");
+        await Task.Delay(SettleTime);
+
+        // The move left no focus stop to deliver: nothing more after it.
+        Assert.Equal("c.1.focus.speed=2&c.1.focus.action=far", fake.ControlRequests.Last().Query);
     }
 
     [Fact]
@@ -172,6 +254,50 @@ public class XcCameraStopTests
 
         AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
         Assert.True(fake.ControlRequests.Last().IsStop, FakeXcCamera.Describe(fake.Requests));
+    }
+
+    [Fact]
+    public async Task Stop_StopsAZoomingAndFocusingCamera_OnAllFourAxes()
+    {
+        using var fake = new FakeXcCamera();
+        using var camera = XcTestCameras.CameraFor(fake);
+        camera.Zoom(0.5, ZoomDir.Tele);
+        camera.Focus(0.5, FocusDir.Far);
+        await fake.WaitUntilAsync(r => r.Any(x => x.Focus == "far"), "the focus move");
+
+        camera.Stop();
+        await fake.WaitUntilAsync(r => r.Count(x => x.IsStop) >= MinStopSends, "three stops");
+        await Task.Delay(SettleTime);
+
+        var stops = fake.ControlRequests.Where(r => r.IsStop).ToList();
+        Assert.All(stops, r => Assert.Equal(
+            "c.1.pan.speed.dir=10&c.1.pan=stop&c.1.tilt.speed.dir=10&c.1.tilt=stop&c.1.zoom.speed.dir=0&c.1.zoom=stop&c.1.focus.speed=0&c.1.focus.action=stop",
+            r.Query));
+        AssertRepeatedStops(fake.ControlRequests, r => r.IsStop);
+        Assert.True(fake.ControlRequests.Last().IsStop, FakeXcCamera.Describe(fake.Requests));
+    }
+
+    [Fact]
+    public void IsMoving_FollowsTheWantedZoomAndFocus()
+    {
+        using var camera = new XcCamera(XcTestCameras.UniqueName());
+
+        camera.Zoom(0.5, ZoomDir.Wide);
+        Assert.True(camera.IsMoving);
+        camera.Zoom(0.5, ZoomDir.Stop);
+        Assert.False(camera.IsMoving);
+
+        camera.Focus(0.5, FocusDir.Near);
+        Assert.True(camera.IsMoving);
+        camera.Focus(0.5, FocusDir.Stop);
+        Assert.False(camera.IsMoving);
+
+        // Fraction 0 is still a move.
+        camera.Zoom(0, ZoomDir.Tele);
+        camera.Focus(0, FocusDir.Far);
+        Assert.True(camera.IsMoving);
+        camera.Stop();
+        Assert.False(camera.IsMoving);
     }
 
     [Fact]

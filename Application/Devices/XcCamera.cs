@@ -6,14 +6,28 @@ using System.Net;
 namespace PtzJoystickControl.Application.Devices;
 
 /// <summary>
-/// A camera driven over Canon's XC protocol (HTTP). Pan and tilt calls only record the wanted
-/// state; one background loop per camera sends it as sessionless combined <c>control.cgi</c>
-/// requests, one in flight at a time, newest wanted state first.
+/// A camera driven over Canon's XC protocol (HTTP). Pan, tilt, zoom, focus and preset recall calls
+/// only record the wanted state; one background loop per camera sends it as sessionless
+/// <c>control.cgi</c> requests, one in flight at a time, newest wanted state first. A request
+/// combines every axis group that changed; a preset recall goes in a request of its own.
 /// </summary>
 public class XcCamera : XcCameraBase, IDisposable
 {
     // XC pan/tilt speed range, in hundredths of a degree per second.
     internal const int SpeedMin = 10, SpeedMax = 10000;
+
+    // The CR-N500's zoom speed range (c.1.zoom.speed.dir) and manual-focus speed range
+    // (c.1.focus.speed), from appendix A of Canon's XC protocol spec. Other XC cameras differ; the
+    // on-site checklist confirms them with info.cgi.
+    internal const int ZoomSpeedMin = 0, ZoomSpeedMax = 15;
+    internal const int FocusSpeedMin = 0, FocusSpeedMax = 2;
+    // The CR-N500's camera preset numbers (p, 1..p.count) and preset movement speeds (p.ptzspeed),
+    // also from appendix A.
+    internal const int PresetMin = 1, PresetMax = 100;
+    internal const int PresetSpeedMin = 1, PresetSpeedMax = 100;
+
+    // The app's Preset Recall Speed range (VISCA's), mapped proportionally onto p.ptzspeed.
+    private const int RecallSpeedMin = 1, RecallSpeedMax = 24;
 
     internal static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromMilliseconds(500);
 
@@ -65,16 +79,23 @@ public class XcCamera : XcCameraBase, IDisposable
     private int _panSpeed = SpeedMin;
     private TiltDir _tilt = TiltDir.Stop;
     private int _tiltSpeed = SpeedMin;
-    // Bumped on every wanted change; the loop sends while the version it last sent differs.
-    private long _wantedVersion;
-    private long _sentVersion;
-    // The stop being repeated, from an axis entering stop (or Stop()) until it was sent
-    // StopRepeatCount + 1 times and one send succeeded, or a move on both axes superseded it.
-    // _stopId tells a send of an earlier stop from one of the current stop.
-    private bool _stopActive;
-    private long _stopId;
-    private int _stopSends;
-    private bool _stopSucceeded;
+    private ZoomDir _zoom = ZoomDir.Stop;
+    private int _zoomSpeed = ZoomSpeedMin;
+    private FocusDir _focus = FocusDir.Stop;
+    private int _focusSpeed = FocusSpeedMin;
+    // The axes a request carries together when one of them changed: pan and tilt as one pair, zoom,
+    // and focus.
+    private readonly AxisGroup _panTiltGroup = new();
+    private readonly AxisGroup _zoomGroup = new();
+    private readonly AxisGroup _focusGroup = new();
+    private readonly AxisGroup[] _groups;
+    // The camera preset to recall, with its p.ptzspeed (null for none), in a request of its own once no
+    // stop is pending; null when no recall is wanted. Sent once, never retried: a newer recall
+    // replaces it, and Stop() drops it.
+    private (int Preset, int? Speed)? _recall;
+    // The p.ptzspeed recalls carry, from the last Preset Recall Speed. Null until one is set, so a
+    // recall moves at the speeds saved with the camera preset. Not saved.
+    private int? _recallSpeed;
     // Stopwatch timestamp of the last request's completion; long ago until the first.
     private long _lastCompletedAt = long.MinValue / 4;
     // Why the current run of failed requests fails; null while requests succeed. Logged when it changes.
@@ -98,6 +119,7 @@ public class XcCamera : XcCameraBase, IDisposable
     {
         _requestTimeout = requestTimeout;
         _probeInterval = probeInterval;
+        _groups = new[] { _panTiltGroup, _zoomGroup, _focusGroup };
     }
 
     /// <summary>
@@ -119,7 +141,7 @@ public class XcCamera : XcCameraBase, IDisposable
         get
         {
             lock (_lock)
-                return _pan != PanDir.Stop || _tilt != TiltDir.Stop;
+                return _pan != PanDir.Stop || _tilt != TiltDir.Stop || _zoom != ZoomDir.Stop || _focus != FocusDir.Stop;
         }
     }
 
@@ -159,6 +181,30 @@ public class XcCamera : XcCameraBase, IDisposable
         return (int)Math.Round(SpeedMin + fraction * (SpeedMax - SpeedMin), MidpointRounding.AwayFromZero);
     }
 
+    /// <summary>
+    /// Maps a speed fraction onto one of the camera's speed steps from <paramref name="min"/> to
+    /// <paramref name="max"/> as the VISCA camera does: min + floor(f · (max − min) + 1e-6), so
+    /// fraction 0 still moves at the slowest step. A fraction outside 0..1 (or NaN) is clamped.
+    /// </summary>
+    internal static int ToXcStep(double fraction, int min, int max)
+    {
+        if (double.IsNaN(fraction)) fraction = 0;
+        fraction = Math.Clamp(fraction, 0, 1);
+        var step = min + Math.Floor(fraction * (max - min) + 1e-6);
+        return (int)Math.Clamp(step, min, max);
+    }
+
+    /// <summary>
+    /// Maps the app's Preset Recall Speed (1..24; clamped) proportionally onto p.ptzspeed:
+    /// round(1 + (v − 1) · 99 / 23), so 1 is 1, 12 is 48 and 24 is 100.
+    /// </summary>
+    internal static int ToXcPresetSpeed(int recallSpeed)
+    {
+        recallSpeed = Math.Clamp(recallSpeed, RecallSpeedMin, RecallSpeedMax);
+        var speed = PresetSpeedMin + (recallSpeed - RecallSpeedMin) * (double)(PresetSpeedMax - PresetSpeedMin) / (RecallSpeedMax - RecallSpeedMin);
+        return (int)Math.Round(speed, MidpointRounding.AwayFromZero);
+    }
+
     public override void Pan(double panSpeed, PanDir panDir)
     {
         var speed = panDir == PanDir.Stop ? SpeedMin : ToXcSpeed(panSpeed);
@@ -169,7 +215,7 @@ public class XcCamera : XcCameraBase, IDisposable
             var enteredStop = _pan != PanDir.Stop && panDir == PanDir.Stop;
             _pan = panDir;
             _panSpeed = speed;
-            OnWantedChangedLocked(enteredStop);
+            OnWantedChangedLocked(_panTiltGroup, enteredStop, supersedesStop: _pan != PanDir.Stop && _tilt != TiltDir.Stop);
         }
     }
 
@@ -183,7 +229,35 @@ public class XcCamera : XcCameraBase, IDisposable
             var enteredStop = _tilt != TiltDir.Stop && tiltDir == TiltDir.Stop;
             _tilt = tiltDir;
             _tiltSpeed = speed;
-            OnWantedChangedLocked(enteredStop);
+            OnWantedChangedLocked(_panTiltGroup, enteredStop, supersedesStop: _pan != PanDir.Stop && _tilt != TiltDir.Stop);
+        }
+    }
+
+    public override void Zoom(double zoomSpeed, ZoomDir zoomDir)
+    {
+        var speed = zoomDir == ZoomDir.Stop ? ZoomSpeedMin : ToXcStep(zoomSpeed, ZoomSpeedMin, ZoomSpeedMax);
+        lock (_lock)
+        {
+            if (_zoom == zoomDir && _zoomSpeed == speed)
+                return;
+            var enteredStop = _zoom != ZoomDir.Stop && zoomDir == ZoomDir.Stop;
+            _zoom = zoomDir;
+            _zoomSpeed = speed;
+            OnWantedChangedLocked(_zoomGroup, enteredStop, supersedesStop: zoomDir != ZoomDir.Stop);
+        }
+    }
+
+    public override void Focus(double focusSpeed, FocusDir focusDir)
+    {
+        var speed = focusDir == FocusDir.Stop ? FocusSpeedMin : ToXcStep(focusSpeed, FocusSpeedMin, FocusSpeedMax);
+        lock (_lock)
+        {
+            if (_focus == focusDir && _focusSpeed == speed)
+                return;
+            var enteredStop = _focus != FocusDir.Stop && focusDir == FocusDir.Stop;
+            _focus = focusDir;
+            _focusSpeed = speed;
+            OnWantedChangedLocked(_focusGroup, enteredStop, supersedesStop: focusDir != FocusDir.Stop);
         }
     }
 
@@ -197,37 +271,69 @@ public class XcCamera : XcCameraBase, IDisposable
             _panSpeed = SpeedMin;
             _tilt = TiltDir.Stop;
             _tiltSpeed = SpeedMin;
-            OnWantedChangedLocked(enteredStop: true);
+            _zoom = ZoomDir.Stop;
+            _zoomSpeed = ZoomSpeedMin;
+            _focus = FocusDir.Stop;
+            _focusSpeed = FocusSpeedMin;
+            // The stop is the last instruction the camera gets, as in VISCA's send order (a recall
+            // goes out at once there, and the stop after it).
+            _recall = null;
+            foreach (var group in _groups)
+                OnWantedChangedLocked(group, enteredStop: true, supersedesStop: false);
         }
     }
 
-    private void OnWantedChangedLocked(bool enteredStop)
+    // Records that the group's wanted state changed, so the next control request carries it. An axis
+    // entering stop starts the group's stop; a move that leaves nothing stopped to deliver in the
+    // group supersedes it.
+    private void OnWantedChangedLocked(AxisGroup group, bool enteredStop, bool supersedesStop)
     {
-        _wantedVersion++;
+        group.WantedVersion++;
         if (enteredStop)
-        {
-            _stopActive = true;
-            _stopId++;
-            _stopSends = 0;
-            _stopSucceeded = false;
-        }
-        else if (_pan != PanDir.Stop && _tilt != TiltDir.Stop)
-        {
-            // Nothing stopped is left to deliver: the move supersedes the stop.
-            _stopActive = false;
-        }
+            group.StartStop();
+        else if (supersedesStop)
+            group.StopActive = false;
         WakeLocked();
     }
 
-    // Not supported on an XC camera (yet): each sends nothing and is logged, at most once per
-    // operation per UnsupportedLogInterval, since a controller may call it on every input.
-    public override void Zoom(double zoomSpeed, ZoomDir zoomDir) => Unsupported(nameof(Zoom));
-    public override void Focus(double focusSpeed, FocusDir focusDir) => Unsupported(nameof(Focus));
+    // Not supported on an XC camera (Companion's own Canon module covers them): each sends nothing and
+    // is logged, at most once per operation per UnsupportedLogInterval, since a controller may call it
+    // on every input.
     public override void FocusMode(FocusMode focusMode) => Unsupported(nameof(FocusMode));
     public override void FocusLock(FocusLock focusLock) => Unsupported(nameof(FocusLock));
     public override void Power(Power power) => Unsupported(nameof(Power));
-    public override void Preset(Preset preset, byte presetNumber) => Unsupported(nameof(Preset));
-    public override void PresetRecallSpeed(byte speed) => Unsupported(nameof(PresetRecallSpeed));
+
+    // Sends nothing by itself: every later recall carries it as p.ptzspeed.
+    public override void PresetRecallSpeed(byte speed)
+    {
+        var presetSpeed = ToXcPresetSpeed(speed);
+        lock (_lock)
+            _recallSpeed = presetSpeed;
+    }
+
+    // Recalls the app's 0-based preset presetNumber as the camera preset presetNumber + 1. Saving or
+    // resetting a camera preset is not supported on an XC camera.
+    public override void Preset(Preset preset, byte presetNumber)
+    {
+        if (preset != Core.Devices.Preset.Recall)
+        {
+            Unsupported($"{nameof(Preset)} {preset.ToString().ToLowerInvariant()}");
+            return;
+        }
+
+        var cameraPreset = presetNumber + 1;
+        if (cameraPreset < PresetMin || cameraPreset > PresetMax)
+        {
+            Trace.TraceWarning($"Camera {Name}: preset {cameraPreset} is outside the XC camera's presets {PresetMin}..{PresetMax}; nothing sent");
+            return;
+        }
+
+        lock (_lock)
+        {
+            _recall = (cameraPreset, _recallSpeed);
+            WakeLocked();
+        }
+    }
 
     private void Unsupported(string operation)
     {
@@ -312,9 +418,38 @@ public class XcCamera : XcCameraBase, IDisposable
         }
     }
 
-    // A request the loop sends: a control request (StopId is the stop it repeats, or 0 for none) or a
-    // probe (StopId 0), to the address and port current at EndpointVersion.
-    private sealed record Request(Uri Uri, long StopId, long EndpointVersion);
+    // The bookkeeping of one group of axes a control request carries together (pan and tilt, zoom, or
+    // focus): whether its wanted state changed since it was last sent, and the stop it is repeating,
+    // from an axis entering stop (or Stop()) until it was sent StopRepeatCount + 1 times and one send
+    // succeeded, or a move superseded it. StopId tells a send of an earlier stop from one of the
+    // current stop.
+    private sealed class AxisGroup
+    {
+        // Bumped on every wanted change; the group is sent while the version it last sent differs.
+        public long WantedVersion;
+        public long SentVersion;
+        public bool StopActive;
+        public long StopId;
+        public int StopSends;
+        public bool StopSucceeded;
+
+        // Whether the next control request carries the group: a change not sent yet, or a stop still
+        // being repeated or retried.
+        public bool Pending => WantedVersion != SentVersion || StopActive;
+
+        public void StartStop()
+        {
+            StopActive = true;
+            StopId++;
+            StopSends = 0;
+            StopSucceeded = false;
+        }
+    }
+
+    // A request the loop sends: a control request (moves, stops or a preset recall) or a probe, to the
+    // address and port current at EndpointVersion. StopIds, one per axis group, is the stop the request
+    // repeats in that group, or 0 for none.
+    private sealed record Request(Uri Uri, long[] StopIds, long EndpointVersion);
 
     // The request to send now, or null and how long to wait before looking again (infinite with no
     // address; a wake ends the wait early). Only the newest wanted state is ever sent, and a probe
@@ -325,12 +460,17 @@ public class XcCamera : XcCameraBase, IDisposable
         if (Address.Length == 0)
             return null;
 
+        // A recall waits while any stop is pending, so every send of a stop comes before it; then it
+        // goes out ahead of pending moves, so continuous movement never holds it back.
+        var recall = _recall != null && !_groups.Any(g => g.StopActive);
+        var control = recall || _groups.Any(g => g.Pending);
+
         // Gaps count from the previous request's completion, so request starts are further apart. A
-        // stop's first send waits only the normal gap; its repeats and retries wait the repeat interval.
+        // stop's first send waits only the normal gap; while any stop is being repeated or retried,
+        // every request waits the repeat interval, so no stop's sends come closer together than it.
         // A probe waits until no request has completed for the probe interval.
-        var control = _wantedVersion != _sentVersion || _stopActive;
         var gap = control
-            ? _stopActive && _stopSends > 0 ? StopRepeatInterval : MinRequestGap
+            ? _groups.Any(g => g.StopActive && g.StopSends > 0) ? StopRepeatInterval : MinRequestGap
             : _probeNow ? MinRequestGap : _probeInterval;
         var due = _lastCompletedAt + StopwatchTicks(gap);
         if (now < due)
@@ -340,15 +480,28 @@ public class XcCamera : XcCameraBase, IDisposable
         }
 
         // Built before any state changes, so a failure here leaves the request wanted.
-        var uri = control ? ControlUri() : ProbeUri();
+        var uri = recall ? RecallUri(_recall!.Value) : control ? ControlUri() : ProbeUri();
         _probeNow = false;
+        var stopIds = new long[_groups.Length];
+        if (recall)
+        {
+            _recall = null;
+            return new Request(uri, stopIds, _endpointVersion);
+        }
         if (!control)
-            return new Request(uri, 0, _endpointVersion);
-        _sentVersion = _wantedVersion;
-        if (!_stopActive)
-            return new Request(uri, 0, _endpointVersion);
-        _stopSends++;
-        return new Request(uri, _stopId, _endpointVersion);
+            return new Request(uri, stopIds, _endpointVersion);
+        for (var i = 0; i < _groups.Length; i++)
+        {
+            var group = _groups[i];
+            if (!group.Pending)
+                continue;
+            group.SentVersion = group.WantedVersion;
+            if (!group.StopActive)
+                continue;
+            group.StopSends++;
+            stopIds[i] = group.StopId;
+        }
+        return new Request(uri, stopIds, _endpointVersion);
     }
 
     private static long StopwatchTicks(TimeSpan span) => (long)(span.TotalSeconds * Stopwatch.Frequency);
@@ -357,11 +510,29 @@ public class XcCamera : XcCameraBase, IDisposable
     private static TimeSpan WaitUntil(long due, long now) =>
         TimeSpan.FromMilliseconds(Math.Ceiling((due - now) * 1000.0 / Stopwatch.Frequency));
 
-    // Each axis's speed goes before its direction. A stopped axis sends the slowest speed.
-    private Uri ControlUri() => new(string.Create(CultureInfo.InvariantCulture,
-        $"http://{Address}:{Port}{ControlPath}?c.1.pan.speed.dir={_panSpeed}&c.1.pan={PanValue(_pan)}&c.1.tilt.speed.dir={_tiltSpeed}&c.1.tilt={TiltValue(_tilt)}"));
+    // Carries each pending axis group, in the order pan/tilt, zoom, focus; a group not pending is left
+    // out. Each axis's speed goes before its direction. A stopped axis sends the slowest speed.
+    private Uri ControlUri()
+    {
+        var parameters = new List<string>();
+        if (_panTiltGroup.Pending)
+            parameters.Add(string.Create(CultureInfo.InvariantCulture,
+                $"c.1.pan.speed.dir={_panSpeed}&c.1.pan={PanValue(_pan)}&c.1.tilt.speed.dir={_tiltSpeed}&c.1.tilt={TiltValue(_tilt)}"));
+        if (_zoomGroup.Pending)
+            parameters.Add(string.Create(CultureInfo.InvariantCulture,
+                $"c.1.zoom.speed.dir={_zoomSpeed}&c.1.zoom={ZoomValue(_zoom)}"));
+        if (_focusGroup.Pending)
+            parameters.Add(string.Create(CultureInfo.InvariantCulture,
+                $"c.1.focus.speed={_focusSpeed}&c.1.focus.action={FocusValue(_focus)}"));
+        return new(string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ControlPath}?{string.Join('&', parameters)}"));
+    }
 
-    private Uri ProbeUri() => new(string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ProbePathAndQuery}"));
+    // A recall carries only the camera preset and, once a recall speed was set, its p.ptzspeed.
+    private Uri RecallUri((int Preset, int? Speed) recall) => new(recall.Speed is { } speed
+        ? string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ControlPath}?p={recall.Preset}&p.ptzspeed={speed}")
+        : string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ControlPath}?p={recall.Preset}"));
+
+    private Uri ProbeUri() =>new(string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ProbePathAndQuery}"));
 
     private static string PanValue(PanDir dir) => dir switch
     {
@@ -374,6 +545,20 @@ public class XcCamera : XcCameraBase, IDisposable
     {
         TiltDir.Up => "up",
         TiltDir.Down => "down",
+        _ => "stop",
+    };
+
+    private static string ZoomValue(ZoomDir dir) => dir switch
+    {
+        ZoomDir.Tele => "tele",
+        ZoomDir.Wide => "wide",
+        _ => "stop",
+    };
+
+    private static string FocusValue(FocusDir dir) => dir switch
+    {
+        FocusDir.Far => "far",
+        FocusDir.Near => "near",
         _ => "stop",
     };
 
@@ -416,9 +601,9 @@ public class XcCamera : XcCameraBase, IDisposable
         };
     }
 
-    // Ends a stop once it was sent often enough and succeeded, and updates Connected. Logs a failure
-    // when a run of failures starts or its reason changes, the first success after one, and each
-    // Connected change; never once per request.
+    // Ends each group's stop once it was sent often enough and succeeded, and updates Connected. Logs
+    // a failure when a run of failures starts or its reason changes, the first success after one, and
+    // each Connected change; never once per request.
     private void OnCompleted(Request request, string? failure)
     {
         string? warning = null;
@@ -428,11 +613,14 @@ public class XcCamera : XcCameraBase, IDisposable
         {
             var now = Stopwatch.GetTimestamp();
             _lastCompletedAt = now;
-            if (_stopActive && request.StopId == _stopId)
+            for (var i = 0; i < _groups.Length; i++)
             {
-                _stopSucceeded |= failure == null;
-                if (_stopSucceeded && _stopSends > StopRepeatCount)
-                    _stopActive = false;
+                var group = _groups[i];
+                if (!group.StopActive || request.StopIds[i] != group.StopId)
+                    continue;
+                group.StopSucceeded |= failure == null;
+                if (group.StopSucceeded && group.StopSends > StopRepeatCount)
+                    group.StopActive = false;
             }
 
             if (request.EndpointVersion != _endpointVersion)

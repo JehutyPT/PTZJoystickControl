@@ -220,6 +220,13 @@ internal sealed record XcRequest(string Path, string Query, long ArrivedAt)
 
     public string? Tilt => Parameter("c.1.tilt");
 
+    public string? Zoom => Parameter("c.1.zoom");
+
+    public string? Focus => Parameter("c.1.focus.action");
+
+    public string? Preset => Parameter("p");
+
+    // A request stopping pan and tilt, whatever else it carries.
     public bool IsStop => IsControl && Pan == "stop" && Tilt == "stop";
 }
 
