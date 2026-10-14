@@ -52,23 +52,30 @@ public sealed class SpeedProfileMovementTests
         return button;
     }
 
-    // At full deflection with Max speed 50 %, the input asks for 0.5; "Fine" then scales each axis.
+    // At full deflection with Max speed 50 %, the input asks for 0.5; the active profile then scales each axis:
+    // "Fine" by its percentage for that axis, "Full" not at all.
     [Theory]
     [InlineData("Pan", 0.05)]
     [InlineData("Tilt", 0.10)]
     [InlineData("Zoom", 0.15)]
     [InlineData("Manual focus", 0.20)]
-    public void EveryCamera_GetsTheAxisFraction_ScaledByTheActiveProfilesPercentageForThatAxis(string command, double expected)
+    public void EveryCamera_GetsTheAxisFraction_ScaledByTheActiveProfilesPercentageForThatAxis(string command, double fine)
     {
         var axis = Axis(command, maxSpeedPercent: 50);
+        var cameras = new[] { new SpeedRecordingCamera(), new SpeedRecordingCamera() };
 
-        foreach (var camera in new[] { new SpeedRecordingCamera(), new SpeedRecordingCamera() })
+        foreach (var (position, expected) in new[] { (1, fine), (2, 0.5) })
         {
-            _gamepad.SelectedCamera = camera;
-            axis.InputValue = 1;
+            _speedProfiles.SetActive(position);
 
-            Assert.Equal(1, camera.Runs.Last().Sign);
-            Assert.Equal(expected, camera.Runs.Last().Speed, 9);
+            foreach (var camera in cameras)
+            {
+                _gamepad.SelectedCamera = camera;
+                axis.InputValue = 1;
+
+                Assert.Equal(1, camera.Runs.Last().Sign);
+                Assert.Equal(expected, camera.Runs.Last().Speed, 9);
+            }
         }
     }
 
