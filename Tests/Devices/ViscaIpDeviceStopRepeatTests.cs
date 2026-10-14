@@ -300,12 +300,15 @@ public class ViscaIpDeviceStopRepeatTests
         Assert.Contains(packets, p => p.Payload.Take(4).SequenceEqual(new byte[] { 0x81, 0x01, 0x04, 0x08 }));
     }
 
-    // A speed fraction becomes Min + floor(f · (Max − Min)): pan 1..24, tilt 1..20, zoom and focus
-    // 0..7. Fraction 0 still moves at Min; out-of-range and NaN fractions are clamped into range.
+    // A speed fraction becomes Min + floor(f · (Max − Min) + 1e-6): pan 1..24, tilt 1..20, zoom and
+    // focus 0..7. Fraction 0 still moves at Min; out-of-range and NaN fractions are clamped into range.
+    // The 1e-6 keeps a fraction a hair below a step on that step: 0.6521738767623901 (a USB stick
+    // position with expo 0.5) is 14.99999917 of pan's 23 steps and sends 16, as before fractions.
     [Theory]
     [InlineData("Pan", 0.0, 1)]
     [InlineData("Pan", 1e-9, 1)]
     [InlineData("Pan", 0.5, 12)]
+    [InlineData("Pan", 0.6521738767623901, 16)]
     [InlineData("Pan", 1.0, 24)]
     [InlineData("Pan", 1.5, 24)]
     [InlineData("Pan", -0.5, 1)]

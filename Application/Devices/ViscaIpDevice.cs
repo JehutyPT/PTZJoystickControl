@@ -145,8 +145,8 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         AddCommand(AddPowerCommand);
     }
 
-    // VISCA speed ranges. A speed fraction f becomes Min + floor(f · (Max − Min)), so fraction 0
-    // still moves at Min and 1 is the top speed.
+    // VISCA speed ranges. A speed fraction f becomes Min + floor(f · (Max − Min) + 1e-6), so
+    // fraction 0 still moves at Min and 1 is the top speed.
     internal const byte PanSpeedMin = 1, PanSpeedMax = 24;
     internal const byte TiltSpeedMin = 1, TiltSpeedMax = 20;
     internal const byte ZoomSpeedMin = 0, ZoomSpeedMax = 7;
