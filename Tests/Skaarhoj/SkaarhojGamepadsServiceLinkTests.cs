@@ -174,7 +174,7 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
         _queue.RunPending();
         Assert.Equal(1, _camA.StopCalls - stops);
         Assert.Empty(_service.ActiveGamepads);
-        Assert.False(_service.Gamepads.Single().IsConnected);
+        Assert.True(_service.Gamepads.Single().IsAsleep);
 
         _panel.Send("_isSleeping=0");
         Assert.True(await WaitUntil(() => Received("Value = 0"), Within));
@@ -182,6 +182,7 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
         var after = ActiveGamepad();
         Assert.NotSame(before, after);
         Assert.True(_service.Gamepads.Single().IsConnected);
+        Assert.False(_service.Gamepads.Single().IsAsleep);
         Assert.All(after.Inputs, i => Assert.Equal(0f, i.InputValue));
     }
 

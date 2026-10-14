@@ -11,8 +11,9 @@ namespace PtzJoystickControl.SkaarhojPanel;
 
 /// <summary>
 /// The SKAARHOJ panel as a controller source: one entry in the controller list, backed by a
-/// <see cref="SkaarhojPanelLink"/>. The panel is available while the link is up and the panel is
-/// awake; while it is available and activated, one <see cref="SkaarhojGamepad"/> is active.
+/// <see cref="SkaarhojPanelLink"/>, shown connected while the link is up and asleep while the panel
+/// reports it is. The panel is available while the link is up and the panel is awake; while it is
+/// available and activated, one <see cref="SkaarhojGamepad"/> is active.
 /// <para>
 /// Read-only: nothing here writes to the panel. The link's events only enqueue onto the shared
 /// <see cref="InputQueue"/>; the input loop applies them, so panel input never runs on the link's
@@ -51,8 +52,9 @@ public sealed class SkaarhojGamepadsService : IGamepadsService, IDisposable
         ICamerasService camerasService,
         ICommandsService commandsService,
         IBitfocusCompanionService companion,
-        InputQueue inputQueue)
-        : this(link.Host, settings, camerasService, commandsService, companion, inputQueue)
+        InputQueue inputQueue,
+        Action<Action>? notifyOnUiThread = null)
+        : this(link.Host, settings, camerasService, commandsService, companion, inputQueue, notifyOnUiThread)
     {
         // Subscribe before the link starts, or its first LinkUp is missed.
         _link = link;
@@ -67,7 +69,8 @@ public sealed class SkaarhojGamepadsService : IGamepadsService, IDisposable
         ICamerasService camerasService,
         ICommandsService commandsService,
         IBitfocusCompanionService companion,
-        InputQueue inputQueue)
+        InputQueue inputQueue,
+        Action<Action>? notifyOnUiThread = null)
     {
         _settings = settings;
         _camerasService = camerasService;
@@ -77,7 +80,8 @@ public sealed class SkaarhojGamepadsService : IGamepadsService, IDisposable
         _sync = inputQueue.ControllersLock;
 
         var id = SkaarhojGamepad.IdFor(address);
-        _info = new SkaarhojGamepadInfo(id, $"SKAARHOJ panel ({address})")
+        // Without a marshaller (tests), changes are raised on the thread that makes them.
+        _info = new SkaarhojGamepadInfo(id, $"SKAARHOJ panel ({address})", notifyOnUiThread ?? (a => a()))
         {
             IsActivated = _settings.GetGamepadSettingsById(id)?.IsActivated ?? false,
         };
@@ -205,8 +209,10 @@ public sealed class SkaarhojGamepadsService : IGamepadsService, IDisposable
             var available = IsAvailable;
             if (!available && _gamepad != null)
                 Disconnect(lost: true);
-            if (_info.IsConnected != available)
-                _info.IsConnected = available;
+            if (_info.IsConnected != linkUp)
+                _info.IsConnected = linkUp;
+            if (_info.IsAsleep != _asleep)
+                _info.IsAsleep = _asleep;
             if (available && _gamepad == null && _info.IsActivated)
             {
                 // Saved as active: only if no other controller is (one at a time).
