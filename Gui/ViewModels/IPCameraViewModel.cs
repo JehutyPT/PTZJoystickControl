@@ -45,12 +45,6 @@ public class IPCameraViewModel : ViewModelBase, INotifyPropertyChanged
         set => _camera.UseHeader = value;
     }
 
-    public bool SingleCommand
-    {
-        get => _camera.SingleCommand;
-        set => _camera.SingleCommand = value;
-    }
-
     public Protocol Protocol
     {
         get => _camera.Protocol;

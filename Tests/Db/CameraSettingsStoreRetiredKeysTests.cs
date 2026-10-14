@@ -70,6 +70,30 @@ public sealed class CameraSettingsStoreRetiredKeysTests : IDisposable
         Assert.Equal(contents, File.ReadAllText(_path));
     }
 
+    // Files saved before #50 also hold SingleCommand (an unused option to pack several VISCA commands per packet).
+    [Fact]
+    public void CamerasJsonWithSingleCommand_LoadsEveryOtherSetting_AndDropsTheKeyOnSave()
+    {
+        var contents = "[" + Camera("Cam 1", "192.168.1.11", 1, "") + "]";
+        Assert.Contains("\"SingleCommand\"", contents);
+        File.WriteAllText(_path, contents);
+        var store = new CameraSettingsStore(_path);
+
+        var camera = Assert.IsAssignableFrom<ViscaIPDeviceBase>(Assert.Single(store.GetAllCameras().ToList()));
+
+        Assert.Equal("Cam 1", camera.Name);
+        Assert.Equal("192.168.1.11", camera.IPAddress);
+        Assert.Equal(1, camera.CompanionNumber);
+        Assert.Equal(52381, camera.Port);
+        Assert.Equal(Protocol.Udp, camera.Protocol);
+        Assert.Equal(45, camera.SendWaitTime);
+        Assert.False(camera.UseHeader);
+        Assert.DoesNotContain(_trace.Messages, m => m.Contains(_path) || m.Contains("Cam 1"));
+
+        Assert.True(store.SaveCameras(new ViscaDeviceBase[] { camera }));
+        Assert.DoesNotContain("SingleCommand", File.ReadAllText(_path));
+    }
+
     private sealed class RecordingTraceListener : TraceListener
     {
         private readonly ConcurrentQueue<string> _messages = new();
