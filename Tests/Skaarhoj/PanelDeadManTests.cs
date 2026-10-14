@@ -186,9 +186,37 @@ public sealed class PanelDeadManTests
         deadMan.LineHeard(At(1100));
 
         // Every check runs 300 ms late, so they land 425 ms apart. Only the first freeze is forgiven.
-        Assert.False(deadMan.Check(At(1500), At(1200)).Drop);
-        Assert.False(deadMan.Check(At(1925), At(1625)).Drop);
-        Assert.False(deadMan.Check(At(2350), At(2050)).Drop);
-        Assert.True(deadMan.Check(At(2775), At(2475)).Drop);
+        var verdicts = new[]
+        {
+            deadMan.Check(At(1500), At(1200)),
+            deadMan.Check(At(1925), At(1625)),
+            deadMan.Check(At(2350), At(2050)),
+            deadMan.Check(At(2775), At(2475)),
+        };
+
+        Assert.Equal(new[] { false, false, false, true }, verdicts.Select(v => v.Drop));
+        // One run of late checks: one warning, at its first check.
+        Assert.Equal(new[] { true, false, false, false }, verdicts.Select(v => v.FreezeWarning != null));
+    }
+
+    [Fact]
+    public void OnlyTheFirstLateCheckInARun_GivesAWarning_UntilAnOnTimeCheckEndsTheRun()
+    {
+        var deadMan = Connected();
+        deadMan.LineHeard(At(1100));
+        Assert.Null(OnTimeCheck(deadMan, 1500).FreezeWarning);
+
+        Assert.Equal(
+            "SKAARHOJ panel: the app stalled, not the panel at 10.0.0.5:9923: a dead-man check ran 375 ms late",
+            deadMan.Check(At(2000), At(1625)).FreezeWarning);
+        deadMan.LineHeard(At(2010));
+        Assert.Null(deadMan.Check(At(2400), At(2125)).FreezeWarning);
+        Assert.Null(deadMan.Check(At(2800), At(2525)).FreezeWarning);
+
+        // An on-time check ends the run; the next late check starts a new one.
+        Assert.Null(OnTimeCheck(deadMan, 2925).FreezeWarning);
+        Assert.Equal(
+            "SKAARHOJ panel: the app stalled, not the panel at 10.0.0.5:9923: a dead-man check ran 1400 ms late",
+            deadMan.Check(At(4450), At(3050)).FreezeWarning);
     }
 }

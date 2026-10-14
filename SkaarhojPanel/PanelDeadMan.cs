@@ -10,6 +10,7 @@ namespace PtzJoystickControl.SkaarhojPanel;
 internal sealed class PanelDeadMan
 {
     private readonly object _lock = new();
+    private readonly string _endpoint;
     private readonly long _connectedAt;
     private readonly long _pingInterval;
     private readonly long _silenceTimeout;
@@ -27,9 +28,12 @@ internal sealed class PanelDeadMan
     // The check at which the count last restarted after an app freeze; null before the first.
     private long? _restartAt;
     private bool _heardSinceRestart;
+    // Whether the last check ran late: a run of back-to-back late checks is one freeze to log.
+    private bool _lastCheckLate;
 
     public PanelDeadMan(string endpoint, long connectedAt, TimeSpan pingInterval, TimeSpan silenceTimeout, TimeSpan grace)
     {
+        _endpoint = endpoint;
         _connectedAt = connectedAt;
         _pingInterval = StopwatchTicks.From(pingInterval);
         _silenceTimeout = StopwatchTicks.From(silenceTimeout);
@@ -110,21 +114,28 @@ internal sealed class PanelDeadMan
                 _heardSinceRestart = false;
             }
 
+            var freezeWarning = frozen && !_lastCheckLate
+                ? $"SKAARHOJ panel: the app stalled, not the panel at {_endpoint}: a dead-man check ran {Ms(scheduledAt, now)} ms late"
+                : null;
+            _lastCheckLate = frozen;
+
             var countFrom = Math.Max(Math.Max(_graceEnd, _lastHeard ?? long.MinValue), _restartAt ?? long.MinValue);
             if (now - countFrom <= _silenceTimeout)
-                return new Verdict(null);
+                return new Verdict(null, freezeWarning);
 
             var timeout = $"timeout {_silenceTimeoutSpan.TotalMilliseconds:0} ms";
             return new Verdict(_lastHeard is { } heard
                 ? $"the panel was silent for {Ms(heard, now)} ms ({timeout})"
-                : $"the panel was silent for {Ms(_connectedAt, now)} ms since connecting ({timeout} after the {_graceSpan.TotalMilliseconds:0} ms connect grace)");
+                : $"the panel was silent for {Ms(_connectedAt, now)} ms since connecting ({timeout} after the {_graceSpan.TotalMilliseconds:0} ms connect grace)",
+                freezeWarning);
         }
     }
 
     private static string Ms(long from, long to) => Stopwatch.GetElapsedTime(from, to).TotalMilliseconds.ToString("0");
 
     /// <param name="DropReason">Why the link should go down, or null to keep it.</param>
-    internal readonly record struct Verdict(string? DropReason)
+    /// <param name="FreezeWarning">The <c>WARN</c> to log for the first late check of a run, or null.</param>
+    internal readonly record struct Verdict(string? DropReason, string? FreezeWarning)
     {
         public bool Drop => DropReason is not null;
     }
