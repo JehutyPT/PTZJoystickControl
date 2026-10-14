@@ -298,7 +298,7 @@ public class XcCameraTests
     [InlineData(200, "301", "no camera control right: another client may hold control")]
     [InlineData(200, "403", "livescope-status 403")]
     [InlineData(200, null, "no livescope-status")]
-    [InlineData(401, null, "HTTP 401")]
+    [InlineData(401, null, "camera requires a login; set username and password")]
     [InlineData(500, "0", "HTTP 500")]
     public async Task AnAnswerOtherThanSuccess_IsAFailureLoggedWithItsReason(int status, string? livescope, string reason)
     {
@@ -340,9 +340,9 @@ public class XcCameraTests
 
         camera.Pan(0.2, PanDir.Right);
         await XcTestCameras.WaitForLogAsync(trace, name, "no camera control right");
-        Volatile.Write(ref answer, XcReply.With(401, null));
+        Volatile.Write(ref answer, XcReply.With(500, "0"));
         camera.Pan(0.4, PanDir.Right);
-        await XcTestCameras.WaitForLogAsync(trace, name, "HTTP 401");
+        await XcTestCameras.WaitForLogAsync(trace, name, "HTTP 500");
         camera.Pan(0.6, PanDir.Right);
         await fake.WaitForControlAsync(3);
         await Task.Delay(SettleTime);

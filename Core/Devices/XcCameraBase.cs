@@ -7,7 +7,7 @@ namespace PtzJoystickControl.Core.Devices;
 
 /// <summary>
 /// The XC camera type (Canon's HTTP control protocol): its saved settings, name, Companion number,
-/// address and port. <c>XcCamera</c> sends the requests.
+/// address, port and login. <c>XcCamera</c> sends the requests.
 /// </summary>
 public abstract class XcCameraBase : ICamera
 {
@@ -17,6 +17,8 @@ public abstract class XcCameraBase : ICamera
     private int? _companionNumber;
     private string _address = "";
     private int _port = DefaultPort;
+    private string _username = "";
+    private string _password = "";
 
     protected XcCameraBase(string name)
     {
@@ -100,6 +102,47 @@ public abstract class XcCameraBase : ICamera
         }
     }
 
+    /// <summary>
+    /// The username the camera's login asks for; empty for none, and then requests carry no
+    /// credentials (guest control). Saved in plaintext.
+    /// </summary>
+    public string Username
+    {
+        get => _username;
+        set
+        {
+            value ??= "";
+            if (_username == value)
+                return;
+
+            // The message leaves the value out: it may end up in the log.
+            if (value.Any(char.IsControl))
+                throw new ArgumentException("A username cannot contain control characters.", nameof(value));
+
+            _username = value;
+            OnLoginChanged();
+            NotifyPropertyChanged();
+            NotifyPersistentPropertyChanged();
+        }
+    }
+
+    /// <summary>The password for <see cref="Username"/>; any text. Saved in plaintext, never logged.</summary>
+    public string Password
+    {
+        get => _password;
+        set
+        {
+            value ??= "";
+            if (_password == value)
+                return;
+
+            _password = value;
+            OnLoginChanged();
+            NotifyPropertyChanged();
+            NotifyPersistentPropertyChanged();
+        }
+    }
+
     // "" (no address), a dotted-quad IPv4 address, or a DNS host name. Digits and dots alone must be a
     // full dotted quad without leading zeros, which other parsers would read as a different address
     // (12 as 0.0.0.12, 010 as octal 8). IPv6 is not supported.
@@ -122,6 +165,9 @@ public abstract class XcCameraBase : ICamera
 
     /// <summary>Called after <see cref="Address"/> or <see cref="Port"/> changed, before the change is raised.</summary>
     protected abstract void OnEndpointChanged();
+
+    /// <summary>Called after <see cref="Username"/> or <see cref="Password"/> changed, before the change is raised.</summary>
+    protected abstract void OnLoginChanged();
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
