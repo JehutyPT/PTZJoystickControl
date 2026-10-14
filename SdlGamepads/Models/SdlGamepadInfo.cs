@@ -35,6 +35,9 @@ internal class SdlGamepadInfo : IGamepadInfo
         }
     }
 
+    // Never asleep; public so the controller list's binding finds it on every entry.
+    public bool IsAsleep => false;
+
     public event PropertyChangedEventHandler? PropertyChanged;
     private void NotifyPropertyChanged([CallerMemberName] string propertyName = "")
     {

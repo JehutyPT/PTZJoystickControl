@@ -22,6 +22,7 @@ internal sealed class FakeRawPanel : IDisposable
     private int _maxOpen;
     private int _closedByLink;
     private long _lastAckSentAt;
+    private long _silentUntil;
 
     public FakeRawPanel(int port = 0)
     {
@@ -41,6 +42,16 @@ internal sealed class FakeRawPanel : IDisposable
 
     /// <summary>Pings received this long after accept go unanswered (the panel's post-connect stall).</summary>
     public TimeSpan SilentAfterAccept { get; set; } = TimeSpan.Zero;
+
+    /// <summary>
+    /// Pings received before this <see cref="Stopwatch.GetTimestamp"/> go unanswered, on every
+    /// connection (a stall at any time, such as the panel waking). 0 for none.
+    /// </summary>
+    public long SilentUntil
+    {
+        get => Interlocked.Read(ref _silentUntil);
+        set => Interlocked.Exchange(ref _silentUntil, value);
+    }
 
     /// <summary>The first ping is answered at once even during the silence, as seen on the panel.</summary>
     public bool AnswerFirstPingAtOnce { get; set; }
@@ -156,7 +167,8 @@ internal sealed class FakeRawPanel : IDisposable
 
                     pings++;
                     var silent = Stopwatch.GetElapsedTime(acceptedAt) < SilentAfterAccept
-                        && !(AnswerFirstPingAtOnce && pings == 1);
+                        && !(AnswerFirstPingAtOnce && pings == 1)
+                        || Stopwatch.GetTimestamp() < SilentUntil;
                     if (AnswerPings && !silent)
                     {
                         await stream.WriteAsync(Encoding.ASCII.GetBytes("ack\n"), _stopping.Token);

@@ -165,7 +165,8 @@ internal class Program
                 resolver.GetServiceOrThrow<ICamerasService>(),
                 resolver.GetServiceOrThrow<ICommandsService>(),
                 resolver.GetServiceOrThrow<IBitfocusCompanionService>(),
-                inputQueue);
+                inputQueue,
+                UiThread.Post);
         }
         catch (Exception e)
         {

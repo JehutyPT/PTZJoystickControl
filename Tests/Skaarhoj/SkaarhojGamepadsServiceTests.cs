@@ -39,8 +39,9 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
 
     private string SettingsPath => Path.Combine(_dir, "SkaarhojGamepads.json");
 
-    private SkaarhojGamepadsService NewService() => new(Address,
-        new GamepadSettingsStore(SettingsPath), _cameras, new CommandsService(_companion), _companion, _queue);
+    private SkaarhojGamepadsService NewService(Action<Action>? notifyOnUiThread = null) => new(Address,
+        new GamepadSettingsStore(SettingsPath), _cameras, new CommandsService(_companion), _companion, _queue,
+        notifyOnUiThread);
 
     private static IGamepadInfo Info(SkaarhojGamepadsService service) => Assert.Single(service.Gamepads);
 
@@ -205,7 +206,9 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
         Assert.Equal(1, _camA.StopCalls - stops);
         Assert.Empty(service.ActiveGamepads);
         Assert.False(gamepad.IsConnected);
-        Assert.False(Info(service).IsConnected);
+        // Shown asleep, not disconnected: the link is still up.
+        Assert.True(Info(service).IsAsleep);
+        Assert.True(Info(service).IsConnected);
         Assert.Contains(_trace.Messages, m => m.Contains(Address) && m.Contains("asleep"));
     }
 
@@ -239,6 +242,7 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
         var after = Active(service);
         Assert.NotSame(before, after);
         Assert.True(Info(service).IsConnected);
+        Assert.False(Info(service).IsAsleep);
         Assert.All(after.Inputs, i => Assert.Equal(0f, i.InputValue));
         Assert.Equal(calls, _camA.Calls.Count);
     }
@@ -269,7 +273,100 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
         _queue.RunPending();
 
         Assert.True(Info(service).IsConnected);
+        Assert.False(Info(service).IsAsleep);
         Assert.Single(service.ActiveGamepads);
+    }
+
+    [Fact]
+    public void SleepAndWake_AreLoggedOnceEach_AsInformation()
+    {
+        var service = NewService();
+        ActivePanning(service);
+
+        Sleeping(service, true);
+        Sleeping(service, true);
+        _queue.RunPending();
+        Sleeping(service, false);
+        Sleeping(service, false);
+        _queue.RunPending();
+
+        var lines = _trace.Events.Where(e => e.Message.Contains(Address)).ToList();
+        Assert.Single(lines, e => e.Message.Contains("asleep"));
+        Assert.Single(lines, e => e.Message.Contains("awake"));
+        Assert.All(lines.Where(e => e.Message.Contains("asleep") || e.Message.Contains("awake")),
+            e => Assert.Equal(System.Diagnostics.TraceEventType.Information, e.Type));
+    }
+
+    [Fact]
+    public void Asleep_WhenNotActivated_IsShownToo()
+    {
+        var service = NewService();
+        service.OnLinkUp();
+        Sleeping(service, true);
+        _queue.RunPending();
+
+        Assert.True(Info(service).IsAsleep);
+        Assert.True(Info(service).IsConnected);
+        Assert.Empty(service.ActiveGamepads);
+    }
+
+    [Fact]
+    public void LinkDownWhileAsleep_ShowsDisconnected_NotAsleep()
+    {
+        var service = NewService();
+        ActivePanning(service);
+        Sleeping(service, true);
+        _queue.RunPending();
+
+        service.OnLinkDown("no ack");
+        _queue.RunPending();
+
+        Assert.False(Info(service).IsAsleep);
+        Assert.False(Info(service).IsConnected);
+    }
+
+    [Fact]
+    public void ActivateWhileAsleep_IsSaved_AndConnectsOnWake()
+    {
+        var service = NewService();
+        service.OnLinkUp();
+        Sleeping(service, true);
+        _queue.RunPending();
+
+        service.ActivateGamepad(Info(service));
+        Assert.True(Info(service).IsActivated);
+        Assert.Empty(service.ActiveGamepads);
+
+        Sleeping(service, false);
+        _queue.RunPending();
+        Assert.Single(service.ActiveGamepads);
+    }
+
+    [Fact]
+    public void ConnectedAndAsleepChanges_AreRaisedThroughTheUiThreadMarshaller()
+    {
+        var posted = new List<Action>();
+        var raisedInside = new List<string>();
+        var raisedOutside = new List<string>();
+        var inMarshaller = false;
+        var service = NewService(a => posted.Add(() => { inMarshaller = true; try { a(); } finally { inMarshaller = false; } }));
+        Info(service).PropertyChanged += (_, e) => (inMarshaller ? raisedInside : raisedOutside).Add(e.PropertyName!);
+
+        service.OnLinkUp();
+        Sleeping(service, true);
+        _queue.RunPending();
+
+        // The input loop has applied the state; the UI hears of it only when the posted work runs.
+        Assert.True(Info(service).IsAsleep);
+        Assert.DoesNotContain(nameof(IGamepadInfo.IsConnected), raisedOutside);
+        Assert.DoesNotContain(nameof(IGamepadInfo.IsAsleep), raisedOutside);
+        Assert.Empty(raisedInside);
+
+        foreach (var action in posted)
+            action();
+
+        Assert.Contains(nameof(IGamepadInfo.IsConnected), raisedInside);
+        Assert.Contains(nameof(IGamepadInfo.IsAsleep), raisedInside);
     }
 
     [Fact]

@@ -22,6 +22,8 @@ namespace PtzJoystickControl.Gui
 
         public override void OnFrameworkInitializationCompleted()
         {
+            UiThread.MarkReady();
+
             if (ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime desktop)
                 return;
 
