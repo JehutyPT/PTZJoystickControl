@@ -39,15 +39,15 @@ internal sealed class RecordingDynamicCommand : IDynamicCommand
     public override string CommandName => GetType().Name;
     public override string AxisParameterName => "Max speed";
     public override string ButtonParameterName => "Speed";
-    public override int MaxValue => 7;
-    public override int MinValue => 0;
+    public override int LegacyStepMax => 7;
+    public override int LegacyStepMin => 0;
     public override IEnumerable<CommandDirectionOption> ButtonDirections { get; } = new[]
     {
         new CommandDirectionOption("In", Direction.High),
         new CommandDirectionOption("Out", Direction.Low),
     };
 
-    public override void Execute(int value, Direction direction) => Runs++;
+    protected override void Move(double speed, Direction direction) => Runs++;
 }
 
 internal sealed class NullCompanionService : IBitfocusCompanionService
@@ -79,4 +79,29 @@ internal sealed class FakeGamepad : IGamepad
     public void Acquire() { }
     public void Unacquire() { }
     public void Update() { }
+}
+
+/// <summary>A camera that records each move's speed fraction and direction sign (0 = stop) on any axis.</summary>
+internal sealed class SpeedRecordingCamera : ViscaDeviceBase
+{
+    public SpeedRecordingCamera() : base("Speed recorder") { }
+
+    public List<(double Speed, int Sign)> Runs { get; } = new();
+
+    public override void Pan(double panSpeed, PanDir panDir) =>
+        Runs.Add((panSpeed, panDir == PanDir.Stop ? 0 : panDir == PanDir.Right ? 1 : -1));
+    public override void Tilt(double tiltSpeed, TiltDir tiltDir) =>
+        Runs.Add((tiltSpeed, tiltDir == TiltDir.Stop ? 0 : tiltDir == TiltDir.Up ? 1 : -1));
+    public override void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir) =>
+        throw new NotSupportedException("Commands drive one axis at a time");
+    public override void Zoom(double zoomSpeed, ZoomDir zoomDir) =>
+        Runs.Add((zoomSpeed, zoomDir == ZoomDir.Stop ? 0 : zoomDir == ZoomDir.Tele ? 1 : -1));
+    public override void Focus(double focusSpeed, FocusDir focusDir) =>
+        Runs.Add((focusSpeed, focusDir == FocusDir.Stop ? 0 : focusDir == FocusDir.Far ? 1 : -1));
+    public override void Power(Power byteVal) { }
+    public override void FocusMode(FocusMode focusMode) { }
+    public override void FocusLock(FocusLock focusMode) { }
+    public override void Preset(Preset preset, byte presetNumber) { }
+    public override void PresetRecallSpeed(byte value) { }
+    public override void Stop() { }
 }

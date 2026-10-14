@@ -84,7 +84,8 @@ public sealed class ExpoSettingsTests : IDisposable
         Assert.True(axis.Inverted);
         Assert.Equal(0.15F, axis.DeadZone);
         Assert.Equal(0.1F, axis.Saturation);
-        Assert.Equal(5, axis.CommandValue!.Value);
+        // Saved as VISCA step 5 of 0..7: migrated to ceil(100 · 5 / 7) = 72 %.
+        Assert.Equal(72, axis.CommandValue!.Value);
         Assert.Empty(AxisEvents(trace));
     }
 

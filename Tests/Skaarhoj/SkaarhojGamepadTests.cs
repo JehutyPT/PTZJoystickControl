@@ -126,7 +126,7 @@ public class SkaarhojGamepadTests
         gamepad.OnSpeed(60, 500);
         gamepad.OnSpeed(60, 0);
 
-        Assert.Equal(new[] { "Pan 24 Right", "Pan 0 Stop" }, _camera.Calls);
+        Assert.Equal(new[] { "Pan 1 Right", "Pan 0 Stop" }, _camera.Calls);
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public class SkaarhojGamepadTests
         }
 
         Assert.Single(_camera.Calls.Distinct());
-        Assert.StartsWith("Zoom 7 ", _camera.Calls[0]);
+        Assert.StartsWith("Zoom 1 ", _camera.Calls[0]);
     }
 
     [Fact]

@@ -223,11 +223,11 @@ public class SelectCameraCommandTests
         public NonViscaIpCamera(string name) : base(name) { }
 
         public override void Power(Power byteVal) { }
-        public override void Pan(byte panSpeed, PanDir panDir) { }
-        public override void Tilt(byte tiltSpeed, TiltDir tiltDir) { }
-        public override void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir) { }
-        public override void Zoom(byte zoomSpeed, ZoomDir zoomDir) { }
-        public override void Focus(byte focusSpeed, FocusDir focusDir) { }
+        public override void Pan(double panSpeed, PanDir panDir) { }
+        public override void Tilt(double tiltSpeed, TiltDir tiltDir) { }
+        public override void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir) { }
+        public override void Zoom(double zoomSpeed, ZoomDir zoomDir) { }
+        public override void Focus(double focusSpeed, FocusDir focusDir) { }
         public override void FocusMode(FocusMode focusMode) { }
         public override void FocusLock(FocusLock focusMode) { }
         public override void Preset(Preset preset, byte presetNumber) { }

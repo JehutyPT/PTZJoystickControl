@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using PtzJoystickControl.Core.Commands;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
 
@@ -32,7 +34,7 @@ public static class GamepadInputSetup
                 if (storedInput.CommandType != null && commandsDict.TryGetValue(storedInput.CommandType, out var command))
                     input.SelectedCommand = command;
                 input.CommandDirection = storedInput.CommandDirection;
-                input.CommandValue = storedInput.CommandValue;
+                input.CommandValue = LoadCommandValue(input, storedInput, input.Id);
                 input.Inverted = storedInput.Inverted;
                 input.Saturation = storedInput.DeadZoneHigh;
                 input.DeadZone = storedInput.DeadZoneLow;
@@ -43,9 +45,47 @@ public static class GamepadInputSetup
                     if (storedInput.SecondInputSettings.CommandType != null && commandsDict.TryGetValue(storedInput.SecondInputSettings.CommandType, out var secondCommand))
                         input.SecondInput.SelectedCommand = secondCommand;
                     input.SecondInput.CommandDirection = storedInput.SecondInputSettings.CommandDirection;
-                    input.SecondInput.CommandValue = storedInput.SecondInputSettings.CommandValue;
+                    input.SecondInput.CommandValue = LoadCommandValue(input.SecondInput, storedInput.SecondInputSettings, $"{input.Id} (second command)");
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// The stored command value, with a speed (dynamic command) value read as a percentage of the
+    /// full range. One saved without <see cref="InputSettings.SpeedIsPercentage"/> is a VISCA step
+    /// <c>s</c> from before percentages, migrated to <c>ceil(100 · (s − Min) / (Max − Min))</c>: the
+    /// smallest percentage that still sends step <c>s</c> at full deflection. Out-of-range values
+    /// (hand-edited files) are clamped with a warning. The stored settings are never modified.
+    /// </summary>
+    private static CommandValueOption? LoadCommandValue(IInput input, InputSettings stored, string logName)
+    {
+        if (input.SelectedCommand is not IDynamicCommand command || stored.CommandValue is null)
+            return stored.CommandValue;
+
+        int percent;
+        if (stored.SpeedIsPercentage)
+        {
+            percent = stored.CommandValue.Value;
+            if (percent < 0 || percent > 100)
+            {
+                percent = Math.Clamp(percent, 0, 100);
+                Trace.TraceWarning($"Input {logName}: {command.CommandName} speed {stored.CommandValue.Value} % is not between 0 and 100; using {percent} %");
+            }
+        }
+        else
+        {
+            int min = command.LegacyStepMin, max = command.LegacyStepMax;
+            int step = stored.CommandValue.Value;
+            if (step < min || step > max)
+            {
+                step = Math.Clamp(step, min, max);
+                Trace.TraceWarning($"Input {logName}: {command.CommandName} saved speed step {stored.CommandValue.Value} is not between {min} and {max}; using {step}");
+            }
+            // Integer ceiling: exact, so a step that is a whole percentage never rounds up past it.
+            percent = (100 * (step - min) + (max - min - 1)) / (max - min);
+        }
+
+        return command.Options.FirstOrDefault(o => o.Value == percent);
     }
 }

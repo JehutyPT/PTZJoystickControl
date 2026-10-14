@@ -145,17 +145,50 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         AddCommand(AddPowerCommand);
     }
 
-    public override void Pan(byte panSpeed, PanDir panDir)
+    // VISCA speed ranges. A speed fraction f becomes Min + floor(f · (Max − Min) + 1e-6), so
+    // fraction 0 still moves at Min and 1 is the top speed.
+    internal const byte PanSpeedMin = 1, PanSpeedMax = 24;
+    internal const byte TiltSpeedMin = 1, TiltSpeedMax = 20;
+    internal const byte ZoomSpeedMin = 0, ZoomSpeedMax = 7;
+    internal const byte FocusSpeedMin = 0, FocusSpeedMax = 7;
+
+    /// <summary>
+    /// Maps a speed fraction onto a VISCA speed in <paramref name="min"/>..<paramref name="max"/>.
+    /// A fraction outside 0..1 (or NaN) is clamped; the 1e-6 absorbs floating-point error so a
+    /// fraction meant to land exactly on a step does not fall one below it.
+    /// </summary>
+    internal static byte ToViscaSpeed(double fraction, byte min, byte max)
     {
-        PanTilt(panSpeed, tiltSpeed, panDir, tiltDir);
+        if (double.IsNaN(fraction)) fraction = 0;
+        fraction = Math.Clamp(fraction, 0, 1);
+        var speed = min + Math.Floor(fraction * (max - min) + 1e-6);
+        return (byte)Math.Clamp(speed, min, max);
     }
 
-    public override void Tilt(byte tiltSpeed, TiltDir tiltDir)
+    // A stopped axis sends speed 0, as every command passed with a stop before speeds were fractions.
+    private static byte PanSpeedByte(double fraction, PanDir dir) =>
+        dir == PanDir.Stop ? (byte)0 : ToViscaSpeed(fraction, PanSpeedMin, PanSpeedMax);
+
+    private static byte TiltSpeedByte(double fraction, TiltDir dir) =>
+        dir == TiltDir.Stop ? (byte)0 : ToViscaSpeed(fraction, TiltSpeedMin, TiltSpeedMax);
+
+    public override void Pan(double panSpeed, PanDir panDir)
     {
-        PanTilt(panSpeed, tiltSpeed, panDir, tiltDir);
+        PanTilt(PanSpeedByte(panSpeed, panDir), tiltSpeed, panDir, tiltDir);
     }
 
-    public override void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir)
+    public override void Tilt(double tiltSpeed, TiltDir tiltDir)
+    {
+        PanTilt(panSpeed, TiltSpeedByte(tiltSpeed, tiltDir), panDir, tiltDir);
+    }
+
+    public override void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir)
+    {
+        PanTilt(PanSpeedByte(panSpeed, panDir), TiltSpeedByte(tiltSpeed, tiltDir), panDir, tiltDir);
+    }
+
+    // Change detection compares VISCA bytes, so fractions that quantize to the same speed send nothing.
+    private void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir)
     {
         bool enteredStop = (this.panDir != PanDir.Stop && panDir == PanDir.Stop)
             || (this.tiltDir != TiltDir.Stop && tiltDir == TiltDir.Stop);
@@ -183,8 +216,10 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         }
     }
 
-    public override void Zoom(byte zoomSpeed, ZoomDir zoomDir)
+    public override void Zoom(double zoomSpeedFraction, ZoomDir zoomDir)
     {
+        byte zoomSpeed = zoomDir == ZoomDir.Stop ? (byte)0 : ToViscaSpeed(zoomSpeedFraction, ZoomSpeedMin, ZoomSpeedMax);
+
         //zoomCmd byte is split in direction and speed. 1 is dir and 2 is speed in 0x12
         bool zoomChanged = false;
         if ((zoomCmd & 0xf0) != (byte)zoomDir)
@@ -207,8 +242,10 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         }
     }
 
-    public override void Focus(byte focusSpeed, FocusDir focusDir)
+    public override void Focus(double focusSpeedFraction, FocusDir focusDir)
     {
+        byte focusSpeed = focusDir == FocusDir.Stop ? (byte)0 : ToViscaSpeed(focusSpeedFraction, FocusSpeedMin, FocusSpeedMax);
+
         bool focusChanged = false;
         if ((focusCmd & 0xf0) != (byte)focusDir)
         {

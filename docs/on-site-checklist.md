@@ -6,6 +6,16 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #43: Max speed is a percentage
+
+Pan, tilt, zoom and focus **Max speed** (axes) and **Speed** (buttons) are now percentages of the full range (0–100 %) instead of VISCA steps. Saved steps are converted on load to the smallest percentage that still reaches the same top speed (pan 12 of 24 becomes 48 %, zoom 5 of 7 becomes 72 %); at 100 % the cameras get exactly the speeds the previous build sent. Back up `%APPDATA%\PTZJoystickControl\Gamepads.json` and `SkaarhojGamepads.json` before starting the new build, and note each axis's and button's Max speed/Speed in the previous build.
+
+- [ ] Start the new build with the existing `Gamepads.json` and `SkaarhojGamepads.json`: no settings `WARN` or `ERROR` in the log (tray menu → **Show log**). Every axis mapped to pan, tilt, zoom or focus shows its **Max speed** as a percentage (`100 %` where it was the top step), and the dropdown offers 0 %…100 %.
+- [ ] On both CR-N500s, pan, tilt, zoom and focus slowly and fully from the USB joystick, then from the SKAARHOJ panel: the speeds feel the same as the previous build at the converted values, full deflection reaches the same top speed, and each camera stops on release.
+- [ ] The output label next to a moving axis reads a direction and a percentage (e.g. `High 37 %`), and `Stop` when released.
+- [ ] A button mapped to pan or zoom moves the camera at the same speed as before, and stops on release.
+- [ ] Quit and restart the app: every Max speed and Speed shows the same percentage as before the restart (no second conversion).
+
 ### #39: SKAARHOJ panel shows asleep and survives waking
 
 Needs the panel set up as in the #37 entry, with the panel selected as the controller and its stick mapped. The app never changes the panel's sleep timer; a short one must be set beforehand, and **only once agreed** (ask before changing any panel setting): with the app quit, have the Companion surface plugin or a test tool send `SleepTimer=60000`, then disconnect the tool. This is the same setup as the #37 sleep check; run both together. If the panel's timer is left short it sleeps every minute during the show, so restore it at the end.
@@ -55,8 +65,8 @@ The UI framework moved from Avalonia 0.10 to 12, so every window, the tray icon 
 Each axis has a new **Expo** setting next to **Dead zone** (0 % = linear, as before; up to 100 %). It only bends pan, tilt, zoom and focus speeds between the dead zone and the saturation zone. Existing settings load with Expo 0 %. Back up `%APPDATA%\PTZJoystickControl\Gamepads.json` before starting the new build.
 
 - [ ] Start the new build with the existing `Gamepads.json`: no settings `WARN` or `ERROR` in the log (tray menu → **Show log**), every axis shows **Expo** 0 %, buttons show no Expo field, and the joystick mappings, dead zones and saturations are unchanged.
-- [ ] With Expo 0 %, pan, tilt and zoom each camera slowly and fully, and release: the speeds feel the same as the previous build (the output label next to the axis shows the same speed for the same deflection) and each camera stops on release.
-- [ ] Set the pan axis's Expo to 50 %: small deflections give noticeably slower pan than before, a deflection just past the dead zone still moves the camera (output label not `Stop`), and full deflection still reaches the configured max speed (output label shows the max-speed value). Release: the camera stops.
+- [ ] With Expo 0 %, pan, tilt and zoom each camera slowly and fully, and release: the speeds feel the same as the previous build (judge by the camera, not the output label next to the axis: since #43 it shows a percentage where the previous build showed a VISCA step) and each camera stops on release.
+- [ ] Set the pan axis's Expo to 50 %: small deflections give noticeably slower pan than before, a deflection just past the dead zone still moves the camera (output label not `Stop`), and full deflection still reaches the configured max speed (output label shows the max-speed value; since #43 that is a percentage, e.g. `High 100 %`). Release: the camera stops.
 - [ ] Repeat at 100 %: fine control near centre, full deflection still reaches max speed, release stops.
 - [ ] Quit and restart: the axis still shows the Expo you set. Set it back to the value the operator wants for the show.
 - [ ] An axis mapped to a static command (e.g. *Preset*) with Expo set above 0 % still triggers at the same deflection as before.

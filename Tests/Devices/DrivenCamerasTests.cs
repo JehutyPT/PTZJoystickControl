@@ -110,7 +110,7 @@ public class DrivenCamerasTests
         var camB = new RecordingCamera("B");
         var gamepad = new TestGamepad { SelectedCamera = camA };
         _ = new DrivenCameras(gamepad);
-        camA.Pan(10, PanDir.Left);
+        camA.Pan(0.5, PanDir.Left);
 
         gamepad.SelectedCamera = camB;
 
@@ -124,7 +124,7 @@ public class DrivenCamerasTests
         var camA = new RecordingCamera("A");
         var gamepad = new TestGamepad { SelectedCamera = camA };
         _ = new DrivenCameras(gamepad);
-        camA.Zoom(5, ZoomDir.Tele);
+        camA.Zoom(0.5, ZoomDir.Tele);
 
         gamepad.SelectedCamera = new RecordingCamera("B");
 
@@ -137,7 +137,7 @@ public class DrivenCamerasTests
         var camA = new RecordingCamera("A");
         var gamepad = new TestGamepad { SelectedCamera = camA };
         _ = new DrivenCameras(gamepad);
-        camA.Focus(5, FocusDir.Near);
+        camA.Focus(0.5, FocusDir.Near);
 
         gamepad.SelectedCamera = new RecordingCamera("B");
 
@@ -151,7 +151,7 @@ public class DrivenCamerasTests
         var camB = new RecordingCamera("B");
         var gamepad = new TestGamepad { SelectedCamera = camA };
         _ = new DrivenCameras(gamepad);
-        camA.Pan(10, PanDir.Left);
+        camA.Pan(0.5, PanDir.Left);
         camA.Pan(0, PanDir.Stop);
 
         gamepad.SelectedCamera = camB;
@@ -169,9 +169,9 @@ public class DrivenCamerasTests
         _ = new DrivenCameras(gamepad);
 
         gamepad.SelectedCamera = camA;
-        camA.Pan(10, PanDir.Left);
+        camA.Pan(0.5, PanDir.Left);
         gamepad.SelectedCamera = camB;
-        camB.Tilt(10, TiltDir.Up);
+        camB.Tilt(0.5, TiltDir.Up);
         gamepad.SelectedCamera = camA;
 
         Assert.Equal(1, camA.StopCalls);
@@ -184,7 +184,7 @@ public class DrivenCamerasTests
         var camA = new RecordingCamera("A");
         var gamepad = new TestGamepad { SelectedCamera = camA };
         _ = new DrivenCameras(gamepad);
-        camA.Pan(10, PanDir.Right);
+        camA.Pan(0.5, PanDir.Right);
 
         gamepad.SelectedCamera = null;
 
@@ -209,7 +209,7 @@ public class DrivenCamerasTests
         var camA = new RecordingCamera("A");
         var gamepad = new TestGamepad { SelectedCamera = camA };
         _ = new DrivenCameras(gamepad);
-        camA.Pan(10, PanDir.Left);
+        camA.Pan(0.5, PanDir.Left);
 
         // TestGamepad raises PropertyChanged on every set, even when the value is unchanged.
         gamepad.SelectedCamera = camA;
@@ -225,10 +225,10 @@ public class DrivenCamerasTests
         var camC = new RecordingCamera("C");
         var gamepad = new TestGamepad { SelectedCamera = failing };
         _ = new DrivenCameras(gamepad);
-        failing.Pan(10, PanDir.Left);
+        failing.Pan(0.5, PanDir.Left);
 
         var exception = Record.Exception(() => gamepad.SelectedCamera = camB);
-        camB.Pan(10, PanDir.Left);
+        camB.Pan(0.5, PanDir.Left);
         gamepad.SelectedCamera = camC;
 
         Assert.Null(exception);
@@ -245,7 +245,7 @@ public class DrivenCamerasTests
         var gamepad = new TestGamepad { SelectedCamera = camA };
         var driven = new DrivenCameras(gamepad);
         driven.StopAll();
-        camA.Pan(10, PanDir.Left);
+        camA.Pan(0.5, PanDir.Left);
 
         gamepad.SelectedCamera = camB;
 
@@ -289,17 +289,17 @@ public class DrivenCamerasTests
         }
 
         public override void Power(Power byteVal) { }
-        public override void Pan(byte panSpeed, PanDir panDir) => this.panDir = panDir;
-        public override void Tilt(byte tiltSpeed, TiltDir tiltDir) => this.tiltDir = tiltDir;
-        public override void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir)
+        public override void Pan(double panSpeed, PanDir panDir) => this.panDir = panDir;
+        public override void Tilt(double tiltSpeed, TiltDir tiltDir) => this.tiltDir = tiltDir;
+        public override void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir)
         {
             this.panDir = panDir;
             this.tiltDir = tiltDir;
         }
-        public override void Zoom(byte zoomSpeed, ZoomDir zoomDir) =>
-            zoomCmd = zoomDir == ZoomDir.Stop ? (byte)0x00 : (byte)((byte)zoomDir | zoomSpeed & 0x0f);
-        public override void Focus(byte focusSpeed, FocusDir focusDir) =>
-            focusCmd = focusDir == FocusDir.Stop ? (byte)0x00 : (byte)((byte)focusDir | focusSpeed & 0x0f);
+        public override void Zoom(double zoomSpeed, ZoomDir zoomDir) =>
+            zoomCmd = zoomDir == ZoomDir.Stop ? (byte)0x00 : (byte)zoomDir;
+        public override void Focus(double focusSpeed, FocusDir focusDir) =>
+            focusCmd = focusDir == FocusDir.Stop ? (byte)0x00 : (byte)focusDir;
         public override void FocusMode(FocusMode focusMode) { }
         public override void FocusLock(FocusLock focusMode) { }
         public override void Preset(Preset preset, byte presetNumber) { }

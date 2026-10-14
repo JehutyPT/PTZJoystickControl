@@ -15,8 +15,8 @@ public class ZoomCommand : IDynamicCommand
     public override string AxisParameterName => "Max speed";
     public override string ButtonParameterName => "Speed";
 
-    public override int MaxValue => 7;
-    public override int MinValue => 0;
+    public override int LegacyStepMax => 7;
+    public override int LegacyStepMin => 0;
 
     public override IEnumerable<CommandDirectionOption> ButtonDirections => buttonDirectionsList;
     private static readonly IReadOnlyCollection<CommandDirectionOption> buttonDirectionsList = new CommandDirectionOption[] {
@@ -24,10 +24,8 @@ public class ZoomCommand : IDynamicCommand
         new CommandDirectionOption("Wide", Direction.Low),
     };
 
-    public override void Execute(int value, Direction direction)
+    protected override void Move(double speed, Direction direction)
     {
-        if (0 > value || value > MaxValue) throw new ArgumentException($"Max zoom speed is {MaxValue}, {value} was geven.");
-
         ZoomDir zoomDir;
 
         switch (direction)
@@ -46,6 +44,6 @@ public class ZoomCommand : IDynamicCommand
                 break;
         }
 
-        Gamepad.SelectedCamera?.Zoom((byte)value, zoomDir);
+        Gamepad.SelectedCamera?.Zoom(speed, zoomDir);
     }
 }
