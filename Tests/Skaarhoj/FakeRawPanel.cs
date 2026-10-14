@@ -15,7 +15,7 @@ internal sealed class FakeRawPanel : IDisposable
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _stopping = new();
     private readonly ConcurrentDictionary<TcpClient, byte> _clients = new();
-    private readonly ConcurrentQueue<string> _received = new();
+    private readonly ConcurrentQueue<(string Line, long At)> _received = new();
     private readonly ConcurrentQueue<long> _acceptedAt = new();
     private readonly object _countLock = new();
     private int _open;
@@ -70,7 +70,10 @@ internal sealed class FakeRawPanel : IDisposable
 
     public IReadOnlyList<long> AcceptedAt => _acceptedAt.ToArray();
 
-    public IEnumerable<string> Received => _received;
+    public IEnumerable<string> Received => _received.Select(r => r.Line);
+
+    /// <summary><see cref="Stopwatch.GetTimestamp"/> of each time <paramref name="line"/> was received, oldest first.</summary>
+    public long[] TimesReceived(string line) => _received.Where(r => r.Line == line).Select(r => r.At).ToArray();
 
     /// <summary><see cref="Stopwatch.GetTimestamp"/> of the last <c>ack</c> sent, or 0.</summary>
     public long LastAckSentAt => Interlocked.Read(ref _lastAckSentAt);
@@ -171,7 +174,7 @@ internal sealed class FakeRawPanel : IDisposable
                 {
                     var line = text[..newline];
                     pending.Remove(0, newline + 1);
-                    _received.Enqueue(line);
+                    _received.Enqueue((line, Stopwatch.GetTimestamp()));
                     if (line != "ping")
                         continue;
 

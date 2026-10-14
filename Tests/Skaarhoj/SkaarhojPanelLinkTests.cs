@@ -5,9 +5,10 @@ using Xunit;
 
 namespace PtzJoystickControl.Tests.Skaarhoj;
 
-// Timings are scaled down from the defaults (100 ms ping, 300 ms timeout, 1 s grace, 1–30 s backoff)
-// so each case runs well under a second. Lower bounds are asserted tightly; upper bounds leave room
-// for slow CI runners.
+// Timings are scaled down from the defaults (500 ms ping, 1 s timeout, 1 s grace, 1–30 s backoff)
+// so each case runs in about a second or less. Lower bounds are asserted tightly; upper bounds leave
+// room for slow CI runners. Exact dead-man timing (pings, drops, app freezes) is tested with explicit
+// timestamps in PanelDeadManTests; these cases check the link wires it to the socket.
 [Collection(TimingBoundCollection.Name)]
 public sealed class SkaarhojPanelLinkTests : IDisposable
 {
@@ -37,13 +38,15 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         int? port = null,
         TimeSpan? grace = null,
         TimeSpan? reconnectInitial = null,
-        TimeSpan? reconnectMax = null)
+        TimeSpan? reconnectMax = null,
+        TimeSpan? ping = null,
+        TimeSpan? timeout = null)
     {
         var link = new SkaarhojPanelLink(
             "127.0.0.1",
             port ?? _panel.Port,
-            pingInterval: Ping,
-            silenceTimeout: Timeout,
+            pingInterval: ping ?? Ping,
+            silenceTimeout: timeout ?? Timeout,
             connectGrace: grace ?? Grace,
             reconnectInitialDelay: reconnectInitial ?? NoReconnect,
             reconnectMaxDelay: reconnectMax ?? NoReconnect,
@@ -70,6 +73,10 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         return "Events: " + string.Join(" | ", events.Select(e =>
             $"{e.Kind} at {Stopwatch.GetElapsedTime(start, e.At).TotalMilliseconds:F0} ms{(e.Detail.Length > 0 ? ": " + e.Detail : "")}"));
     }
+
+    private string DownReason => _events.First(e => e.Kind == "down").Detail;
+
+    private int PingsReceived => _panel.Received.Count(l => l == "ping");
 
     private static async Task<bool> WaitUntil(Func<bool> condition, TimeSpan within)
     {
@@ -136,7 +143,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     }
 
     [Fact]
-    public async Task ReportsDown_WhenAcksStop_WithinTimeoutPlusOnePingInterval_AndClosesTheSocket()
+    public async Task ReportsDown_WhenThePanelFallsSilent_WithinTimeoutPlusOnePingInterval_AndClosesTheSocket()
     {
         var link = Start();
         await Task.Delay(Grace + Timeout);
@@ -148,10 +155,93 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         var sinceLastAck = Stopwatch.GetElapsedTime(_panel.LastAckSentAt, FirstAt("down"));
         Assert.InRange(sinceLastAck, Timeout, Timeout + Ping + Slack);
         Assert.False(link.IsUp);
-        Assert.Contains("ack", _events.First(e => e.Kind == "down").Detail);
+        Assert.StartsWith("the panel was silent for", DownReason);
         Assert.True(await WaitUntil(() => _panel.ClosedByLink == 1, TimeSpan.FromSeconds(2)));
         Assert.Equal(0, _panel.OpenClients);
         Assert.Contains(_trace.Events, e => e.Type == TraceEventType.Warning && e.Message.Contains("link down"));
+    }
+
+    [Fact]
+    public async Task InputLines_KeepTheLinkUp_AndNoPingIsSentWhileTheyArrive()
+    {
+        // The panel never answers a ping: only its input lines can keep the link up.
+        _panel.AnswerPings = false;
+        var ping = TimeSpan.FromMilliseconds(300);
+        var timeout = TimeSpan.FromMilliseconds(600);
+        var grace = TimeSpan.FromMilliseconds(50);
+        var link = Start(grace: grace, ping: ping, timeout: timeout);
+        Assert.True(await WaitUntil(() => Count("up") == 1 && _panel.OpenClients == 1, TimeSpan.FromSeconds(2)));
+
+        // A moving stick: a line every 20 ms, from its own thread so a busy thread pool cannot open a gap.
+        using var stop = new CancellationTokenSource();
+        var stick = Task.Factory.StartNew(() =>
+        {
+            for (var i = 0; !stop.IsCancellationRequested; i++)
+            {
+                _panel.Send($"HWC#60=Speed:{i % 500}");
+                Thread.Sleep(20);
+            }
+        }, TaskCreationOptions.LongRunning);
+        Assert.True(await WaitUntil(() => _messages.OfType<RawPanelMessage.Speed>().Any(), TimeSpan.FromSeconds(2)));
+        await Task.Delay(50);
+        var pingsBefore = PingsReceived;
+
+        await Task.Delay(grace + timeout * 2);
+        var pingsAfter = PingsReceived;
+        stop.Cancel();
+        await stick;
+
+        Assert.Equal(pingsBefore, pingsAfter);
+        Assert.Equal(0, Count("down"));
+        Assert.True(link.IsUp);
+    }
+
+    [Fact]
+    public async Task AQuietPanel_GetsAPingEveryPingInterval_CountedFromTheLastLineHeard()
+    {
+        // The panel answers each ping with an ack and sends nothing else.
+        var ping = TimeSpan.FromMilliseconds(100);
+        Start(grace: TimeSpan.FromMilliseconds(50), ping: ping, timeout: TimeSpan.FromSeconds(2));
+
+        Assert.True(await WaitUntil(() => PingsReceived >= 5, TimeSpan.FromSeconds(3)));
+        var pings = _panel.TimesReceived("ping");
+        for (var i = 1; i < pings.Length; i++)
+            Assert.InRange(Stopwatch.GetElapsedTime(pings[i - 1], pings[i]), ping, ping + Slack);
+
+        // A line heard partway through the interval puts the next ping a whole interval after it.
+        var seen = PingsReceived;
+        Assert.True(await WaitUntil(() => PingsReceived > seen, TimeSpan.FromSeconds(2)));
+        await Task.Delay(40);
+        var lineAt = Stopwatch.GetTimestamp();
+        _panel.Send("HWC#61=Speed:10");
+        // A ping already on its way when the line was sent arrives within a few ms; it is not the next one.
+        var after = lineAt + Stopwatch.Frequency / 100;
+        Assert.True(await WaitUntil(() => _panel.TimesReceived("ping").Any(t => t > after), TimeSpan.FromSeconds(2)));
+
+        var next = _panel.TimesReceived("ping").First(t => t > after);
+        Assert.InRange(Stopwatch.GetElapsedTime(lineAt, next), ping, ping + Slack);
+    }
+
+    [Fact]
+    public async Task Silence_DropsTheLink_AboutOneTimeoutAfterTheLastLine_OfAnyKind()
+    {
+        var ping = TimeSpan.FromMilliseconds(100);
+        var timeout = TimeSpan.FromMilliseconds(500);
+        var grace = TimeSpan.FromMilliseconds(50);
+        Start(grace: grace, ping: ping, timeout: timeout);
+        await Task.Delay(grace + timeout);
+        Assert.Equal(0, Count("down"));
+
+        // The acks stop; a moment later one input line arrives, then nothing.
+        _panel.AnswerPings = false;
+        await Task.Delay(ping);
+        var lineAt = Stopwatch.GetTimestamp();
+        _panel.Send("HWC#60=Speed:0");
+
+        Assert.True(await WaitUntil(() => Count("down") == 1, TimeSpan.FromSeconds(3)));
+        // Counted from the input line, not from the last ack before it.
+        Assert.InRange(Stopwatch.GetElapsedTime(lineAt, FirstAt("down")), timeout, timeout + ping + Slack);
+        Assert.StartsWith("the panel was silent for", DownReason);
     }
 
     [Fact]
@@ -217,15 +307,18 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         await Task.Delay(Grace + Timeout);
 
         _panel.AnswerPings = false;
+        // The sleep report is itself a line heard: the count runs from it, with no new grace.
+        var sleptAt = Stopwatch.GetTimestamp();
         _panel.Send("_isSleeping=1");
 
         Assert.True(await WaitUntil(() => Count("down") == 1, TimeSpan.FromSeconds(2)));
-        Assert.InRange(Stopwatch.GetElapsedTime(_panel.LastAckSentAt, FirstAt("down")), Timeout, Timeout + Ping + Slack);
+        Assert.InRange(Stopwatch.GetElapsedTime(sleptAt, FirstAt("down")), Timeout, Timeout + Ping + Slack);
     }
 
     [Fact]
-    public async Task WithoutAnyAck_ReportsDownOnlyAfterGracePlusTimeout()
+    public async Task WhenNothingIsHeardAfterConnect_ReportsDownOnlyAfterGracePlusTimeout_SilentSinceConnecting()
     {
+        _panel.Greeting = Array.Empty<string>();
         _panel.AnswerPings = false;
         Start();
         Assert.True(await WaitUntil(() => Count("up") == 1, TimeSpan.FromSeconds(2)));
@@ -235,6 +328,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
 
         // The link takes its connect time just before raising LinkUp, so allow a few ms below.
         Assert.InRange(Stopwatch.GetElapsedTime(upAt, FirstAt("down")), Grace + Timeout - TimeSpan.FromMilliseconds(10), Grace + Timeout + Ping + Slack);
+        Assert.Contains("since connecting", DownReason);
     }
 
     [Fact]
@@ -247,7 +341,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
 
         // Well before the dead-man could fire (grace + timeout after connect).
         Assert.True(await WaitUntil(() => Count("down") == 1, Grace));
-        Assert.DoesNotContain("ack", _events.First(e => e.Kind == "down").Detail);
+        Assert.DoesNotContain("silent", DownReason);
     }
 
     [Fact]
@@ -278,7 +372,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     }
 
     [Fact]
-    public async Task AfterAnAckTimeout_ReconnectsToTheSamePanel_AndNeverHoldsTwoConnections()
+    public async Task AfterASilenceTimeout_ReconnectsToTheSamePanel_AndNeverHoldsTwoConnections()
     {
         var link = Start(reconnectInitial: TimeSpan.FromMilliseconds(50), reconnectMax: TimeSpan.FromMilliseconds(200));
         await Task.Delay(Grace + Timeout);
