@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json;
 using PtzJoystickControl.Application.Db;
 using PtzJoystickControl.Application.Devices;
@@ -72,6 +73,21 @@ public sealed class CameraSettingsStoreFormatTests : IDisposable
         AssertSameKeysAndValues(CamerasJsonBeforeTheAbstraction, File.ReadAllText(_path));
     }
 
+    // Cameras are created from the saved type name with a (string name) constructor, so a camera
+    // type other than VISCA (#47) loads the same way.
+    [Fact]
+    public void CameraOfAnotherCameraType_IsCreatedFromItsSavedTypeName()
+    {
+        File.WriteAllText(_path,
+            $"[{{\"{TypeNameKey}\":\"{typeof(NonViscaCamera).AssemblyQualifiedName}\",\"Name\":\"Other\",\"CompanionNumber\":4}}]");
+
+        var camera = Assert.Single(new CameraSettingsStore(_path).GetAllCameras());
+
+        var other = Assert.IsType<NonViscaCamera>(camera);
+        Assert.Equal("Other", other.Name);
+        Assert.Equal(4, other.CompanionNumber);
+    }
+
     private static void AssertSameKeysAndValues(string expectedJson, string actualJson)
     {
         var expected = Entries(expectedJson);
@@ -91,4 +107,29 @@ public sealed class CameraSettingsStoreFormatTests : IDisposable
         JsonDocument.Parse(json).RootElement.EnumerateArray()
             .Select(entry => entry.EnumerateObject().ToDictionary(p => p.Name, p => p.Value.Clone()))
             .ToList();
+
+    // A camera of another camera type: it implements only the camera abstraction, not the VISCA base type.
+    private sealed class NonViscaCamera : ICamera
+    {
+        public NonViscaCamera(string name) => Name = name;
+
+        public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+        public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }
+
+        public string Name { get; }
+        public int? CompanionNumber { get; set; }
+        public bool Connected => true;
+        public bool IsMoving => false;
+
+        public void Pan(double panSpeed, PanDir panDir) { }
+        public void Tilt(double tiltSpeed, TiltDir tiltDir) { }
+        public void Zoom(double zoomSpeed, ZoomDir zoomDir) { }
+        public void Focus(double focusSpeed, FocusDir focusDir) { }
+        public void Stop() { }
+        public void FocusMode(FocusMode focusMode) { }
+        public void FocusLock(FocusLock focusLock) { }
+        public void Power(Power power) { }
+        public void Preset(Preset preset, byte presetNumber) { }
+        public void PresetRecallSpeed(byte speed) { }
+    }
 }

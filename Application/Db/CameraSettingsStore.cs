@@ -41,10 +41,10 @@ namespace PtzJoystickControl.Application.Db
                 return viscaDeviceSettingsList
                     .Select(viscaDeviceSettings =>
                     {
-                        var viscaDevice = (ViscaDeviceBase?)Activator.CreateInstance(
+                        var camera = (ICamera?)Activator.CreateInstance(
                             Type.GetType(viscaDeviceSettings.IViscaDeveiceTypeAssemblyQualifiedName)!,
                             viscaDeviceSettings.Name);
-                        if (viscaDevice is ViscaIPDeviceBase viscaIPDevice)
+                        if (camera is ViscaIPDeviceBase viscaIPDevice)
                         {
                             viscaIPDevice.IPAddress = viscaDeviceSettings.IpAddress;
                             viscaIPDevice.Port = viscaDeviceSettings.Port;
@@ -52,17 +52,17 @@ namespace PtzJoystickControl.Application.Db
                             viscaIPDevice.SendWaitTime = viscaDeviceSettings.SendWaitTime;
                             viscaIPDevice.UseHeader = viscaDeviceSettings.UseHeader;
                         }
-                        if (viscaDevice != null)
+                        if (camera != null)
                         {
                             // A hand-edited invalid number must not fail the whole camera load: CamerasService assigns a new one.
                             if (viscaDeviceSettings.CompanionNumber >= 1)
-                                viscaDevice.CompanionNumber = viscaDeviceSettings.CompanionNumber;
+                                camera.CompanionNumber = viscaDeviceSettings.CompanionNumber;
                             else if (viscaDeviceSettings.CompanionNumber != null)
-                                Trace.TraceWarning($"Camera {viscaDevice.Name}: ignoring invalid Companion number {viscaDeviceSettings.CompanionNumber} in {_cameratFilePath}; a new one is assigned");
+                                Trace.TraceWarning($"Camera {camera.Name}: ignoring invalid Companion number {viscaDeviceSettings.CompanionNumber} in {_cameratFilePath}; a new one is assigned");
                         }
-                        return viscaDevice;
+                        return camera;
                     })
-                    .Where(viscaDevice => viscaDevice != null)
+                    .Where(camera => camera != null)
                     .ToList()!;
             }
             catch (Exception e)
