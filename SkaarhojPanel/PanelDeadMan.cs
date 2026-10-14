@@ -4,8 +4,8 @@ namespace PtzJoystickControl.SkaarhojPanel;
 
 /// <summary>
 /// The panel link's dead-man decisions for one connection, from <see cref="Stopwatch"/> timestamps the
-/// caller passes in; it has no timer of its own. Thread-safe: the link's read, ping and dead-man tasks
-/// share one.
+/// caller passes in; it has no timer of its own and logs nothing: the link words what it reports.
+/// Thread-safe: the link's read, ping and dead-man tasks share one.
 /// </summary>
 internal sealed class PanelDeadMan
 {
@@ -15,13 +15,10 @@ internal sealed class PanelDeadMan
     private static readonly long FreezeThresholdTicks = StopwatchTicks.From(FreezeThreshold);
 
     private readonly object _lock = new();
-    private readonly string _endpoint;
     private readonly long _connectedAt;
     private readonly long _pingInterval;
     private readonly long _silenceTimeout;
     private readonly long _grace;
-    private readonly TimeSpan _silenceTimeoutSpan;
-    private readonly TimeSpan _graceSpan;
 
     // The later of connect (the startup queries count as the first send) and the last ping sent.
     private long _lastSent;
@@ -34,15 +31,12 @@ internal sealed class PanelDeadMan
     // Whether the last check ran late: a run of back-to-back late checks is one freeze to log.
     private bool _lastCheckLate;
 
-    public PanelDeadMan(string endpoint, long connectedAt, TimeSpan pingInterval, TimeSpan silenceTimeout, TimeSpan grace)
+    public PanelDeadMan(long connectedAt, TimeSpan pingInterval, TimeSpan silenceTimeout, TimeSpan grace)
     {
-        _endpoint = endpoint;
         _connectedAt = connectedAt;
         _pingInterval = StopwatchTicks.From(pingInterval);
         _silenceTimeout = StopwatchTicks.From(silenceTimeout);
         _grace = StopwatchTicks.From(grace);
-        _silenceTimeoutSpan = silenceTimeout;
-        _graceSpan = grace;
         _lastSent = connectedAt;
         _graceEnd = connectedAt + _grace;
 
@@ -106,29 +100,22 @@ internal sealed class PanelDeadMan
                 _heardSinceRestart = false;
             }
 
-            var freezeWarning = frozen && !_lastCheckLate
-                ? $"SKAARHOJ panel: the app stalled, not the panel at {_endpoint}: a dead-man check ran {Ms(scheduledAt, now)} ms late"
-                : null;
+            TimeSpan? stall = frozen && !_lastCheckLate ? Stopwatch.GetElapsedTime(scheduledAt, now) : null;
             _lastCheckLate = frozen;
 
             var countFrom = Math.Max(Math.Max(_graceEnd, _lastHeard ?? long.MinValue), _restartAt ?? long.MinValue);
             if (now - countFrom <= _silenceTimeout)
-                return new Verdict(null, freezeWarning);
+                return new Verdict(null, false, stall);
 
-            var timeout = $"timeout {_silenceTimeoutSpan.TotalMilliseconds:0} ms";
-            return new Verdict(_lastHeard is { } heard
-                ? $"the panel was silent for {Ms(heard, now)} ms ({timeout})"
-                : $"the panel was silent for {Ms(_connectedAt, now)} ms since connecting ({timeout} after the {_graceSpan.TotalMilliseconds:0} ms connect grace)",
-                freezeWarning);
+            return new Verdict(Stopwatch.GetElapsedTime(_lastHeard ?? _connectedAt, now), _lastHeard is null, stall);
         }
     }
 
-    private static string Ms(long from, long to) => Stopwatch.GetElapsedTime(from, to).TotalMilliseconds.ToString("0");
-
-    /// <param name="DropReason">Why the link should go down, or null to keep it.</param>
-    /// <param name="FreezeWarning">The <c>WARN</c> to log for the first late check of a run, or null.</param>
-    internal readonly record struct Verdict(string? DropReason, string? FreezeWarning)
-    {
-        public bool Drop => DropReason is not null;
-    }
+    /// <param name="Silence">
+    /// Set when the link should go down: how long the panel has been silent, since its last line or, when
+    /// <paramref name="NothingHeard"/>, since connecting. Null to keep the link.
+    /// </param>
+    /// <param name="NothingHeard">No line has arrived from the panel on this connection.</param>
+    /// <param name="Stall">How late this check ran, when it is the first late check of a series (one <c>WARN</c> each); otherwise null.</param>
+    internal readonly record struct Verdict(TimeSpan? Silence, bool NothingHeard, TimeSpan? Stall);
 }

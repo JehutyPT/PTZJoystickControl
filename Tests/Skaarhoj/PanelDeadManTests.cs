@@ -8,12 +8,12 @@ namespace PtzJoystickControl.Tests.Skaarhoj;
 // timings: 500 ms ping, 1 s timeout, 1 s connect and wake grace.
 public sealed class PanelDeadManTests
 {
-    private const string Endpoint = "10.0.0.5:9923";
-
     private static long At(long ms) => ms * Stopwatch.Frequency / 1000;
 
+    // Whole milliseconds, as the link logs them.
+    private static long Ms(TimeSpan? span) => (long)Math.Round(span!.Value.TotalMilliseconds);
+
     private static PanelDeadMan Connected() => new(
-        Endpoint,
         connectedAt: At(0),
         SkaarhojPanelLink.DefaultPingInterval,
         SkaarhojPanelLink.DefaultSilenceTimeout,
@@ -76,11 +76,12 @@ public sealed class PanelDeadManTests
         var deadMan = Connected();
         deadMan.LineHeard(At(1200));
 
-        Assert.False(OnTimeCheck(deadMan, 2200).Drop);
+        Assert.Null(OnTimeCheck(deadMan, 2200).Silence);
         var verdict = OnTimeCheck(deadMan, 2325);
 
-        Assert.True(verdict.Drop);
-        Assert.Equal("the panel was silent for 1125 ms (timeout 1000 ms)", verdict.DropReason);
+        Assert.NotNull(verdict.Silence);
+        Assert.Equal(1125, Ms(verdict.Silence));
+        Assert.False(verdict.NothingHeard);
     }
 
     [Fact]
@@ -88,12 +89,13 @@ public sealed class PanelDeadManTests
     {
         var deadMan = Connected();
 
-        Assert.False(OnTimeCheck(deadMan, 1500).Drop);
-        Assert.False(OnTimeCheck(deadMan, 2000).Drop);
+        Assert.Null(OnTimeCheck(deadMan, 1500).Silence);
+        Assert.Null(OnTimeCheck(deadMan, 2000).Silence);
         var verdict = OnTimeCheck(deadMan, 2125);
 
-        Assert.True(verdict.Drop);
-        Assert.Equal("the panel was silent for 2125 ms since connecting (timeout 1000 ms after the 1000 ms connect grace)", verdict.DropReason);
+        Assert.NotNull(verdict.Silence);
+        Assert.Equal(2125, Ms(verdict.Silence));
+        Assert.True(verdict.NothingHeard);
     }
 
     [Fact]
@@ -102,11 +104,12 @@ public sealed class PanelDeadManTests
         var deadMan = Connected();
         deadMan.LineHeard(At(100));
 
-        Assert.False(OnTimeCheck(deadMan, 2000).Drop);
+        Assert.Null(OnTimeCheck(deadMan, 2000).Silence);
         var verdict = OnTimeCheck(deadMan, 2125);
 
-        Assert.True(verdict.Drop);
-        Assert.Equal("the panel was silent for 2025 ms (timeout 1000 ms)", verdict.DropReason);
+        Assert.NotNull(verdict.Silence);
+        Assert.Equal(2025, Ms(verdict.Silence));
+        Assert.False(verdict.NothingHeard);
     }
 
     [Fact]
@@ -118,9 +121,9 @@ public sealed class PanelDeadManTests
         deadMan.Woke(At(1500));
 
         // Without the wake, 1100 ms after the last line would drop.
-        Assert.False(OnTimeCheck(deadMan, 2600).Drop);
-        Assert.False(OnTimeCheck(deadMan, 3500).Drop);
-        Assert.True(OnTimeCheck(deadMan, 3625).Drop);
+        Assert.Null(OnTimeCheck(deadMan, 2600).Silence);
+        Assert.Null(OnTimeCheck(deadMan, 3500).Silence);
+        Assert.NotNull(OnTimeCheck(deadMan, 3625).Silence);
     }
 
     [Fact]
@@ -128,16 +131,16 @@ public sealed class PanelDeadManTests
     {
         var deadMan = Connected();
         deadMan.LineHeard(At(1100));
-        Assert.False(OnTimeCheck(deadMan, 1500).Drop);
+        Assert.Null(OnTimeCheck(deadMan, 1500).Silence);
 
         // Scheduled for 2100, run at 2400: 1300 ms after the last line, but the app froze, not the panel.
-        Assert.False(deadMan.Check(At(2400), At(2100)).Drop);
+        Assert.Null(deadMan.Check(At(2400), At(2100)).Silence);
 
-        Assert.False(OnTimeCheck(deadMan, 3400).Drop);
+        Assert.Null(OnTimeCheck(deadMan, 3400).Silence);
         var verdict = OnTimeCheck(deadMan, 3525);
-        Assert.True(verdict.Drop);
+        Assert.NotNull(verdict.Silence);
         // The reason still gives the panel's real silence, since its last line.
-        Assert.Equal("the panel was silent for 2425 ms (timeout 1000 ms)", verdict.DropReason);
+        Assert.Equal(2425, Ms(verdict.Silence));
     }
 
     [Fact]
@@ -146,7 +149,7 @@ public sealed class PanelDeadManTests
         var deadMan = Connected();
         deadMan.LineHeard(At(1100));
 
-        Assert.True(deadMan.Check(At(2350), At(2100)).Drop);
+        Assert.NotNull(deadMan.Check(At(2350), At(2100)).Silence);
     }
 
     [Theory]
@@ -155,15 +158,15 @@ public sealed class PanelDeadManTests
     public void TheFreezeThreshold_Stays250ms_WithShortenedTimings(long lateMs, bool freeze)
     {
         // The link tests' timings: 20 ms ping, 100 ms timeout, 250 ms grace.
-        var deadMan = new PanelDeadMan(Endpoint, connectedAt: At(0),
+        var deadMan = new PanelDeadMan(connectedAt: At(0),
             TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(250));
         deadMan.LineHeard(At(300));
 
         // Past the 100 ms timeout either way: only a freeze restarts the count and keeps the link.
         var verdict = deadMan.Check(At(300 + lateMs), At(300));
 
-        Assert.Equal(freeze, verdict.FreezeWarning != null);
-        Assert.Equal(!freeze, verdict.Drop);
+        Assert.Equal(freeze, verdict.Stall != null);
+        Assert.Equal(!freeze, verdict.Silence != null);
     }
 
     [Fact]
@@ -171,11 +174,11 @@ public sealed class PanelDeadManTests
     {
         var deadMan = Connected();
         deadMan.LineHeard(At(1100));
-        Assert.False(deadMan.Check(At(2400), At(2100)).Drop);
-        Assert.False(OnTimeCheck(deadMan, 3000).Drop);
+        Assert.Null(deadMan.Check(At(2400), At(2100)).Silence);
+        Assert.Null(OnTimeCheck(deadMan, 3000).Silence);
 
         // 1100 ms after the forgiven freeze at 2400: this freeze is not forgiven, so the count runs out.
-        Assert.True(deadMan.Check(At(3500), At(3200)).Drop);
+        Assert.NotNull(deadMan.Check(At(3500), At(3200)).Silence);
     }
 
     [Fact]
@@ -183,15 +186,15 @@ public sealed class PanelDeadManTests
     {
         var deadMan = Connected();
         deadMan.LineHeard(At(1100));
-        Assert.False(deadMan.Check(At(2400), At(2100)).Drop);
+        Assert.Null(deadMan.Check(At(2400), At(2100)).Silence);
         deadMan.LineHeard(At(2410));
-        Assert.False(OnTimeCheck(deadMan, 3000).Drop);
+        Assert.Null(OnTimeCheck(deadMan, 3000).Silence);
 
         // 1290 ms after the last line, but the panel answered since the last forgiven freeze.
-        Assert.False(deadMan.Check(At(3700), At(3400)).Drop);
+        Assert.Null(deadMan.Check(At(3700), At(3400)).Silence);
 
-        Assert.False(OnTimeCheck(deadMan, 4700).Drop);
-        Assert.True(OnTimeCheck(deadMan, 4825).Drop);
+        Assert.Null(OnTimeCheck(deadMan, 4700).Silence);
+        Assert.NotNull(OnTimeCheck(deadMan, 4825).Silence);
     }
 
     [Fact]
@@ -209,9 +212,9 @@ public sealed class PanelDeadManTests
             deadMan.Check(At(2775), At(2475)),
         };
 
-        Assert.Equal(new[] { false, false, false, true }, verdicts.Select(v => v.Drop));
+        Assert.Equal(new[] { false, false, false, true }, verdicts.Select(v => v.Silence != null));
         // One run of late checks: one warning, at its first check.
-        Assert.Equal(new[] { true, false, false, false }, verdicts.Select(v => v.FreezeWarning != null));
+        Assert.Equal(new[] { true, false, false, false }, verdicts.Select(v => v.Stall != null));
     }
 
     [Fact]
@@ -219,19 +222,15 @@ public sealed class PanelDeadManTests
     {
         var deadMan = Connected();
         deadMan.LineHeard(At(1100));
-        Assert.Null(OnTimeCheck(deadMan, 1500).FreezeWarning);
+        Assert.Null(OnTimeCheck(deadMan, 1500).Stall);
 
-        Assert.Equal(
-            "SKAARHOJ panel: the app stalled, not the panel at 10.0.0.5:9923: a dead-man check ran 375 ms late",
-            deadMan.Check(At(2000), At(1625)).FreezeWarning);
+        Assert.Equal(375, Ms(deadMan.Check(At(2000), At(1625)).Stall));
         deadMan.LineHeard(At(2010));
-        Assert.Null(deadMan.Check(At(2400), At(2125)).FreezeWarning);
-        Assert.Null(deadMan.Check(At(2800), At(2525)).FreezeWarning);
+        Assert.Null(deadMan.Check(At(2400), At(2125)).Stall);
+        Assert.Null(deadMan.Check(At(2800), At(2525)).Stall);
 
         // An on-time check ends the run; the next late check starts a new one.
-        Assert.Null(OnTimeCheck(deadMan, 2925).FreezeWarning);
-        Assert.Equal(
-            "SKAARHOJ panel: the app stalled, not the panel at 10.0.0.5:9923: a dead-man check ran 1400 ms late",
-            deadMan.Check(At(4450), At(3050)).FreezeWarning);
+        Assert.Null(OnTimeCheck(deadMan, 2925).Stall);
+        Assert.Equal(1400, Ms(deadMan.Check(At(4450), At(3050)).Stall));
     }
 }

@@ -156,6 +156,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         Assert.InRange(sinceLastAck, Timeout, Timeout + Ping + Slack);
         Assert.False(link.IsUp);
         Assert.StartsWith("the panel was silent for", DownReason);
+        Assert.EndsWith(" ms (timeout 100 ms)", DownReason);
         Assert.True(await WaitUntil(() => _panel.ClosedByLink == 1, TimeSpan.FromSeconds(2)));
         Assert.Equal(0, _panel.OpenClients);
         Assert.Contains(_trace.Events, e => e.Type == TraceEventType.Warning && e.Message.Contains("link down"));
@@ -328,7 +329,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
 
         // The link takes its connect time just before raising LinkUp, so allow a few ms below.
         Assert.InRange(Stopwatch.GetElapsedTime(upAt, FirstAt("down")), Grace + Timeout - TimeSpan.FromMilliseconds(10), Grace + Timeout + Ping + Slack);
-        Assert.Contains("since connecting", DownReason);
+        Assert.EndsWith(" ms since connecting (timeout 100 ms after the 250 ms connect grace)", DownReason);
     }
 
     [Fact]

@@ -285,7 +285,7 @@ public sealed class SkaarhojPanelLink : IDisposable
 
     private async Task<ConnectionOutcome> RunSessionAsync(TcpClient client, CancellationToken stopping)
     {
-        var deadMan = new PanelDeadMan(Endpoint, Stopwatch.GetTimestamp(), _pingInterval, _silenceTimeout, _connectGrace);
+        var deadMan = new PanelDeadMan(Stopwatch.GetTimestamp(), _pingInterval, _silenceTimeout, _connectGrace);
         _acked = false;
         _isUp = true;
         Trace.TraceInformation($"SKAARHOJ panel: link up to {Endpoint}");
@@ -442,10 +442,12 @@ public sealed class SkaarhojPanelLink : IDisposable
                 var scheduledAt = Stopwatch.GetTimestamp() + intervalTicks;
                 await Task.Delay(interval, session).ConfigureAwait(false);
                 var verdict = deadMan.Check(Stopwatch.GetTimestamp(), scheduledAt);
-                if (verdict.FreezeWarning != null)
-                    Trace.TraceWarning(verdict.FreezeWarning);
-                if (verdict.DropReason != null)
-                    return verdict.DropReason;
+                if (verdict.Stall is { } stall)
+                    Trace.TraceWarning($"SKAARHOJ panel: the app stalled, not the panel at {Endpoint}: a dead-man check ran {stall.TotalMilliseconds:0} ms late");
+                if (verdict.Silence is { } silence)
+                    return verdict.NothingHeard
+                        ? $"the panel was silent for {silence.TotalMilliseconds:0} ms since connecting (timeout {_silenceTimeout.TotalMilliseconds:0} ms after the {_connectGrace.TotalMilliseconds:0} ms connect grace)"
+                        : $"the panel was silent for {silence.TotalMilliseconds:0} ms (timeout {_silenceTimeout.TotalMilliseconds:0} ms)";
             }
         }
         catch (OperationCanceledException) when (session.IsCancellationRequested)
