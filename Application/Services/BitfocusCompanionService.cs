@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using PtzJoystickControl.Core.Model;
@@ -18,21 +19,26 @@ namespace PtzJoystickControl.Application.Services
         public event EventHandler<BitfocusCompanionEvent>? ReceivedBitfocusCommand;
 
         private readonly ICamerasService _cameras;
+        private readonly ISpeedProfilesService _speedProfiles;
 
         /// <summary>
-        /// Starts the HTTP listener that receives Companion's camera selection requests. The app
-        /// makes no calls to Companion: Companion owns camera selection.
+        /// Starts the HTTP listener that receives Companion's camera selection and speed profile
+        /// requests. The app makes no calls to Companion: Companion owns camera selection.
         /// </summary>
         /// <param name="settings">The localhost port the app listens on for Companion's requests</param>
         /// <param name="cameras">The cameras an inbound request selects by Companion number</param>
-        public BitfocusCompanionService(CompanionSettings settings, ICamerasService cameras)
-            : this(settings, cameras, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30))
+        /// <param name="speedProfiles">The speed profiles an inbound request steps or reads back</param>
+        public BitfocusCompanionService(CompanionSettings settings, ICamerasService cameras, ISpeedProfilesService speedProfiles)
+            : this(settings, cameras, speedProfiles, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30))
         {
         }
 
-        internal BitfocusCompanionService(CompanionSettings settings, ICamerasService cameras, TimeSpan retryInitialDelay, TimeSpan retryMaxDelay)
+        internal BitfocusCompanionService(
+            CompanionSettings settings, ICamerasService cameras, ISpeedProfilesService speedProfiles,
+            TimeSpan retryInitialDelay, TimeSpan retryMaxDelay)
         {
             _cameras = cameras;
+            _speedProfiles = speedProfiles;
             _prefix = $"http://localhost:{settings.ListenerPort}/";
             _retryInitialDelay = retryInitialDelay;
             _retryMaxDelay = retryMaxDelay;
@@ -288,10 +294,26 @@ namespace PtzJoystickControl.Application.Services
                     return;
                 }
 
+                // Camera selections first: they are only queued, so a slow save below never delays them.
                 foreach (var companionEvent in parsed.Events)
                     RaiseCompanionEvent(companionEvent);
 
+                // A step is applied here, on the listener thread, never queued on the input loop: it saves
+                // SpeedProfiles.json before it returns, and a slow disk must never delay joystick control.
+                switch (parsed.SpeedProfile)
+                {
+                    case CompanionSpeedProfileRequest.Faster:
+                        _speedProfiles.StepFaster();
+                        break;
+                    case CompanionSpeedProfileRequest.Finer:
+                        _speedProfiles.StepFiner();
+                        break;
+                }
+
                 response.StatusCode = (int)HttpStatusCode.OK;
+
+                if (parsed.SpeedProfile == CompanionSpeedProfileRequest.Current)
+                    WriteActiveSpeedProfile(response);
             }
             catch (Exception e)
             {
@@ -309,6 +331,22 @@ namespace PtzJoystickControl.Application.Services
                     Trace.TraceWarning($"Companion listener: failed to close response for '{rawQuery}': {e.Message}");
                 }
             }
+        }
+
+        // The body Companion reads into a variable: {"position":2,"count":4,"name":"Medium"}.
+        private void WriteActiveSpeedProfile(HttpListenerResponse response)
+        {
+            var profiles = _speedProfiles.Profiles;
+            var body = JsonSerializer.SerializeToUtf8Bytes(new
+            {
+                position = profiles.ActivePosition,
+                count = profiles.Count,
+                name = profiles.Active.Name,
+            });
+
+            response.ContentType = "application/json; charset=utf-8";
+            response.ContentLength64 = body.Length;
+            response.OutputStream.Write(body, 0, body.Length);
         }
 
         private static void TrySetStatus(HttpListenerResponse response, HttpStatusCode status)
