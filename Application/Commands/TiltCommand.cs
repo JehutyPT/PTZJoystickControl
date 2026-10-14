@@ -21,13 +21,11 @@ public class TiltCommand : IDynamicCommand
         new CommandDirectionOption("Down", Direction.Low),
     };
 
-    public override int MaxValue => 20; //Max tilt speed
-    public override int MinValue => 1;
+    public override int LegacyStepMax => 20;
+    public override int LegacyStepMin => 1;
 
-    public override void Execute(int value, Direction direction)
+    protected override void Move(double speed, Direction direction)
     {
-        if (0 > value || value > MaxValue) throw new ArgumentException($"Max tilt speed is {MaxValue}, {value} was geven.");
-
         TiltDir tiltDir;
 
         switch (direction)
@@ -46,6 +44,6 @@ public class TiltCommand : IDynamicCommand
                 break;
         }
 
-        Gamepad.SelectedCamera?.Tilt((byte)value, tiltDir);
+        Gamepad.SelectedCamera?.Tilt(speed, tiltDir);
     }
 }

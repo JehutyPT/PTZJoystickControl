@@ -135,11 +135,15 @@ public abstract class ViscaDeviceBase : INotifyPropertyChanged
     public Power? PowerState { get; protected internal set; }
 
     public abstract void Power(Power byteVal);
-    public abstract void Pan(byte panSpeed, PanDir panDir);
-    public abstract void Tilt(byte tiltSpeed, TiltDir tiltDir);
-    public abstract void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir);
-    public abstract void Zoom(byte zoomSpeed, ZoomDir zoomDir);
-    public abstract void Focus(byte focusSpeed, FocusDir focusDir);
+
+    // Movement speeds are speed fractions: 0..1 of the axis's full range, whatever the camera
+    // type. Each camera type maps them onto its own protocol. A move at fraction 0 still moves
+    // (at the slowest speed); only a Stop direction stops.
+    public abstract void Pan(double panSpeed, PanDir panDir);
+    public abstract void Tilt(double tiltSpeed, TiltDir tiltDir);
+    public abstract void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir);
+    public abstract void Zoom(double zoomSpeed, ZoomDir zoomDir);
+    public abstract void Focus(double focusSpeed, FocusDir focusDir);
     public abstract void FocusMode(FocusMode focusMode);
     public abstract void FocusLock(FocusLock focusMode);
     public abstract void Preset(Preset preset, byte presetNumber);

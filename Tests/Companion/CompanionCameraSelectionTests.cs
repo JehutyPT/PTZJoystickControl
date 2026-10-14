@@ -70,7 +70,7 @@ public sealed class CompanionCameraSelectionTests : IDisposable
         var next = new RecordingCamera("Next");
         var gamepad = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { moving, next }) { SelectedCamera = moving };
         _ = new DrivenCameras(gamepad);
-        moving.Pan(0x08, PanDir.Left);
+        moving.Pan(0.5, PanDir.Left);
 
         CompanionCameraSelection.SelectOnEveryController(new[] { gamepad }, next);
 
@@ -108,15 +108,15 @@ public sealed class CompanionCameraSelectionTests : IDisposable
         }
 
         public override void Power(Power byteVal) { }
-        public override void Pan(byte panSpeed, PanDir panDir) => this.panDir = panDir;
-        public override void Tilt(byte tiltSpeed, TiltDir tiltDir) => this.tiltDir = tiltDir;
-        public override void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir)
+        public override void Pan(double panSpeed, PanDir panDir) => this.panDir = panDir;
+        public override void Tilt(double tiltSpeed, TiltDir tiltDir) => this.tiltDir = tiltDir;
+        public override void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir)
         {
             this.panDir = panDir;
             this.tiltDir = tiltDir;
         }
-        public override void Zoom(byte zoomSpeed, ZoomDir zoomDir) { }
-        public override void Focus(byte focusSpeed, FocusDir focusDir) { }
+        public override void Zoom(double zoomSpeed, ZoomDir zoomDir) { }
+        public override void Focus(double focusSpeed, FocusDir focusDir) { }
         public override void FocusMode(FocusMode focusMode) { }
         public override void FocusLock(FocusLock focusMode) { }
         public override void Preset(Preset preset, byte presetNumber) { }

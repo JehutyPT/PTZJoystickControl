@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
 using PtzJoystickControl.Core.Services;
@@ -18,10 +19,13 @@ internal sealed class MotionRecordingCamera : ViscaDeviceBase
 
     public MotionRecordingCamera(string name) : base(name) { }
 
-    /// <summary>Motion commands in order, e.g. <c>Pan 24 Right</c>, <c>Zoom 7 Tele</c>.</summary>
+    /// <summary>Motion commands in order, with speed fractions, e.g. <c>Pan 1 Right</c>, <c>Zoom 0.5 Tele</c>.</summary>
     public IReadOnlyList<string> Calls => _calls.ToArray();
 
     public int StopCalls => Volatile.Read(ref _stopCalls);
+
+    // Speed fractions, culture-independent: 1, 0.5, 0.333.
+    private static string F(double speed) => speed.ToString("0.###", CultureInfo.InvariantCulture);
 
     public override void Stop()
     {
@@ -32,35 +36,35 @@ internal sealed class MotionRecordingCamera : ViscaDeviceBase
         focusCmd = (byte)FocusDir.Stop;
     }
 
-    public override void Pan(byte panSpeed, PanDir panDir)
+    public override void Pan(double panSpeed, PanDir panDir)
     {
         this.panDir = panDir;
-        _calls.Enqueue($"Pan {panSpeed} {panDir}");
+        _calls.Enqueue($"Pan {F(panSpeed)} {panDir}");
     }
 
-    public override void Tilt(byte tiltSpeed, TiltDir tiltDir)
+    public override void Tilt(double tiltSpeed, TiltDir tiltDir)
     {
         this.tiltDir = tiltDir;
-        _calls.Enqueue($"Tilt {tiltSpeed} {tiltDir}");
+        _calls.Enqueue($"Tilt {F(tiltSpeed)} {tiltDir}");
     }
 
-    public override void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir)
+    public override void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir)
     {
         this.panDir = panDir;
         this.tiltDir = tiltDir;
-        _calls.Enqueue($"PanTilt {panSpeed} {tiltSpeed} {panDir} {tiltDir}");
+        _calls.Enqueue($"PanTilt {F(panSpeed)} {F(tiltSpeed)} {panDir} {tiltDir}");
     }
 
-    public override void Zoom(byte zoomSpeed, ZoomDir zoomDir)
+    public override void Zoom(double zoomSpeed, ZoomDir zoomDir)
     {
-        zoomCmd = zoomDir == ZoomDir.Stop ? (byte)0x00 : (byte)((byte)zoomDir | zoomSpeed & 0x0f);
-        _calls.Enqueue($"Zoom {zoomSpeed} {zoomDir}");
+        zoomCmd = zoomDir == ZoomDir.Stop ? (byte)0x00 : (byte)zoomDir;
+        _calls.Enqueue($"Zoom {F(zoomSpeed)} {zoomDir}");
     }
 
-    public override void Focus(byte focusSpeed, FocusDir focusDir)
+    public override void Focus(double focusSpeed, FocusDir focusDir)
     {
-        focusCmd = focusDir == FocusDir.Stop ? (byte)0x00 : (byte)((byte)focusDir | focusSpeed & 0x0f);
-        _calls.Enqueue($"Focus {focusSpeed} {focusDir}");
+        focusCmd = focusDir == FocusDir.Stop ? (byte)0x00 : (byte)focusDir;
+        _calls.Enqueue($"Focus {F(focusSpeed)} {focusDir}");
     }
 
     public override void Power(Power byteVal) { }

@@ -310,29 +310,21 @@ public class Input : IInput
         {
             if (InputType == InputType.Axis)
             {
-                int maxValue = CommandValue?.Value ?? dynCommand.MaxValue;
-                int range = maxValue - dynCommand.MinValue;
+                // Speed fraction = shaped deflection × the input's "Max speed" percentage. Outside
+                // the deadzone the input always moves the camera: the direction comes from the
+                // sign, so even a fraction of 0 is a move at the camera's slowest speed.
+                int maxSpeedPercent = CommandValue?.Value ?? 100;
+                double speed = Math.Abs((double)InputValue) * maxSpeedPercent / 100.0;
 
-                float mappedValue = Util.Map(InputValue, -1, 1, -range, range);
-                // Outside the deadzone the input always moves the camera: a value too small for
-                // Map's float precision (an expo curve just past the deadzone) runs at min speed.
-                if (mappedValue == 0 && InputValue != 0)
-                    mappedValue = InputValue > 0 ? float.Epsilon : -float.Epsilon;
-
-                CurrentDirection = Direction.Stop;
-
-                if (mappedValue < 0)
-                {
-                    mappedValue = Math.Abs(mappedValue) + dynCommand.MinValue;
+                if (InputValue < 0)
                     CurrentDirection = Direction.Low;
-                }
-                else if (mappedValue > 0)
-                {
-                    mappedValue += dynCommand.MinValue;
+                else if (InputValue > 0)
                     CurrentDirection = Direction.High;
-                }
-                CurrentValue = (int)mappedValue;
-                dynCommand.Execute((int)mappedValue, CurrentDirection);
+                else
+                    CurrentDirection = Direction.Stop;
+
+                CurrentValue = CurrentDirection == Direction.Stop ? 0 : (int)Math.Round(speed * 100, MidpointRounding.AwayFromZero);
+                dynCommand.Execute(CurrentDirection == Direction.Stop ? 0 : speed, CurrentDirection);
             }
             else if (InputType == InputType.Button)
             {

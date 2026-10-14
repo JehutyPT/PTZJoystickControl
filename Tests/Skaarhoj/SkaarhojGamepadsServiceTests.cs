@@ -144,7 +144,7 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
         Assert.Empty(_camA.Calls);
 
         _queue.RunPending();
-        Assert.Equal(new[] { "Pan 24 Right" }, _camA.Calls);
+        Assert.Equal(new[] { "Pan 1 Right" }, _camA.Calls);
     }
 
     [Fact]

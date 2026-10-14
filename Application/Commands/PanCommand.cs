@@ -15,18 +15,16 @@ public class PanCommand : IDynamicCommand
     public override string AxisParameterName => "Max speed";
     public override string ButtonParameterName => "Speed";
 
-    public override int MaxValue => 24; //Max pan speed
-    public override int MinValue => 1;
+    public override int LegacyStepMax => 24;
+    public override int LegacyStepMin => 1;
     public override IEnumerable<CommandDirectionOption> ButtonDirections => buttonDirectionsList;
     public static readonly IReadOnlyCollection<CommandDirectionOption> buttonDirectionsList = new CommandDirectionOption[] {
         new CommandDirectionOption("Right", Direction.High),
         new CommandDirectionOption("Left", Direction.Low)
     };
 
-    public override void Execute(int value, Direction direction)
+    protected override void Move(double speed, Direction direction)
     {
-        if (0 > value || value > MaxValue) throw new ArgumentException($"Max pan speed is {MaxValue}, {value} was geven.");
-
         PanDir panDir;
 
         switch (direction)
@@ -45,7 +43,7 @@ public class PanCommand : IDynamicCommand
                 break;
         }
 
-        Gamepad.SelectedCamera?.Pan((byte)value, panDir);
+        Gamepad.SelectedCamera?.Pan(speed, panDir);
     }
 
 }

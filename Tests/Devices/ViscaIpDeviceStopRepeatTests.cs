@@ -39,10 +39,10 @@ public class ViscaIpDeviceStopRepeatTests
     public async Task PanTiltStop_IsSentAtLeastThreeTimes()
     {
         using var camera = new LoopbackCamera();
-        camera.Device.PanTilt(10, 10, PanDir.Left, TiltDir.Up);
+        camera.Device.PanTilt(0.4, 0.5, PanDir.Left, TiltDir.Up);
         await camera.WaitForPacketsAsync(1);
 
-        camera.Device.PanTilt(10, 10, PanDir.Stop, TiltDir.Stop);
+        camera.Device.PanTilt(0.4, 0.5, PanDir.Stop, TiltDir.Stop);
         var packets = await camera.CollectAsync(SingleAxisStopWindow);
 
         AssertStopsWithin(packets, IsPanTiltStop, SingleAxisStopSpread);
@@ -52,7 +52,7 @@ public class ViscaIpDeviceStopRepeatTests
     public async Task ZoomStop_IsSentAtLeastThreeTimes()
     {
         using var camera = new LoopbackCamera();
-        camera.Device.Zoom(5, ZoomDir.Tele);
+        camera.Device.Zoom(0.75, ZoomDir.Tele);
         await camera.WaitForPacketsAsync(1);
 
         camera.Device.Zoom(0, ZoomDir.Stop);
@@ -65,7 +65,7 @@ public class ViscaIpDeviceStopRepeatTests
     public async Task FocusStop_IsSentAtLeastThreeTimes()
     {
         using var camera = new LoopbackCamera();
-        camera.Device.Focus(5, FocusDir.Far);
+        camera.Device.Focus(0.75, FocusDir.Far);
         await camera.WaitForPacketsAsync(1);
 
         camera.Device.Focus(0, FocusDir.Stop);
@@ -78,30 +78,30 @@ public class ViscaIpDeviceStopRepeatTests
     public async Task SpeedChangeWhileMoving_IsSentOnce()
     {
         using var camera = new LoopbackCamera();
-        camera.Device.PanTilt(10, 10, PanDir.Left, TiltDir.Stop);
+        camera.Device.PanTilt(0.4, 0.5, PanDir.Left, TiltDir.Stop);
         await camera.WaitForPacketsAsync(1);
         await camera.CollectAsync();
 
-        camera.Device.PanTilt(12, 10, PanDir.Left, TiltDir.Stop);
+        camera.Device.PanTilt(0.5, 0.5, PanDir.Left, TiltDir.Stop);
         var packets = await camera.CollectAsync();
 
         Assert.Single(packets);
-        Assert.Equal(new byte[] { 0x81, 0x01, 0x06, 0x01, 12, 10, (byte)PanDir.Left, (byte)TiltDir.Stop, 0xFF }, packets[0].Payload);
+        Assert.Equal(new byte[] { 0x81, 0x01, 0x06, 0x01, 12, 0, (byte)PanDir.Left, (byte)TiltDir.Stop, 0xFF }, packets[0].Payload);
     }
 
     [Fact]
     public async Task RedeflectingWithinTheRepeatWindow_EndsWithTheMotionCommand()
     {
         using var camera = new LoopbackCamera();
-        camera.Device.PanTilt(10, 10, PanDir.Left, TiltDir.Stop);
+        camera.Device.PanTilt(0.4, 0.5, PanDir.Left, TiltDir.Stop);
         await camera.WaitForPacketsAsync(1);
 
-        camera.Device.PanTilt(10, 10, PanDir.Stop, TiltDir.Stop);
+        camera.Device.PanTilt(0.4, 0.5, PanDir.Stop, TiltDir.Stop);
         await Task.Delay(10);
-        camera.Device.PanTilt(8, 10, PanDir.Right, TiltDir.Stop);
+        camera.Device.PanTilt(0.31, 0.5, PanDir.Right, TiltDir.Stop);
         var packets = await camera.CollectAsync();
 
-        Assert.Equal(new byte[] { 0x81, 0x01, 0x06, 0x01, 8, 10, (byte)PanDir.Right, (byte)TiltDir.Stop, 0xFF }, packets.Last().Payload);
+        Assert.Equal(new byte[] { 0x81, 0x01, 0x06, 0x01, 8, 0, (byte)PanDir.Right, (byte)TiltDir.Stop, 0xFF }, packets.Last().Payload);
     }
 
     [Fact]
@@ -121,11 +121,11 @@ public class ViscaIpDeviceStopRepeatTests
     public async Task PanStoppingWhileTiltMoves_RepeatsTheStopAndKeepsTilting()
     {
         using var camera = new LoopbackCamera();
-        camera.Device.PanTilt(10, 10, PanDir.Left, TiltDir.Up);
+        camera.Device.PanTilt(0.4, 0.5, PanDir.Left, TiltDir.Up);
         await camera.WaitForPacketsAsync(1);
         await camera.CollectAsync();
 
-        camera.Device.PanTilt(10, 10, PanDir.Stop, TiltDir.Up);
+        camera.Device.PanTilt(0.4, 0.5, PanDir.Stop, TiltDir.Up);
         var packets = await camera.CollectAsync(SingleAxisStopWindow);
 
         AssertStopsWithin(packets, IsPanStopTiltUp, SingleAxisStopSpread);
@@ -158,9 +158,9 @@ public class ViscaIpDeviceStopRepeatTests
     public async Task Stop_StopsAMovingCamera()
     {
         using var camera = new LoopbackCamera();
-        camera.Device.PanTilt(10, 10, PanDir.Left, TiltDir.Up);
+        camera.Device.PanTilt(0.4, 0.5, PanDir.Left, TiltDir.Up);
         await camera.WaitForPacketsAsync(1);
-        camera.Device.Zoom(5, ZoomDir.Wide);
+        camera.Device.Zoom(0.75, ZoomDir.Wide);
         await camera.WaitForPacketsAsync(2);
         await camera.CollectAsync();
 
@@ -240,22 +240,22 @@ public class ViscaIpDeviceStopRepeatTests
         var device = camera.Device;
         Assert.False(device.IsMoving);
 
-        device.PanTilt(10, 10, PanDir.Left, TiltDir.Stop);
+        device.PanTilt(0.4, 0.5, PanDir.Left, TiltDir.Stop);
         Assert.True(device.IsMoving);
-        device.PanTilt(10, 10, PanDir.Stop, TiltDir.Stop);
+        device.PanTilt(0.4, 0.5, PanDir.Stop, TiltDir.Stop);
         Assert.False(device.IsMoving);
 
-        device.Tilt(10, TiltDir.Down);
+        device.Tilt(0.5, TiltDir.Down);
         Assert.True(device.IsMoving);
         device.Tilt(0, TiltDir.Stop);
         Assert.False(device.IsMoving);
 
-        device.Zoom(5, ZoomDir.Wide);
+        device.Zoom(0.75, ZoomDir.Wide);
         Assert.True(device.IsMoving);
         device.Zoom(0, ZoomDir.Stop);
         Assert.False(device.IsMoving);
 
-        device.Focus(5, FocusDir.Far);
+        device.Focus(0.75, FocusDir.Far);
         Assert.True(device.IsMoving);
         device.Stop();
         Assert.False(device.IsMoving);
@@ -288,9 +288,9 @@ public class ViscaIpDeviceStopRepeatTests
         using var camera = new LoopbackCamera();
 
         // Queued faster than the send throttle, so all three are pending at once.
-        camera.Device.PanTilt(10, 10, PanDir.Left, TiltDir.Up);
-        camera.Device.Zoom(5, ZoomDir.Tele);
-        camera.Device.Focus(5, FocusDir.Far);
+        camera.Device.PanTilt(0.4, 0.5, PanDir.Left, TiltDir.Up);
+        camera.Device.Zoom(0.75, ZoomDir.Tele);
+        camera.Device.Focus(0.75, FocusDir.Far);
         await camera.WaitForPacketsAsync(3);
         var packets = await camera.CollectAsync();
 
@@ -298,6 +298,85 @@ public class ViscaIpDeviceStopRepeatTests
         Assert.Contains(packets, p => IsPanTilt(p.Payload));
         Assert.Contains(packets, p => p.Payload.Take(4).SequenceEqual(new byte[] { 0x81, 0x01, 0x04, 0x07 }));
         Assert.Contains(packets, p => p.Payload.Take(4).SequenceEqual(new byte[] { 0x81, 0x01, 0x04, 0x08 }));
+    }
+
+    // A speed fraction becomes Min + floor(f · (Max − Min)): pan 1..24, tilt 1..20, zoom and focus
+    // 0..7. Fraction 0 still moves at Min; out-of-range and NaN fractions are clamped into range.
+    [Theory]
+    [InlineData("Pan", 0.0, 1)]
+    [InlineData("Pan", 1e-9, 1)]
+    [InlineData("Pan", 0.5, 12)]
+    [InlineData("Pan", 1.0, 24)]
+    [InlineData("Pan", 1.5, 24)]
+    [InlineData("Pan", -0.5, 1)]
+    [InlineData("Pan", double.NaN, 1)]
+    [InlineData("Tilt", 0.0, 1)]
+    [InlineData("Tilt", 1e-9, 1)]
+    [InlineData("Tilt", 0.5, 10)]
+    [InlineData("Tilt", 1.0, 20)]
+    [InlineData("Zoom", 0.0, 0)]
+    [InlineData("Zoom", 1e-9, 0)]
+    [InlineData("Zoom", 0.5, 3)]
+    [InlineData("Zoom", 1.0, 7)]
+    [InlineData("Zoom", 2.0, 7)]
+    [InlineData("Focus", 0.0, 0)]
+    [InlineData("Focus", 1e-9, 0)]
+    [InlineData("Focus", 0.5, 3)]
+    [InlineData("Focus", 1.0, 7)]
+    public async Task AMoveAtASpeedFraction_SendsTheMatchingViscaSpeed(string axis, double fraction, int expectedSpeed)
+    {
+        using var camera = new LoopbackCamera();
+
+        switch (axis)
+        {
+            case "Pan": camera.Device.Pan(fraction, PanDir.Right); break;
+            case "Tilt": camera.Device.Tilt(fraction, TiltDir.Up); break;
+            case "Zoom": camera.Device.Zoom(fraction, ZoomDir.Tele); break;
+            case "Focus": camera.Device.Focus(fraction, FocusDir.Far); break;
+        }
+        await camera.WaitForPacketsAsync(1);
+        var payload = (await camera.CollectAsync(TimeSpan.Zero))[0].Payload;
+
+        byte[] expected = axis switch
+        {
+            // The idle axis keeps the device's initial speed (4), as before.
+            "Pan" => new byte[] { 0x81, 0x01, 0x06, 0x01, (byte)expectedSpeed, 0x04, (byte)PanDir.Right, (byte)TiltDir.Stop, 0xFF },
+            "Tilt" => new byte[] { 0x81, 0x01, 0x06, 0x01, 0x04, (byte)expectedSpeed, (byte)PanDir.Stop, (byte)TiltDir.Up, 0xFF },
+            "Zoom" => new byte[] { 0x81, 0x01, 0x04, 0x07, (byte)((byte)ZoomDir.Tele | expectedSpeed), 0xFF },
+            _ => new byte[] { 0x81, 0x01, 0x04, 0x08, (byte)((byte)FocusDir.Far | expectedSpeed), 0xFF },
+        };
+        Assert.Equal(expected, payload);
+    }
+
+    [Fact]
+    public async Task ASpeedChangeThatKeepsTheViscaSpeed_SendsNothing()
+    {
+        using var camera = new LoopbackCamera();
+        camera.Device.Pan(0.5, PanDir.Left);
+        await camera.WaitForPacketsAsync(1);
+        await camera.CollectAsync();
+
+        // 0.5 and 0.52 both quantize to pan speed 12.
+        camera.Device.Pan(0.52, PanDir.Left);
+        var packets = await camera.CollectAsync();
+
+        Assert.Empty(packets);
+    }
+
+    [Fact]
+    public async Task AStop_SendsSpeedZeroForTheStoppedAxis_WhateverTheFraction()
+    {
+        using var camera = new LoopbackCamera();
+        camera.Device.PanTilt(0.5, 0.5, PanDir.Left, TiltDir.Up);
+        await camera.WaitForPacketsAsync(1);
+        await camera.CollectAsync();
+
+        camera.Device.Pan(0.7, PanDir.Stop);
+        var packets = await camera.CollectAsync(SingleAxisStopWindow);
+
+        AssertStopsWithin(packets, IsPanStopTiltUp, SingleAxisStopSpread);
+        Assert.All(packets.Where(p => IsPanStopTiltUp(p.Payload)),
+            p => Assert.Equal(new byte[] { 0x81, 0x01, 0x06, 0x01, 0, 10, (byte)PanDir.Stop, (byte)TiltDir.Up, 0xFF }, p.Payload));
     }
 
     /// <summary>One VISCA command: a single 0xFF terminator, at the end, and a header that carries exactly one payload.</summary>

@@ -36,7 +36,16 @@ public class InputViewModel : ViewModelBase, INotifyPropertyChanged
     public float DeadZone { get => _input.DeadZone; set => _input.DeadZone = value; }
     public float Saturation { get => _input.Saturation; set => _input.Saturation = value; }
     public float Expo { get => _input.Expo; set => _input.Expo = value; }
-    public string OutputValue { get => $"{_input.CurrentDirection} {_input.CurrentValue}"; }
+    // A speed command shows its speed as a percentage of the full range (e.g. "High 37 %").
+    public string OutputValue
+    {
+        get
+        {
+            if (_input.SelectedCommand is not IDynamicCommand)
+                return $"{_input.CurrentDirection} {_input.CurrentValue}";
+            return _input.CurrentDirection == Direction.Stop ? "Stop" : $"{_input.CurrentDirection} {_input.CurrentValue} %";
+        }
+    }
 
     public bool Inverted { get => _input.Inverted; set => _input.Inverted = value; }
     public bool DefaultCenter { get => _input.DefaultCenter; set => _input.DefaultCenter = value; }
