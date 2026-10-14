@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using PtzJoystickControl.Application.Commands;
 using PtzJoystickControl.Application.Devices;
@@ -183,6 +184,72 @@ public class SelectCameraCommandTests
 
         Assert.Null(Record.Exception(cameras.Clear));
         Assert.Empty(command.Options);
+    }
+
+    [Fact]
+    public void ClearingTheList_ForwardsOneReset()
+    {
+        var cameras = new ObservableCollection<ICamera> { new ViscaIpDevice("Cam 1"), new NonViscaIpCamera("Other") };
+        var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
+        var actions = new List<NotifyCollectionChangedAction>();
+        command.CollectionChanged += (_, e) => actions.Add(e.Action);
+
+        cameras.Clear();
+
+        Assert.Equal(new[] { NotifyCollectionChangedAction.Reset }, actions);
+    }
+
+    [Fact]
+    public void AfterAClear_RenamesOfTheClearedCamerasAreIgnored()
+    {
+        var visca = new ViscaIpDevice("Cam 1");
+        var other = new NonViscaIpCamera("Other");
+        var cameras = new ObservableCollection<ICamera> { visca, other };
+        var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
+
+        cameras.Clear();
+        var optionsChanges = CountOptionsChanges(command);
+        visca.Name = "Cam 1 renamed";
+        other.Name = "Other renamed";
+
+        Assert.Equal(0, optionsChanges());
+    }
+
+    [Fact]
+    public void AfterAClearAndDispose_RenamesOfTheClearedCamerasAreIgnored()
+    {
+        var visca = new ViscaIpDevice("Cam 1");
+        var other = new NonViscaIpCamera("Other");
+        var cameras = new ObservableCollection<ICamera> { visca, other };
+        var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
+
+        cameras.Clear();
+        command.Dispose();
+        var notifications = 0;
+        command.PropertyChanged += (_, _) => notifications++;
+        visca.Name = "Cam 1 renamed";
+        other.Name = "Other renamed";
+
+        Assert.Equal(0, notifications);
+    }
+
+    [Fact]
+    public void AfterAClear_AddedCameras_NotifyOncePerRename()
+    {
+        var visca = new ViscaIpDevice("Cam 1");
+        var cameras = new ObservableCollection<ICamera> { visca, new NonViscaIpCamera("Other") };
+        var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
+        var added = new NonViscaIpCamera("New");
+
+        cameras.Clear();
+        cameras.Add(visca);
+        cameras.Add(added);
+        var optionsChanges = CountOptionsChanges(command);
+
+        visca.Name = "Cam 1 renamed";
+        Assert.Equal(1, optionsChanges());
+        added.Name = "New renamed";
+        Assert.Equal(2, optionsChanges());
     }
 
     [Fact]
