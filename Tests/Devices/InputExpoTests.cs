@@ -373,10 +373,12 @@ public sealed class InputExpoTests
     }
 
     [Theory]
-    [InlineData(100, 1.0)]
-    [InlineData(37, 0.37)]
-    [InlineData(0, 0.0)]
-    public void AButtonMappedToASpeedCommand_RunsAtItsSpeedPercentage_AndStopsOnRelease(int percent, double expected)
+    [InlineData(100, 1.0, Direction.High, 1)]
+    [InlineData(37, 0.37, Direction.High, 1)]
+    [InlineData(0, 0.0, Direction.High, 1)]
+    [InlineData(100, 1.0, Direction.Low, -1)]
+    [InlineData(37, 0.37, Direction.Low, -1)]
+    public void AButtonMappedToASpeedCommand_RunsAtItsSpeedPercentageInItsDirection_AndStopsOnRelease(int percent, double expected, Direction direction, int sign)
     {
         var gamepad = new FakeGamepad();
         var camera = new SpeedRecordingCamera();
@@ -386,9 +388,10 @@ public sealed class InputExpoTests
         var button = new Input("button-1", "Button 1", InputType.Button, gamepad.Commands);
         button.SelectedCommand = pan;
         button.CommandValue = button.Values!.Single(v => v.Value == percent);
+        button.CommandDirection = button.Directions!.Single(d => d.Direction == direction);
 
         button.InputValue = 1;
-        Assert.Equal(1, camera.Runs.Last().Sign);
+        Assert.Equal(sign, camera.Runs.Last().Sign);
         Assert.Equal(expected, camera.Runs.Last().Speed, 9);
 
         button.InputValue = 0;
