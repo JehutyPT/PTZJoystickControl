@@ -70,11 +70,11 @@ internal sealed class FakeGamepad : IGamepad
     public string Name => "Fake gamepad";
     public bool IsActivated { get; set; } = true;
     public bool IsConnected { get; set; } = true;
-    public ObservableCollection<ViscaDeviceBase>? Cameras { get; set; }
+    public ObservableCollection<ICamera>? Cameras { get; set; }
     public IReadOnlyList<ICommand> Commands => CommandList;
     public bool DetectInput { get; set; }
     public IEnumerable<IInput> Inputs => InputList;
-    public ViscaDeviceBase? SelectedCamera { get; set; }
+    public ICamera? SelectedCamera { get; set; }
 
     public void Acquire() { }
     public void Unacquire() { }

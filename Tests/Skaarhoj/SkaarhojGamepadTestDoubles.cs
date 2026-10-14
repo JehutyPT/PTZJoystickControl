@@ -76,21 +76,21 @@ internal sealed class MotionRecordingCamera : ViscaDeviceBase
 
 internal sealed class FakeCamerasService : ICamerasService
 {
-    public FakeCamerasService(params ViscaDeviceBase[] cameras) =>
-        Cameras = new ObservableCollection<ViscaDeviceBase>(cameras);
+    public FakeCamerasService(params ICamera[] cameras) =>
+        Cameras = new ObservableCollection<ICamera>(cameras);
 
-    public ObservableCollection<ViscaDeviceBase> Cameras { get; }
+    public ObservableCollection<ICamera> Cameras { get; }
 
-    public void AddCamera(ViscaDeviceBase camera) => Cameras.Add(camera);
+    public void AddCamera(ICamera camera) => Cameras.Add(camera);
 
-    public void RemoveCamera(ViscaDeviceBase camera) => Cameras.Remove(camera);
+    public void RemoveCamera(ICamera camera) => Cameras.Remove(camera);
 }
 
 /// <summary>A Companion service whose inbound camera selections the test raises.</summary>
 internal sealed class RaisingCompanionService : IBitfocusCompanionService
 {
     public event EventHandler<BitfocusCompanionEvent>? ReceivedBitfocusCommand;
-    public void Select(ViscaDeviceBase camera) =>
+    public void Select(ICamera camera) =>
         ReceivedBitfocusCommand?.Invoke(this, new BitfocusCompanionEvent(InboundBitfocusCompanionEventEnum.SelectCamera, 1, camera));
     public void PressButton(int? pageNumber, int? buttonNumber) { }
     public void SetCustomVariable(string variableName, string value) { }

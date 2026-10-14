@@ -44,9 +44,9 @@ public class CamerasViewModel : ViewModelBase, INotifyPropertyChanged
         NotifyPropertyChanged(nameof(Cameras));
     }
 
-    public ObservableCollection<ViscaDeviceBase> Cameras { get; }
+    public ObservableCollection<ICamera> Cameras { get; }
 
-    public ViscaDeviceBase? SelectedCamera
+    public ICamera? SelectedCamera
     {
         get => _gamepadsViewModel.SelectedGamepad?.SelectedCamera;
         set
@@ -61,7 +61,8 @@ public class CamerasViewModel : ViewModelBase, INotifyPropertyChanged
 
     public void RemoveCamera(object camera)
     {
-        _camerasService.RemoveCamera((ViscaDeviceBase)camera);
+        if (camera is ICamera removed)
+            _camerasService.RemoveCamera(removed);
     }
 
     public new event PropertyChangedEventHandler? PropertyChanged;

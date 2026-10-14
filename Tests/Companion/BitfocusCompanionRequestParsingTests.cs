@@ -7,10 +7,10 @@ namespace PtzJoystickControl.Tests.Companion;
 
 public class BitfocusCompanionRequestParsingTests
 {
-    private static readonly ViscaDeviceBase CamA = new ViscaIpDevice("Cam A") { CompanionNumber = 1 };
-    private static readonly ViscaDeviceBase CamB = new ViscaIpDevice("Cam B") { CompanionNumber = 2 };
-    private static readonly ViscaDeviceBase CamC = new ViscaIpDevice("Cam C") { CompanionNumber = 7 };
-    private static readonly ViscaDeviceBase[] Cameras = { CamA, CamB, CamC };
+    private static readonly ICamera CamA = new ViscaIpDevice("Cam A") { CompanionNumber = 1 };
+    private static readonly ICamera CamB = new ViscaIpDevice("Cam B") { CompanionNumber = 2 };
+    private static readonly ICamera CamC = new ViscaIpDevice("Cam C") { CompanionNumber = 7 };
+    private static readonly ICamera[] Cameras = { CamA, CamB, CamC };
 
     private static KeyValuePair<string?, string?> P(string? name, string? value) => new(name, value);
 
@@ -92,7 +92,7 @@ public class BitfocusCompanionRequestParsingTests
         var left = new ViscaIpDevice("Left") { CompanionNumber = 3 };
         var right = new ViscaIpDevice("Right") { CompanionNumber = 3 };
 
-        var result = BitfocusCompanionEvent.ParseRequest(new[] { P("SelectCamera", "3") }, new ViscaDeviceBase[] { CamA, left, right });
+        var result = BitfocusCompanionEvent.ParseRequest(new[] { P("SelectCamera", "3") }, new ICamera[] { CamA, left, right });
 
         Assert.False(result.IsAccepted);
         Assert.Empty(result.Events);
@@ -103,7 +103,7 @@ public class BitfocusCompanionRequestParsingTests
     [Fact]
     public void NoCameras_RejectsEveryNumber()
     {
-        var result = BitfocusCompanionEvent.ParseRequest(new[] { P("SetCameraPreview", "1") }, Array.Empty<ViscaDeviceBase>());
+        var result = BitfocusCompanionEvent.ParseRequest(new[] { P("SetCameraPreview", "1") }, Array.Empty<ICamera>());
 
         Assert.False(result.IsAccepted);
     }

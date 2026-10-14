@@ -19,8 +19,8 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
     // A short timeout makes a response that is never closed fail the test instead of hanging it.
     private readonly HttpClient _client;
     private readonly RecordingTraceListener _trace = new();
-    private static readonly ViscaDeviceBase Cam1 = new ViscaIpDevice("Cam 1") { CompanionNumber = 1 };
-    private static readonly ViscaDeviceBase Cam2 = new ViscaIpDevice("Cam 2") { CompanionNumber = 2 };
+    private static readonly ICamera Cam1 = new ViscaIpDevice("Cam 1") { CompanionNumber = 1 };
+    private static readonly ICamera Cam2 = new ViscaIpDevice("Cam 2") { CompanionNumber = 2 };
     private readonly FakeCameras _cameras = new(Cam1, Cam2);
 
     public BitfocusCompanionListenerTests()
@@ -251,13 +251,13 @@ public sealed class BitfocusCompanionListenerTests : IDisposable
 
     private sealed class FakeCameras : ICamerasService
     {
-        public FakeCameras(params ViscaDeviceBase[] cameras) => Cameras = new ObservableCollection<ViscaDeviceBase>(cameras);
+        public FakeCameras(params ICamera[] cameras) => Cameras = new ObservableCollection<ICamera>(cameras);
 
-        public ObservableCollection<ViscaDeviceBase> Cameras { get; }
+        public ObservableCollection<ICamera> Cameras { get; }
 
-        public void AddCamera(ViscaDeviceBase camera) => Cameras.Add(camera);
+        public void AddCamera(ICamera camera) => Cameras.Add(camera);
 
-        public void RemoveCamera(ViscaDeviceBase camera) => Cameras.Remove(camera);
+        public void RemoveCamera(ICamera camera) => Cameras.Remove(camera);
     }
 
     private sealed class RecordingTraceListener : TraceListener

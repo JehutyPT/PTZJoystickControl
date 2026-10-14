@@ -9,7 +9,7 @@ namespace PtzJoystickControl.Application.Services;
 public class CamerasService : ICamerasService
 {
     private readonly ICameraSettingsStore _camerasDb;
-    public ObservableCollection<ViscaDeviceBase> Cameras { get; } = new();
+    public ObservableCollection<ICamera> Cameras { get; } = new();
 
     public CamerasService(ICameraSettingsStore camerasDb)
     {
@@ -38,14 +38,14 @@ public class CamerasService : ICamerasService
         }
     }
 
-    public void AddCamera(ViscaDeviceBase camera)
+    public void AddCamera(ICamera camera)
     {
         camera.CompanionNumber ??= CompanionNumbers.NextFree(Cameras, preferred: Cameras.Count + 1);
         Cameras.Add(camera);
         camera.PersistentPropertyChanged += CameraPersistentPropertyChanged;
     }
 
-    public void RemoveCamera(ViscaDeviceBase camera)
+    public void RemoveCamera(ICamera camera)
     {
         Cameras.Remove(camera);
         camera.PersistentPropertyChanged -= CameraPersistentPropertyChanged;

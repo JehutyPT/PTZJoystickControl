@@ -102,7 +102,7 @@ public sealed class CompanionNumberTests : IDisposable
     {
         var a = Cam("A", 1);
         var b = Cam("B", 2);
-        var cameras = new ViscaDeviceBase[] { a, b };
+        var cameras = new ICamera[] { a, b };
 
         Assert.Same(b, CompanionNumbers.UsedByAnotherCamera(cameras, a, 2));
         Assert.Null(CompanionNumbers.UsedByAnotherCamera(cameras, a, 1));
@@ -124,7 +124,7 @@ public sealed class CompanionNumberTests : IDisposable
     public void CompanionNumber_RoundTripsThroughCamerasJson()
     {
         var path = Path.Combine(_dir, "Cameras.json");
-        new CameraSettingsStore(path).SaveCameras(new ViscaDeviceBase[] { Cam("A", 4), Cam("B", 2) });
+        new CameraSettingsStore(path).SaveCameras(new ICamera[] { Cam("A", 4), Cam("B", 2) });
 
         var loaded = new CameraSettingsStore(path).GetAllCameras().ToList();
 
@@ -164,18 +164,18 @@ public sealed class CompanionNumberTests : IDisposable
 
     private sealed class MemoryStore : ICameraSettingsStore
     {
-        private readonly ViscaDeviceBase[] _cameras;
+        private readonly ICamera[] _cameras;
 
-        public MemoryStore(params ViscaDeviceBase[] cameras) => _cameras = cameras;
+        public MemoryStore(params ICamera[] cameras) => _cameras = cameras;
 
-        public List<ViscaDeviceBase> Saved { get; } = new();
+        public List<ICamera> Saved { get; } = new();
 
-        public IEnumerable<ViscaDeviceBase> GetAllCameras() => _cameras;
+        public IEnumerable<ICamera> GetAllCameras() => _cameras;
 
-        public bool SaveCameras(IEnumerable<ViscaDeviceBase> viscaDevices)
+        public bool SaveCameras(IEnumerable<ICamera> cameras)
         {
             Saved.Clear();
-            Saved.AddRange(viscaDevices);
+            Saved.AddRange(cameras);
             return true;
         }
     }

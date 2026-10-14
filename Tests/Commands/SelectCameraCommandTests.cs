@@ -15,8 +15,8 @@ public class SelectCameraCommandTests
     [Fact]
     public void EachCommand_OffersOnlyItsOwnGamepadsCameras()
     {
-        var gamepadA = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam A") });
-        var gamepadB = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam B1"), new ViscaIpDevice("Cam B2") });
+        var gamepadA = new TestGamepad(new ObservableCollection<ICamera> { new ViscaIpDevice("Cam A") });
+        var gamepadB = new TestGamepad(new ObservableCollection<ICamera> { new ViscaIpDevice("Cam B1"), new ViscaIpDevice("Cam B2") });
         var commandA = new SelectCameraCommand(gamepadA, new NullCompanionService());
         var commandB = new SelectCameraCommand(gamepadB, new NullCompanionService());
 
@@ -28,7 +28,7 @@ public class SelectCameraCommandTests
     public void RemovingTheSelectedCamera_AfterDispose_OnlyClearsTheLiveGamepadsSelection()
     {
         var camera = new ViscaIpDevice("Cam 1");
-        var cameras = new ObservableCollection<ViscaDeviceBase> { camera, new ViscaIpDevice("Cam 2") };
+        var cameras = new ObservableCollection<ICamera> { camera, new ViscaIpDevice("Cam 2") };
         var removedGamepad = new TestGamepad(cameras) { SelectedCamera = camera };
         var liveGamepad = new TestGamepad(cameras) { SelectedCamera = camera };
         var removedCommand = new SelectCameraCommand(removedGamepad, new NullCompanionService());
@@ -48,7 +48,7 @@ public class SelectCameraCommandTests
     public void AfterDispose_CameraRenamesAndAddedCamerasAreIgnored()
     {
         var camera = new ViscaIpDevice("Cam 1");
-        var cameras = new ObservableCollection<ViscaDeviceBase> { camera };
+        var cameras = new ObservableCollection<ICamera> { camera };
         var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
         var notifications = 0;
         command.PropertyChanged += (_, _) => notifications++;
@@ -67,7 +67,7 @@ public class SelectCameraCommandTests
     public void AfterDispose_SelectingACamera_DoesNotThrow()
     {
         var camera = new ViscaIpDevice("Cam 1");
-        var gamepad = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { camera });
+        var gamepad = new TestGamepad(new ObservableCollection<ICamera> { camera });
         var command = new SelectCameraCommand(gamepad, new NullCompanionService());
 
         command.Dispose();
@@ -80,7 +80,7 @@ public class SelectCameraCommandTests
     public void Dispose_CanBeCalledTwice()
     {
         var command = new SelectCameraCommand(
-            new TestGamepad(new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1") }),
+            new TestGamepad(new ObservableCollection<ICamera> { new ViscaIpDevice("Cam 1") }),
             new NullCompanionService());
 
         command.Dispose();
@@ -92,7 +92,7 @@ public class SelectCameraCommandTests
     public void SelectingAndDeselectingACamera_DoesNotThrow()
     {
         var camera = new ViscaIpDevice("Cam 1");
-        var gamepad = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { camera });
+        var gamepad = new TestGamepad(new ObservableCollection<ICamera> { camera });
         _ = new SelectCameraCommand(gamepad, new NullCompanionService());
 
         Assert.Null(Record.Exception(() => gamepad.SelectedCamera = camera));
@@ -102,7 +102,7 @@ public class SelectCameraCommandTests
     [Fact]
     public void AddingANonViscaIpCamera_DoesNotThrow()
     {
-        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1") };
+        var cameras = new ObservableCollection<ICamera> { new ViscaIpDevice("Cam 1") };
         _ = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
 
         Assert.Null(Record.Exception(() => cameras.Add(new NonViscaIpCamera("Other"))));
@@ -112,7 +112,7 @@ public class SelectCameraCommandTests
     public void RemovingANonViscaIpCamera_DoesNotThrow_AndItsRenamesAreIgnored()
     {
         var other = new NonViscaIpCamera("Other");
-        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1"), other };
+        var cameras = new ObservableCollection<ICamera> { new ViscaIpDevice("Cam 1"), other };
         var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
 
         Assert.Null(Record.Exception(() => cameras.Remove(other)));
@@ -126,7 +126,7 @@ public class SelectCameraCommandTests
     public void RenamingANonViscaIpCameraInTheList_NotifiesOptions()
     {
         var other = new NonViscaIpCamera("Other");
-        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1") };
+        var cameras = new ObservableCollection<ICamera> { new ViscaIpDevice("Cam 1") };
         var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
         cameras.Add(other);
         var optionsChanges = CountOptionsChanges(command);
@@ -143,7 +143,7 @@ public class SelectCameraCommandTests
         var visca = new ViscaIpDevice("Cam 1");
         var other = new NonViscaIpCamera("Other");
         var replacement = new ViscaIpDevice("Cam 1b");
-        var cameras = new ObservableCollection<ViscaDeviceBase> { visca };
+        var cameras = new ObservableCollection<ICamera> { visca };
         var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
 
         Assert.Null(Record.Exception(() => cameras[0] = other));
@@ -164,7 +164,7 @@ public class SelectCameraCommandTests
     public void MovingANonViscaIpCamera_DoesNotThrow_AndKeepsOneSubscription()
     {
         var other = new NonViscaIpCamera("Other");
-        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1"), other };
+        var cameras = new ObservableCollection<ICamera> { new ViscaIpDevice("Cam 1"), other };
         var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
 
         Assert.Null(Record.Exception(() => cameras.Move(1, 0)));
@@ -178,7 +178,7 @@ public class SelectCameraCommandTests
     [Fact]
     public void ClearingAListWithANonViscaIpCamera_DoesNotThrow()
     {
-        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 1"), new NonViscaIpCamera("Other") };
+        var cameras = new ObservableCollection<ICamera> { new ViscaIpDevice("Cam 1"), new NonViscaIpCamera("Other") };
         var command = new SelectCameraCommand(new TestGamepad(cameras), new NullCompanionService());
 
         Assert.Null(Record.Exception(cameras.Clear));
@@ -190,7 +190,7 @@ public class SelectCameraCommandTests
     {
         var visca = new ViscaIpDevice("Cam 1");
         var other = new NonViscaIpCamera("Other");
-        var cameras = new ObservableCollection<ViscaDeviceBase> { new ViscaIpDevice("Cam 0"), visca };
+        var cameras = new ObservableCollection<ICamera> { new ViscaIpDevice("Cam 0"), visca };
         var gamepad = new TestGamepad(cameras);
         var command = new SelectCameraCommand(gamepad, new NullCompanionService());
         cameras.Add(other);
@@ -217,22 +217,40 @@ public class SelectCameraCommandTests
         return () => count;
     }
 
-    // A camera that is not the VISCA-over-IP device, standing in for any other camera type.
-    private sealed class NonViscaIpCamera : ViscaDeviceBase
+    // A camera of another camera type: it implements only the camera abstraction, not the VISCA base type.
+    private sealed class NonViscaIpCamera : ICamera
     {
-        public NonViscaIpCamera(string name) : base(name) { }
+        private string _name;
 
-        public override void Power(Power byteVal) { }
-        public override void Pan(double panSpeed, PanDir panDir) { }
-        public override void Tilt(double tiltSpeed, TiltDir tiltDir) { }
-        public override void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir) { }
-        public override void Zoom(double zoomSpeed, ZoomDir zoomDir) { }
-        public override void Focus(double focusSpeed, FocusDir focusDir) { }
-        public override void FocusMode(FocusMode focusMode) { }
-        public override void FocusLock(FocusLock focusMode) { }
-        public override void Preset(Preset preset, byte presetNumber) { }
-        public override void PresetRecallSpeed(byte value) { }
-        public override void Stop() { }
+        public NonViscaIpCamera(string name) => _name = name;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }
+
+        public string Name
+        {
+            get => _name;
+            set
+            {
+                _name = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Name)));
+            }
+        }
+
+        public int? CompanionNumber { get; set; }
+        public bool Connected => true;
+        public bool IsMoving => false;
+
+        public void Power(Power power) { }
+        public void Pan(double panSpeed, PanDir panDir) { }
+        public void Tilt(double tiltSpeed, TiltDir tiltDir) { }
+        public void Zoom(double zoomSpeed, ZoomDir zoomDir) { }
+        public void Focus(double focusSpeed, FocusDir focusDir) { }
+        public void FocusMode(FocusMode focusMode) { }
+        public void FocusLock(FocusLock focusLock) { }
+        public void Preset(Preset preset, byte presetNumber) { }
+        public void PresetRecallSpeed(byte speed) { }
+        public void Stop() { }
     }
 
     private sealed class NullCompanionService : IBitfocusCompanionService
@@ -246,9 +264,9 @@ public class SelectCameraCommandTests
 
     private sealed class TestGamepad : IGamepad
     {
-        private ViscaDeviceBase? _selectedCamera;
+        private ICamera? _selectedCamera;
 
-        public TestGamepad(ObservableCollection<ViscaDeviceBase> cameras) => Cameras = cameras;
+        public TestGamepad(ObservableCollection<ICamera> cameras) => Cameras = cameras;
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }
@@ -257,12 +275,12 @@ public class SelectCameraCommandTests
         public string Name => "Test gamepad";
         public bool IsActivated { get; set; } = true;
         public bool IsConnected { get; set; } = true;
-        public ObservableCollection<ViscaDeviceBase>? Cameras { get; set; }
+        public ObservableCollection<ICamera>? Cameras { get; set; }
         public IReadOnlyList<ICommand> Commands => Array.Empty<ICommand>();
         public bool DetectInput { get; set; }
         public IEnumerable<IInput> Inputs => Array.Empty<IInput>();
 
-        public ViscaDeviceBase? SelectedCamera
+        public ICamera? SelectedCamera
         {
             get => _selectedCamera;
             set

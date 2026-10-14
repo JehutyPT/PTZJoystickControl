@@ -78,7 +78,7 @@ public sealed class SettingsStoreAtomicWriteTests : IDisposable
         var path = FilePath("Cameras.json");
         File.WriteAllText(path, new string('x', 10_000));
 
-        Assert.True(new CameraSettingsStore(path).SaveCameras(Enumerable.Empty<ViscaDeviceBase>()));
+        Assert.True(new CameraSettingsStore(path).SaveCameras(Enumerable.Empty<ICamera>()));
 
         Assert.Equal("[]", File.ReadAllText(path));
         Assert.Empty(new CameraSettingsStore(path).GetAllCameras());
@@ -93,7 +93,7 @@ public sealed class SettingsStoreAtomicWriteTests : IDisposable
         File.WriteAllText(path, PreviousContent);
         BlockNewFilesInFolder();
 
-        var saved = new CameraSettingsStore(path).SaveCameras(Enumerable.Empty<ViscaDeviceBase>());
+        var saved = new CameraSettingsStore(path).SaveCameras(Enumerable.Empty<ICamera>());
 
         Assert.False(saved);
         Assert.Equal(PreviousContent, File.ReadAllText(path));
@@ -107,7 +107,7 @@ public sealed class SettingsStoreAtomicWriteTests : IDisposable
         var path = FilePath("Cameras.json");
         Directory.CreateDirectory(path);
 
-        var saved = new CameraSettingsStore(path).SaveCameras(Enumerable.Empty<ViscaDeviceBase>());
+        var saved = new CameraSettingsStore(path).SaveCameras(Enumerable.Empty<ICamera>());
 
         Assert.False(saved);
         Assert.Equal(new[] { "Cameras.json" }, FolderEntries());
@@ -120,7 +120,7 @@ public sealed class SettingsStoreAtomicWriteTests : IDisposable
         var store = new CameraSettingsStore(path);
 
         var results = new bool[64];
-        Parallel.For(0, results.Length, i => results[i] = store.SaveCameras(Enumerable.Empty<ViscaDeviceBase>()));
+        Parallel.For(0, results.Length, i => results[i] = store.SaveCameras(Enumerable.Empty<ICamera>()));
 
         Assert.All(results, Assert.True);
         Assert.Equal("[]", File.ReadAllText(path));

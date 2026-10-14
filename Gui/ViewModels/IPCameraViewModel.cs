@@ -13,14 +13,14 @@ namespace PtzJoystickControl.Gui.ViewModels;
 public class IPCameraViewModel : ViewModelBase, INotifyPropertyChanged
 {
     private readonly ViscaIPDeviceBase _camera;
-    private readonly IEnumerable<ViscaDeviceBase> _allCameras;
+    private readonly IEnumerable<ICamera> _allCameras;
 
     public static IEnumerable<Protocol> Protocols { get; } = Enum.GetValues<Protocol>();
 
     /// <param name="allCameras">Every camera, to reject a Companion number another camera already has.</param>
-    public IPCameraViewModel(ViscaDeviceBase camera, IEnumerable<ViscaDeviceBase> allCameras)
+    public IPCameraViewModel(ViscaIPDeviceBase camera, IEnumerable<ICamera> allCameras)
     {
-        _camera = (ViscaIPDeviceBase)camera;
+        _camera = camera;
         _allCameras = allCameras;
         WeakEventHandlerManager.Subscribe<INotifyPropertyChanged, PropertyChangedEventArgs, IPCameraViewModel>(camera, nameof(camera.PropertyChanged), OnCameraPropertyCahnged);
     }
@@ -30,7 +30,7 @@ public class IPCameraViewModel : ViewModelBase, INotifyPropertyChanged
         NotifyPropertyChanged(e?.PropertyName ?? "");
     }
 
-    public ViscaDeviceBase Camera { get => _camera; }
+    public ICamera Camera { get => _camera; }
 
     public string Name
     {

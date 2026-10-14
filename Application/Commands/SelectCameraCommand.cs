@@ -13,20 +13,20 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
 {
     public SelectCameraCommand(IGamepad gamepad, IBitfocusCompanionService companionService) : base(gamepad, companionService)
     {
-        Cameras = gamepad.Cameras ?? new ObservableCollection<ViscaDeviceBase>();
+        Cameras = gamepad.Cameras ?? new ObservableCollection<ICamera>();
         gamepad.PropertyChanged += Gamepad_PropertyChanged;
     }
 
     private void Gamepad_PropertyChanged(object? sender, PropertyChangedEventArgs? e)
     {
         if (e?.PropertyName == nameof(Gamepad.Cameras))
-            Cameras = Gamepad.Cameras ?? new ObservableCollection<ViscaDeviceBase>();
+            Cameras = Gamepad.Cameras ?? new ObservableCollection<ICamera>();
     }
 
-    private ObservableCollection<ViscaDeviceBase> cameras = null!;
+    private ObservableCollection<ICamera> cameras = null!;
     private bool disposed;
 
-    private ObservableCollection<ViscaDeviceBase> Cameras
+    private ObservableCollection<ICamera> Cameras
     {
         get { return cameras; }
         set
@@ -51,10 +51,10 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
         if (e != null)
         {
             if (e.OldStartingIndex >= 0)
-                foreach (ViscaDeviceBase device in e.OldItems!) device.PropertyChanged -= OnDeviceChange;
+                foreach (ICamera device in e.OldItems!) device.PropertyChanged -= OnDeviceChange;
 
             if (e.NewStartingIndex >= 0)
-                foreach (ViscaDeviceBase device in e.NewItems!) device.PropertyChanged += OnDeviceChange;
+                foreach (ICamera device in e.NewItems!) device.PropertyChanged += OnDeviceChange;
         }
 
         NotifyCollectionChanged(e!);
@@ -62,7 +62,7 @@ public class SelectCameraCommand : IStaticCommand, INotifyPropertyChanged, INoti
 
     private void OnDeviceChange(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ViscaDeviceBase.Name))
+        if (e.PropertyName == nameof(ICamera.Name))
             NotifyPropertyChanged(nameof(Options));
     }
 

@@ -23,7 +23,7 @@ public sealed class CompanionCameraSelectionTests : IDisposable
     {
         var camA = new RecordingCamera("A");
         var camB = new RecordingCamera("B");
-        var cameras = new ObservableCollection<ViscaDeviceBase> { camA, camB };
+        var cameras = new ObservableCollection<ICamera> { camA, camB };
         var first = new TestGamepad(cameras) { SelectedCamera = camA };
         var second = new TestGamepad(cameras);
 
@@ -37,7 +37,7 @@ public sealed class CompanionCameraSelectionTests : IDisposable
     public void AControllerThatFails_IsLogged_AndTheOthersAreStillSelected()
     {
         var cam = new RecordingCamera("A");
-        var cameras = new ObservableCollection<ViscaDeviceBase> { cam };
+        var cameras = new ObservableCollection<ICamera> { cam };
         var failing = new TestGamepad(cameras) { ThrowOnSelect = true };
         var healthy = new TestGamepad(cameras);
 
@@ -53,8 +53,8 @@ public sealed class CompanionCameraSelectionTests : IDisposable
     {
         var removed = new RecordingCamera("Removed");
         var kept = new RecordingCamera("Kept");
-        var withoutIt = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { kept }) { SelectedCamera = kept };
-        var withIt = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { kept, removed });
+        var withoutIt = new TestGamepad(new ObservableCollection<ICamera> { kept }) { SelectedCamera = kept };
+        var withIt = new TestGamepad(new ObservableCollection<ICamera> { kept, removed });
 
         CompanionCameraSelection.SelectOnEveryController(new[] { withoutIt, withIt }, removed);
 
@@ -68,7 +68,7 @@ public sealed class CompanionCameraSelectionTests : IDisposable
     {
         var moving = new RecordingCamera("Moving");
         var next = new RecordingCamera("Next");
-        var gamepad = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { moving, next }) { SelectedCamera = moving };
+        var gamepad = new TestGamepad(new ObservableCollection<ICamera> { moving, next }) { SelectedCamera = moving };
         _ = new DrivenCameras(gamepad);
         moving.Pan(0.5, PanDir.Left);
 
@@ -84,7 +84,7 @@ public sealed class CompanionCameraSelectionTests : IDisposable
     {
         var idle = new RecordingCamera("Idle");
         var next = new RecordingCamera("Next");
-        var gamepad = new TestGamepad(new ObservableCollection<ViscaDeviceBase> { idle, next }) { SelectedCamera = idle };
+        var gamepad = new TestGamepad(new ObservableCollection<ICamera> { idle, next }) { SelectedCamera = idle };
         _ = new DrivenCameras(gamepad);
 
         CompanionCameraSelection.SelectOnEveryController(new[] { gamepad }, next);
@@ -92,43 +92,48 @@ public sealed class CompanionCameraSelectionTests : IDisposable
         Assert.Equal(0, idle.StopCalls);
     }
 
-    private sealed class RecordingCamera : ViscaDeviceBase
+    // A camera of another camera type: it implements only the camera abstraction, not the VISCA base type.
+    private sealed class RecordingCamera : ICamera
     {
-        public RecordingCamera(string name) : base(name) { }
+        private PanDir panDir = PanDir.Stop;
+        private TiltDir tiltDir = TiltDir.Stop;
+
+        public RecordingCamera(string name) => Name = name;
+
+        public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+        public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }
+
+        public string Name { get; }
+        public int? CompanionNumber { get; set; }
+        public bool Connected => true;
+        public bool IsMoving => panDir != PanDir.Stop || tiltDir != TiltDir.Stop;
 
         public int StopCalls { get; private set; }
 
-        public override void Stop()
+        public void Stop()
         {
             StopCalls++;
             panDir = PanDir.Stop;
             tiltDir = TiltDir.Stop;
-            zoomCmd = (byte)ZoomDir.Stop;
-            focusCmd = (byte)FocusDir.Stop;
         }
 
-        public override void Power(Power byteVal) { }
-        public override void Pan(double panSpeed, PanDir panDir) => this.panDir = panDir;
-        public override void Tilt(double tiltSpeed, TiltDir tiltDir) => this.tiltDir = tiltDir;
-        public override void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir)
-        {
-            this.panDir = panDir;
-            this.tiltDir = tiltDir;
-        }
-        public override void Zoom(double zoomSpeed, ZoomDir zoomDir) { }
-        public override void Focus(double focusSpeed, FocusDir focusDir) { }
-        public override void FocusMode(FocusMode focusMode) { }
-        public override void FocusLock(FocusLock focusMode) { }
-        public override void Preset(Preset preset, byte presetNumber) { }
-        public override void PresetRecallSpeed(byte value) { }
+        public void Power(Power power) { }
+        public void Pan(double panSpeed, PanDir panDir) => this.panDir = panDir;
+        public void Tilt(double tiltSpeed, TiltDir tiltDir) => this.tiltDir = tiltDir;
+        public void Zoom(double zoomSpeed, ZoomDir zoomDir) { }
+        public void Focus(double focusSpeed, FocusDir focusDir) { }
+        public void FocusMode(FocusMode focusMode) { }
+        public void FocusLock(FocusLock focusLock) { }
+        public void Preset(Preset preset, byte presetNumber) { }
+        public void PresetRecallSpeed(byte speed) { }
     }
 
     private sealed class TestGamepad : IGamepad
     {
         private static int _count;
-        private ViscaDeviceBase? _selectedCamera;
+        private ICamera? _selectedCamera;
 
-        public TestGamepad(ObservableCollection<ViscaDeviceBase> cameras)
+        public TestGamepad(ObservableCollection<ICamera> cameras)
         {
             Cameras = cameras;
             Name = $"Test gamepad {Interlocked.Increment(ref _count)}";
@@ -143,12 +148,12 @@ public sealed class CompanionCameraSelectionTests : IDisposable
         public string Name { get; }
         public bool IsActivated { get; set; } = true;
         public bool IsConnected { get; set; } = true;
-        public ObservableCollection<ViscaDeviceBase>? Cameras { get; set; }
+        public ObservableCollection<ICamera>? Cameras { get; set; }
         public IReadOnlyList<ICommand> Commands => Array.Empty<ICommand>();
         public bool DetectInput { get; set; }
         public IEnumerable<IInput> Inputs => Array.Empty<IInput>();
 
-        public ViscaDeviceBase? SelectedCamera
+        public ICamera? SelectedCamera
         {
             get => _selectedCamera;
             set

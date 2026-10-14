@@ -96,11 +96,11 @@ public class GamepadInputSetupTests
         public string Name => "Test gamepad";
         public bool IsActivated { get; set; } = true;
         public bool IsConnected { get; set; } = true;
-        public ObservableCollection<ViscaDeviceBase>? Cameras { get; set; }
+        public ObservableCollection<ICamera>? Cameras { get; set; }
         public IReadOnlyList<ICommand> Commands => _commands;
         public bool DetectInput { get; set; }
         public IEnumerable<IInput> Inputs => _inputs;
-        public ViscaDeviceBase? SelectedCamera { get; set; }
+        public ICamera? SelectedCamera { get; set; }
 
         public void Acquire() { }
         public void Unacquire() { }

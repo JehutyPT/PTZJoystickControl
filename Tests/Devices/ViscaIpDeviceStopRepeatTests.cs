@@ -501,7 +501,7 @@ public class ViscaIpDeviceStopRepeatTests
 
     private sealed class TestGamepad : IGamepad
     {
-        private ViscaDeviceBase? selectedCamera;
+        private ICamera? selectedCamera;
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }
@@ -510,11 +510,11 @@ public class ViscaIpDeviceStopRepeatTests
         public string Name => "Test gamepad";
         public bool IsActivated { get; set; } = true;
         public bool IsConnected { get; set; } = true;
-        public ObservableCollection<ViscaDeviceBase>? Cameras { get; set; }
+        public ObservableCollection<ICamera>? Cameras { get; set; }
         public IReadOnlyList<ICommand> Commands => Array.Empty<ICommand>();
         public bool DetectInput { get; set; }
         public IEnumerable<IInput> Inputs => Array.Empty<IInput>();
-        public ViscaDeviceBase? SelectedCamera
+        public ICamera? SelectedCamera
         {
             get => selectedCamera;
             set

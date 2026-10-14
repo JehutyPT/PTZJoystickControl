@@ -29,10 +29,10 @@ namespace PtzJoystickControl.Application.Db
             _cameratFilePath = filePath;
         }
 
-        public IEnumerable<ViscaDeviceBase> GetAllCameras()
+        public IEnumerable<ICamera> GetAllCameras()
         {
             if (!File.Exists(_cameratFilePath))
-                return new List<ViscaIPDeviceBase>();
+                return new List<ICamera>();
 
             try
             {
@@ -68,15 +68,15 @@ namespace PtzJoystickControl.Application.Db
             catch (Exception e)
             {
                 Trace.TraceError($"Failed to load camera settings from {_cameratFilePath}, starting with none: {e}");
-                return new List<ViscaIPDeviceBase>();
+                return new List<ICamera>();
             }
         }
 
-        public bool SaveCameras(IEnumerable<ViscaDeviceBase> viscaDevices)
+        public bool SaveCameras(IEnumerable<ICamera> cameras)
         {
             try
             {
-                var viscaDeviceSettings = viscaDevices.Select(viscaDevice => new ViscaDeviceSettings(viscaDevice));
+                var viscaDeviceSettings = cameras.Select(camera => new ViscaDeviceSettings(camera));
                 string serializedViscaDeviceSettings = JsonSerializer.Serialize(viscaDeviceSettings);
                 AtomicFile.WriteAllText(_cameratFilePath, serializedViscaDeviceSettings);
                 return true;

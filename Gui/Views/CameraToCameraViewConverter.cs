@@ -20,13 +20,9 @@ public class CameraToCameraViewConverter : IValueConverter
 
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        if (value == null)
-            return null;
-
-        var type = value.GetType();
-        if (type.IsAssignableTo(typeof(ViscaIPDeviceBase)))
-            return new IPCameraViewModel((ViscaIPDeviceBase)value,
-                Locator.Current.GetService<ICamerasService>()?.Cameras ?? Enumerable.Empty<ViscaDeviceBase>());
+        if (value is ViscaIPDeviceBase camera)
+            return new IPCameraViewModel(camera,
+                Locator.Current.GetService<ICamerasService>()?.Cameras ?? Enumerable.Empty<ICamera>());
 
         return null;
     }

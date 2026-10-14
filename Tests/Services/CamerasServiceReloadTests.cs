@@ -18,11 +18,11 @@ public class CamerasServiceReloadTests
 
         var new1 = new ViscaIpDevice("New 1");
         var new2 = new ViscaIpDevice("New 2");
-        store.Cameras = new ViscaDeviceBase[] { new1, new2 };
+        store.Cameras = new ICamera[] { new1, new2 };
 
         service.LoadCamerasFromDb();
 
-        Assert.Equal(new ViscaDeviceBase[] { new1, new2 }, service.Cameras);
+        Assert.Equal(new ICamera[] { new1, new2 }, service.Cameras);
     }
 
     [Fact]
@@ -34,17 +34,17 @@ public class CamerasServiceReloadTests
 
         service.LoadCamerasFromDb();
 
-        Assert.Equal(new ViscaDeviceBase[] { a, b }, service.Cameras);
+        Assert.Equal(new ICamera[] { a, b }, service.Cameras);
     }
 
     private sealed class SwappableStore : ICameraSettingsStore
     {
-        public SwappableStore(params ViscaDeviceBase[] cameras) => Cameras = cameras;
+        public SwappableStore(params ICamera[] cameras) => Cameras = cameras;
 
-        public ViscaDeviceBase[] Cameras { get; set; }
+        public ICamera[] Cameras { get; set; }
 
-        public IEnumerable<ViscaDeviceBase> GetAllCameras() => Cameras;
+        public IEnumerable<ICamera> GetAllCameras() => Cameras;
 
-        public bool SaveCameras(IEnumerable<ViscaDeviceBase> viscaDevices) => true;
+        public bool SaveCameras(IEnumerable<ICamera> cameras) => true;
     }
 }

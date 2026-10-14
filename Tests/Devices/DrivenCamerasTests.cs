@@ -268,47 +268,53 @@ public class DrivenCamerasTests
         Assert.Equal(1, camB.StopCalls);
     }
 
-    private sealed class RecordingCamera : ViscaDeviceBase
+    // A camera of another camera type: it implements only the camera abstraction, not the VISCA base type.
+    private sealed class RecordingCamera : ICamera
     {
-        public RecordingCamera(string name) : base(name) { }
+        private PanDir panDir = PanDir.Stop;
+        private TiltDir tiltDir = TiltDir.Stop;
+        private ZoomDir zoomDir = ZoomDir.Stop;
+        private FocusDir focusDir = FocusDir.Stop;
+
+        public RecordingCamera(string name) => Name = name;
+
+        public event PropertyChangedEventHandler? PropertyChanged { add { } remove { } }
+        public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }
+
+        public string Name { get; }
+        public int? CompanionNumber { get; set; }
+        public bool Connected => true;
+        public bool IsMoving =>
+            panDir != PanDir.Stop || tiltDir != TiltDir.Stop || zoomDir != ZoomDir.Stop || focusDir != FocusDir.Stop;
 
         public int StopCalls { get; private set; }
         public bool ThrowOnStop { get; set; }
 
-        // Keeps the base class's last-sent motion state the way ViscaIpDevice does, so
-        // IsMoving reflects what the test drove.
-        public override void Stop()
+        public void Stop()
         {
             StopCalls++;
             panDir = PanDir.Stop;
             tiltDir = TiltDir.Stop;
-            zoomCmd = (byte)ZoomDir.Stop;
-            focusCmd = (byte)FocusDir.Stop;
+            zoomDir = ZoomDir.Stop;
+            focusDir = FocusDir.Stop;
             if (ThrowOnStop)
                 throw new InvalidOperationException("Simulated camera failure");
         }
 
-        public override void Power(Power byteVal) { }
-        public override void Pan(double panSpeed, PanDir panDir) => this.panDir = panDir;
-        public override void Tilt(double tiltSpeed, TiltDir tiltDir) => this.tiltDir = tiltDir;
-        public override void PanTilt(double panSpeed, double tiltSpeed, PanDir panDir, TiltDir tiltDir)
-        {
-            this.panDir = panDir;
-            this.tiltDir = tiltDir;
-        }
-        public override void Zoom(double zoomSpeed, ZoomDir zoomDir) =>
-            zoomCmd = zoomDir == ZoomDir.Stop ? (byte)0x00 : (byte)zoomDir;
-        public override void Focus(double focusSpeed, FocusDir focusDir) =>
-            focusCmd = focusDir == FocusDir.Stop ? (byte)0x00 : (byte)focusDir;
-        public override void FocusMode(FocusMode focusMode) { }
-        public override void FocusLock(FocusLock focusMode) { }
-        public override void Preset(Preset preset, byte presetNumber) { }
-        public override void PresetRecallSpeed(byte value) { }
+        public void Pan(double panSpeed, PanDir panDir) => this.panDir = panDir;
+        public void Tilt(double tiltSpeed, TiltDir tiltDir) => this.tiltDir = tiltDir;
+        public void Zoom(double zoomSpeed, ZoomDir zoomDir) => this.zoomDir = zoomDir;
+        public void Focus(double focusSpeed, FocusDir focusDir) => this.focusDir = focusDir;
+        public void Power(Power power) { }
+        public void FocusMode(FocusMode focusMode) { }
+        public void FocusLock(FocusLock focusLock) { }
+        public void Preset(Preset preset, byte presetNumber) { }
+        public void PresetRecallSpeed(byte speed) { }
     }
 
     private sealed class TestGamepad : IGamepad
     {
-        private ViscaDeviceBase? _selectedCamera;
+        private ICamera? _selectedCamera;
 
         public event PropertyChangedEventHandler? PropertyChanged;
         public event PropertyChangedEventHandler? PersistentPropertyChanged { add { } remove { } }
@@ -319,12 +325,12 @@ public class DrivenCamerasTests
         public string Name => "Test gamepad";
         public bool IsActivated { get; set; } = true;
         public bool IsConnected { get; set; } = true;
-        public ObservableCollection<ViscaDeviceBase>? Cameras { get; set; }
+        public ObservableCollection<ICamera>? Cameras { get; set; }
         public IReadOnlyList<ICommand> Commands => Array.Empty<ICommand>();
         public bool DetectInput { get; set; }
         public IEnumerable<IInput> Inputs => Array.Empty<IInput>();
 
-        public ViscaDeviceBase? SelectedCamera
+        public ICamera? SelectedCamera
         {
             get => _selectedCamera;
             set
