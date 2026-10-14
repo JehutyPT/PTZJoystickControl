@@ -20,6 +20,7 @@
     <ProjectReference Include="..\Core\Core.csproj" />
     <ProjectReference Include="..\Application\Application.csproj" />
     <ProjectReference Include="..\SkaarhojPanel\SkaarhojPanel.csproj" />
+    <ProjectReference Include="..\SdlGamepads\SdlGamepads.csproj" />
   </ItemGroup>
 
 </Project>

@@ -100,21 +100,11 @@ public class SdlGamepadsService : IGamepadsService
                 {
                     // Unplugged: no gamepad saves the flag, so save it here. Otherwise the joystick
                     // would be activated again on the next start alongside another controller.
-                    PersistDeactivated(sdlGamepadInfo.Id);
+                    SdlJoystickActivation.PersistDeactivated(_gamppadSettingsDb, sdlGamepadInfo.Id);
                 }
 
                 sdlGamepadInfo.IsActivated = false;
             }
-        }
-    }
-
-    private void PersistDeactivated(string id)
-    {
-        var settings = _gamppadSettingsDb.GetGamepadSettingsById(id);
-        if (settings is { IsActivated: true })
-        {
-            settings.IsActivated = false;
-            _gamppadSettingsDb.SaveGamepadSettings(settings);
         }
     }
 
@@ -256,17 +246,8 @@ public class SdlGamepadsService : IGamepadsService
         gamepadInfo.DeviceIndex = deviceIndex;
         gamepadInfo.InstanceId = SDL.SDL_JoystickGetDeviceInstanceID(deviceIndex);
         gamepadInfo.IsConnected = true;
-        if (gamepadInfo.IsActivated)
-        {
-            // Plugged in saved as active: only if no other controller is (one at a time).
-            if (_inputQueue.MayActivate(gamepadInfo))
-                ActivateGamepad(gamepadInfo);
-            else
-            {
-                gamepadInfo.IsActivated = false;
-                PersistDeactivated(gamepadInfo.Id);
-            }
-        }
+        // Plugged in saved as active: only if no other controller is (one at a time).
+        SdlJoystickActivation.OnConnected(gamepadInfo, _inputQueue, _gamppadSettingsDb, ActivateGamepad);
     }
 
     private void OnJoystickRemoved(SDL.SDL_JoyDeviceEvent jdevice)
