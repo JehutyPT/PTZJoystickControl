@@ -11,7 +11,7 @@ public class FocusMoveCommand : IDynamicCommand
 
     public FocusMoveCommand(IGamepad gamepad, IBitfocusCompanionService companionService, ISpeedProfilesService speedProfiles) : base(gamepad, companionService)
     {
-        _speedProfiles = speedProfiles;
+        _speedProfiles = speedProfiles ?? throw new ArgumentNullException(nameof(speedProfiles));
     }
 
     public override string CommandName => "Manual focus";

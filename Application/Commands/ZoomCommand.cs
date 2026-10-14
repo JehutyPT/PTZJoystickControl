@@ -11,7 +11,7 @@ public class ZoomCommand : IDynamicCommand
 
     public ZoomCommand(IGamepad gamepad, IBitfocusCompanionService companionService, ISpeedProfilesService speedProfiles) : base(gamepad, companionService)
     {
-        _speedProfiles = speedProfiles;
+        _speedProfiles = speedProfiles ?? throw new ArgumentNullException(nameof(speedProfiles));
     }
 
     public override string CommandName => "Zoom";
