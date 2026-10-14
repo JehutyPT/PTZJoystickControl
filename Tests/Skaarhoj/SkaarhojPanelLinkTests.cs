@@ -23,9 +23,8 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
     private readonly TraceRecorder _trace = new();
     private readonly List<SkaarhojPanelLink> _links = new();
     private readonly ConcurrentQueue<(string Kind, long At, string Detail)> _events = new();
-    private readonly ConcurrentQueue<RawPanelMessage> _messages = new();
     private long _startedAt;
-    // When each message reached subscribers: just after the link counted its line as heard.
+    // Each message the link raised, and when it reached subscribers: just after the link counted its line as heard.
     private readonly ConcurrentQueue<(long At, RawPanelMessage Message)> _heard = new();
 
     public void Dispose()
@@ -55,11 +54,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
             connectTimeout: TimeSpan.FromSeconds(1));
         link.LinkUp += (_, _) => _events.Enqueue(("up", Stopwatch.GetTimestamp(), ""));
         link.LinkDown += (_, reason) => _events.Enqueue(("down", Stopwatch.GetTimestamp(), reason));
-        link.MessageReceived += (_, message) =>
-        {
-            _heard.Enqueue((Stopwatch.GetTimestamp(), message));
-            _messages.Enqueue(message);
-        };
+        link.MessageReceived += (_, message) => _heard.Enqueue((Stopwatch.GetTimestamp(), message));
         _links.Add(link);
         if (_startedAt == 0)
             _startedAt = Stopwatch.GetTimestamp();
@@ -79,6 +74,8 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         return "Events: " + string.Join(" | ", events.Select(e =>
             $"{e.Kind} at {Stopwatch.GetElapsedTime(start, e.At).TotalMilliseconds:F0} ms{(e.Detail.Length > 0 ? ": " + e.Detail : "")}"));
     }
+
+    private RawPanelMessage[] Messages => _heard.Select(h => h.Message).ToArray();
 
     private string DownReason => _events.First(e => e.Kind == "down").Detail;
 
@@ -122,7 +119,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         Assert.True(link.IsUp);
 
         _panel.Send("HWC#60=Speed:-500", "map=3:3", "garbage line", "HWC#1.2=Down");
-        Assert.True(await WaitUntil(() => _messages.OfType<RawPanelMessage.Down>().Any(), TimeSpan.FromSeconds(2)));
+        Assert.True(await WaitUntil(() => Messages.OfType<RawPanelMessage.Down>().Any(), TimeSpan.FromSeconds(2)));
 
         Assert.Equal(new RawPanelMessage[]
         {
@@ -132,8 +129,8 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
             new RawPanelMessage.Map(3, 3),
             new RawPanelMessage.Unknown("garbage line"),
             new RawPanelMessage.Down(1, 2),
-        }, _messages.ToArray());
-        Assert.DoesNotContain(_messages, m => m is RawPanelMessage.Ready);
+        }, Messages);
+        Assert.DoesNotContain(Messages, m => m is RawPanelMessage.Ready);
         Assert.Equal(0, Count("down"));
         Assert.True(link.IsUp);
         Assert.Contains(_trace.Events, e => e.Type == TraceEventType.Warning && e.Message.Contains("garbage line"));
@@ -208,7 +205,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
                 Thread.Sleep(20);
             }
         }, TaskCreationOptions.LongRunning);
-        Assert.True(await WaitUntil(() => _messages.OfType<RawPanelMessage.Speed>().Any(), TimeSpan.FromSeconds(2)));
+        Assert.True(await WaitUntil(() => Messages.OfType<RawPanelMessage.Speed>().Any(), TimeSpan.FromSeconds(2)));
         await Task.Delay(50);
         var pingsBefore = PingsReceived;
 
@@ -356,7 +353,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
 
         _panel.AnswerPings = false;
         _panel.Send("_isSleeping=0");
-        Assert.True(await WaitUntil(() => _messages.OfType<RawPanelMessage.Reply>().Any(), TimeSpan.FromSeconds(2)));
+        Assert.True(await WaitUntil(() => Messages.OfType<RawPanelMessage.Reply>().Any(), TimeSpan.FromSeconds(2)));
         var wokeAt = Stopwatch.GetTimestamp();
 
         Assert.True(await WaitUntil(() => Count("down") == 1, TimeSpan.FromSeconds(2)));
@@ -446,7 +443,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
             reconnectInitial: TimeSpan.FromMilliseconds(30), reconnectMax: TimeSpan.FromMilliseconds(120));
 
         Assert.True(await WaitUntil(() => _panel.Accepted >= 4 && Count("down") >= 3, TimeSpan.FromSeconds(3)));
-        Assert.Contains(_messages, m => m is RawPanelMessage.Map);
+        Assert.Contains(Messages, m => m is RawPanelMessage.Map);
 
         // Each wait runs from a link down to the next connect.
         var downs = _events.Where(e => e.Kind == "down").Select(e => e.At).ToArray();
