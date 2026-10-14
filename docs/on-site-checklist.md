@@ -6,12 +6,29 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #47: XC cameras (pan and tilt over HTTP)
+
+The camera list now has **Add VISCA camera** and **Add XC camera** buttons. An XC camera drives a CR-N500 over Canon's XC protocol (HTTP) instead of VISCA, for pan and tilt only: zoom, focus and presets on an XC camera do nothing yet (#48) and only log an `INFO` line. VISCA cameras are unchanged. Back up `%APPDATA%\PTZJoystickControl\Cameras.json` before starting the new build, and keep the log open (tray menu → **Show log**): XC request failures are logged at `WARN` with the reason.
+
+- [ ] Start the new build with the existing `Cameras.json`: no settings `WARN` or `ERROR` in the log, and the VISCA rows are unchanged. **Add VISCA camera** adds a VISCA row as **Add** did. **Add XC camera** adds a row named `Camera <n>` with only **Name**, **Address** (empty), **Port** (80), **Status** (Disconnected) and **Companion #**: no Protocol, Header or Interval, and never "Unsupported camera type".
+- [ ] For each CR-N500, add an XC camera next to its VISCA row, with the camera's IP address, port 80 and a free **Companion #**. Within a few seconds its status shows Connected (green). Pull the camera's network cable: within about 4 s the status shows Disconnected (red), with one `WARN` and one "not reachable" line in the log. Plug it back: Connected again, with one line saying so.
+- [ ] In an XC row, type an invalid address (`192.168.1`, `10.0.0.1:80`), a port of 0, then a **Companion #** of 0 or another camera's number, one at a time: each field shows a red border and message, as in a VISCA row. Undo each. Quit and restart the app: the XC rows keep their name, address, port and Companion #, and the VISCA rows are unchanged.
+- [ ] Select an XC camera from Companion, then pan and tilt it from the USB joystick and from the panel: it responds and stops on release. Zoom, focus and preset buttons do nothing on it, and log at most one `INFO` line per operation per minute.
+- [ ] At a low **Max speed** (or the finest speed profile, once #45 has landed), very small stick deflections give smooth, fine moves.
+- [ ] Move the stick continuously (circles) for a minute while watching the camera and the log. The app spaces requests at least 30 ms apart per camera, as Canon recommends: the camera follows without visible lag, stutter or queued-up moves after the stick stops, and the log shows no `WARN`. Note whether the gap could be lowered.
+- [ ] Note whether the order of the parameters within a request matters to the camera. The app sends each axis's speed before its direction, so a quick reversal from a fast pan left to a slow pan right should go slowly right at once, with no jerk at the old speed: report any jerk.
+- [ ] Pan an XC camera and pull its network cable while still moving the stick. Release the stick, wait about 10 s and plug the cable back: the camera stops within about a second of the network returning and stays stopped for at least 30 s (watch for a late move), and the app stays responsive throughout.
+- [ ] Pan an XC camera and, while holding the stick, select another camera from Companion: the XC camera stops. Pan it again and, while holding the stick, unplug the USB joystick: it stops.
+- [ ] Note whether guest (unauthenticated) control works: if the camera requires a login, every request fails with `HTTP 401` in the log (authentication is #49).
+- [ ] Drive one CR-N500 through its VISCA row and its XC row at the same time (two controllers): note how the camera behaves, and any `no camera control right` `WARN` in the log.
+- [ ] Compare VISCA and XC on the same camera, side by side: speed range, smoothness at small deflections, and how quickly it stops.
+
 ### #44: Camera abstraction
 
 Everything outside the VISCA camera now works with a protocol-neutral camera (`ICamera`) instead of the VISCA camera class, so that another camera type can join the camera list later (#47). Nothing should look or behave differently: the camera rows, `Cameras.json`, the controller mappings and camera control are unchanged. Back up `%APPDATA%\PTZJoystickControl\Cameras.json`, `Gamepads.json` and `SkaarhojGamepads.json` before starting the new build, and note each camera row's fields in the previous build.
 
 - [ ] Start the new build with the existing settings files: no settings `WARN` or `ERROR` in the log (tray menu → **Show log**). Both CR-N500 rows show the same **Name**, **IP Address**, **Port**, **Protocol**, **Header**, **Interval** and **Companion #** as in the previous build, with the connected status, and no row reads "Unsupported camera type". The USB joystick's and the panel's mappings are as before.
-- [ ] In a camera row, type an invalid IP address, an invalid port, then a **Companion #** of 0 or another camera's number, one at a time: each field shows the same red border and message as the previous build. Undo each. **Add** adds a row with the same fields and the next free Companion #, and that row's remove button removes it again.
+- [ ] In a camera row, type an invalid IP address, an invalid port, then a **Companion #** of 0 or another camera's number, one at a time: each field shows the same red border and message as the previous build. Undo each. **Add VISCA camera** (the **Add** button before #47) adds a row with the same fields and the next free Companion #, and that row's remove button removes it again.
 - [ ] Rename a camera, then quit and restart the app: the new name is kept and every other field is unchanged. Rename it back.
 - [ ] With the USB joystick selected, pan, tilt, zoom and focus both CR-N500s: the speeds are as in the previous build, and each camera stops on release.
 - [ ] Select each camera from its Companion button, then by clicking its row in the main window: the selected controller drives it, and the tray icon follows the selection.
