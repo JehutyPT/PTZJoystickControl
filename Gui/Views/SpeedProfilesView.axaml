@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:PtzJoystickControl.Gui.ViewModels"
+             xmlns:v="using:PtzJoystickControl.Gui.Views"
+             mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="350"
+             x:Class="PtzJoystickControl.Gui.Views.SpeedProfilesView">
+
+	<Grid RowDefinitions="Auto,Auto,Auto">
+		<TextBlock Grid.Row="0" Text="Speed profiles" FontWeight="SemiBold" Margin="10,5,10,5" ToolTip.Tip="The active speed profile scales the pan, tilt, zoom and focus speed of every camera, from the next movement. The list goes from finest to fastest."/>
+		<!-- Capped so that a long list scrolls instead of hiding the cameras above it. -->
+		<ScrollViewer Grid.Row="1" MaxHeight="300" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Margin="10,0,0,0">
+			<ItemsControl ItemsSource="{Binding Profiles}">
+				<ItemsControl.ItemTemplate>
+					<DataTemplate DataType="{x:Type vm:SpeedProfileViewModel}">
+						<Border Background="#4000" Margin="0,0,10,5" Padding="5,3" CornerRadius="10">
+							<v:SpeedProfileView/>
+						</Border>
+					</DataTemplate>
+				</ItemsControl.ItemTemplate>
+			</ItemsControl>
+		</ScrollViewer>
+		<Button Grid.Row="2" Content="Add" HorizontalContentAlignment="Center" HorizontalAlignment="Left" Margin="10" VerticalAlignment="Bottom" Width="75" Command="{Binding Add}"/>
+	</Grid>
+</UserControl>

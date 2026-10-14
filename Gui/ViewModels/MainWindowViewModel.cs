@@ -11,11 +11,13 @@ public class MainWindowViewModel : ViewModelBase
 {
     public GamepadsViewModel GamepadsViewModel { get; }
     public CamerasViewModel CamerasViewModel { get; }
+    public SpeedProfilesViewModel SpeedProfilesViewModel { get; }
 
     private readonly IBitfocusCompanionService _companion;
     private string? _companionInboundWarning;
 
-    public MainWindowViewModel(GamepadsViewModel gamepadsViewModel, CamerasViewModel camerasViewModel, MainWindow window, IBitfocusCompanionService companion)
+    public MainWindowViewModel(GamepadsViewModel gamepadsViewModel, CamerasViewModel camerasViewModel,
+        SpeedProfilesViewModel speedProfilesViewModel, MainWindow window, IBitfocusCompanionService companion)
     {
         _companion = companion;
         // Raised on a thread-pool thread when a listener start retry succeeds; bindings need the UI thread.
@@ -30,6 +32,7 @@ public class MainWindowViewModel : ViewModelBase
         _companionInboundWarning = WarningFor(companion.InboundListenerError);
         GamepadsViewModel = gamepadsViewModel;
         CamerasViewModel = camerasViewModel;
+        SpeedProfilesViewModel = speedProfilesViewModel;
         AcrylicEnabled = window?.ActualTransparencyLevel == Avalonia.Controls.WindowTransparencyLevel.AcrylicBlur
             || window?.ActualTransparencyLevel == Avalonia.Controls.WindowTransparencyLevel.Blur;
     }

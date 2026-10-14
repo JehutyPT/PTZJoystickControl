@@ -6,6 +6,7 @@ using PtzJoystickControl.Core.Commands;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
 using PtzJoystickControl.Tests.Devices;
+using PtzJoystickControl.Tests.Services;
 using PtzJoystickControl.Tests.Skaarhoj;
 using Xunit;
 
@@ -51,10 +52,10 @@ public sealed class SpeedSettingsTests : IDisposable
         gamepad.SelectedCamera = camera;
         gamepad.CommandList.AddRange(new ICommand[]
         {
-            new PanCommand(gamepad, new NullCompanionService()),
-            new TiltCommand(gamepad, new NullCompanionService()),
-            new ZoomCommand(gamepad, new NullCompanionService()),
-            new FocusMoveCommand(gamepad, new NullCompanionService()),
+            new PanCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full()),
+            new TiltCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full()),
+            new ZoomCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full()),
+            new FocusMoveCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full()),
             new PresetRecallSpeedComamnd(gamepad, new NullCompanionService()),
             new RecordingStaticCommand(gamepad),
         });

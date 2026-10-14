@@ -5,6 +5,7 @@ using PtzJoystickControl.Application.Db;
 using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Application.Services;
 using PtzJoystickControl.SkaarhojPanel;
+using PtzJoystickControl.Tests.Services;
 using Xunit;
 
 namespace PtzJoystickControl.Tests.Skaarhoj;
@@ -40,7 +41,7 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
             connectTimeout: TimeSpan.FromSeconds(1));
         _service = new SkaarhojGamepadsService(_link,
             new GamepadSettingsStore(Path.Combine(_dir, SkaarhojGamepadsService.SettingsFileName)),
-            new FakeCamerasService(_camA, _camB), new CommandsService(_companion), _companion, _queue);
+            new FakeCamerasService(_camA, _camB), new CommandsService(_companion, TestSpeedProfiles.Full()), _companion, _queue);
         // Subscribed after the service, so a recorded event has already been enqueued by it.
         _link.LinkUp += (_, _) => _linkEvents.Enqueue("up");
         _link.LinkDown += (_, _) => _linkEvents.Enqueue("down");

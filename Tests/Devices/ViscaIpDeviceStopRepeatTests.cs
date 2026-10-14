@@ -8,6 +8,7 @@ using PtzJoystickControl.Core.Commands;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
 using PtzJoystickControl.Core.Services;
+using PtzJoystickControl.Tests.Services;
 using Xunit;
 
 namespace PtzJoystickControl.Tests.Devices;
@@ -179,7 +180,7 @@ public class ViscaIpDeviceStopRepeatTests
         using var camera = new LoopbackCamera();
         var gamepad = new TestGamepad { SelectedCamera = camera.Device };
         var driven = new DrivenCameras(gamepad);
-        var pan = new PanCommand(gamepad, new NullCompanionService());
+        var pan = new PanCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full());
         var axis = new Input("axis-0", "X", InputType.Axis, new ICommand[] { pan });
         axis.SelectedCommand = pan;
         axis.InputValue = 0.8f;
@@ -202,7 +203,7 @@ public class ViscaIpDeviceStopRepeatTests
         using var camera2 = new LoopbackCamera();
         var gamepad = new TestGamepad { SelectedCamera = camera1.Device };
         _ = new DrivenCameras(gamepad);
-        var pan = new PanCommand(gamepad, new NullCompanionService());
+        var pan = new PanCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full());
         var axis = new Input("axis-0", "X", InputType.Axis, new ICommand[] { pan });
         axis.SelectedCommand = pan;
         axis.InputValue = 0.8f;
@@ -270,7 +271,7 @@ public class ViscaIpDeviceStopRepeatTests
     {
         using var camera = new LoopbackCamera();
         var gamepad = new TestGamepad { SelectedCamera = camera.Device };
-        var pan = new PanCommand(gamepad, new NullCompanionService());
+        var pan = new PanCommand(gamepad, new NullCompanionService(), TestSpeedProfiles.Full());
         var axis = new Input("axis-0", "X", InputType.Axis, new ICommand[] { pan });
         axis.SelectedCommand = pan;
 

@@ -7,8 +7,11 @@ namespace PtzJoystickControl.Application.Commands;
 
 public class ZoomCommand : IDynamicCommand
 {
-    public ZoomCommand(IGamepad gamepad, IBitfocusCompanionService companionService) : base(gamepad, companionService)
+    private readonly ISpeedProfilesService _speedProfiles;
+
+    public ZoomCommand(IGamepad gamepad, IBitfocusCompanionService companionService, ISpeedProfilesService speedProfiles) : base(gamepad, companionService)
     {
+        _speedProfiles = speedProfiles ?? throw new ArgumentNullException(nameof(speedProfiles));
     }
 
     public override string CommandName => "Zoom";
@@ -26,6 +29,8 @@ public class ZoomCommand : IDynamicCommand
 
     protected override void Move(double speed, Direction direction)
     {
+        // Every zoom move, on every camera, runs at the active speed profile's zoom percentage.
+        speed *= _speedProfiles.Profiles.Active.Zoom / 100.0;
         ZoomDir zoomDir;
 
         switch (direction)
