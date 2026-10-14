@@ -424,7 +424,7 @@ public sealed class SkaarhojPanelLink : IDisposable
     {
         try
         {
-            var timeout = (long)(_ackTimeout.TotalSeconds * Stopwatch.Frequency);
+            var timeout = StopwatchTicks.From(_ackTimeout);
             while (true)
             {
                 await Task.Delay(_watchdogInterval, session).ConfigureAwait(false);
@@ -455,7 +455,7 @@ public sealed class SkaarhojPanelLink : IDisposable
         }
     }
 
-    private long GraceTicks => (long)(_connectGrace.TotalSeconds * Stopwatch.Frequency);
+    private long GraceTicks => StopwatchTicks.From(_connectGrace);
 
     private void Raise<T>(EventHandler<T>? handler, T args, string name)
     {
