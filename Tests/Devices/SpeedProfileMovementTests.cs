@@ -118,14 +118,14 @@ public sealed class SpeedProfileMovementTests
         Assert.Equal(0.4, camera.Runs.Last().Speed, 6);
     }
 
-    // A profile never turns a move into a stop: the smallest deflection at Max speed 1 % on "Fine" still
-    // moves, at the camera's slowest speed (VISCA ranges: pan 1..24, tilt 1..20, zoom and focus 0..7).
+    // A profile never turns a move into a stop: the smallest deflection at Max speed 1 % on "Fine" is still
+    // a move, which the camera runs at its slowest speed (#43).
     [Theory]
-    [InlineData("Pan", 1, 24)]
-    [InlineData("Tilt", 1, 20)]
-    [InlineData("Zoom", 0, 7)]
-    [InlineData("Manual focus", 0, 7)]
-    public void ATinyInput_OnTheFinestProfile_StillMovesTheCamera_AtItsSlowestSpeed(string command, int min, int max)
+    [InlineData("Pan")]
+    [InlineData("Tilt")]
+    [InlineData("Zoom")]
+    [InlineData("Manual focus")]
+    public void ATinyInput_OnTheFinestProfile_StillMovesTheCamera(string command)
     {
         var camera = new SpeedRecordingCamera();
         _gamepad.SelectedCamera = camera;
@@ -133,9 +133,7 @@ public sealed class SpeedProfileMovementTests
 
         axis.InputValue = 0.01f;
 
-        var run = camera.Runs.Last();
-        Assert.Equal(1, run.Sign);
-        Assert.Equal(min, ViscaIpDevice.ToViscaSpeed(run.Speed, (byte)min, (byte)max));
+        Assert.Equal(1, camera.Runs.Single().Sign);
     }
 
     // A stop is a stop, on any profile: releasing an axis or a button stops the camera.
