@@ -216,7 +216,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         var lineAt = Stopwatch.GetTimestamp();
         _panel.Send("HWC#61=Speed:10");
         // A ping already on its way when the line was sent arrives within a few ms; it is not the next one.
-        var after = lineAt + Stopwatch.Frequency / 100;
+        var after = lineAt + StopwatchTicks.From(TimeSpan.FromMilliseconds(10));
         Assert.True(await WaitUntil(() => _panel.TimesReceived("ping").Any(t => t > after), TimeSpan.FromSeconds(2)));
 
         var next = _panel.TimesReceived("ping").First(t => t > after);
@@ -270,7 +270,7 @@ public sealed class SkaarhojPanelLinkTests : IDisposable
         Assert.Equal(0, Count("down"));
 
         // The panel wakes and stalls longer than the timeout, but within the grace re-armed by the wake.
-        _panel.SilentUntil = Stopwatch.GetTimestamp() + Stopwatch.Frequency * 180 / 1000;
+        _panel.SilentUntil = Stopwatch.GetTimestamp() + StopwatchTicks.From(TimeSpan.FromMilliseconds(180));
         _panel.Send("_isSleeping=0");
 
         await Task.Delay(Grace + Timeout * 2);

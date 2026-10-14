@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using PtzJoystickControl.SkaarhojPanel;
 using Xunit;
 
@@ -8,7 +7,7 @@ namespace PtzJoystickControl.Tests.Skaarhoj;
 // timings: 500 ms ping, 1 s timeout, 1 s connect and wake grace.
 public sealed class PanelDeadManTests
 {
-    private static long At(long ms) => ms * Stopwatch.Frequency / 1000;
+    private static long At(long ms) => StopwatchTicks.From(TimeSpan.FromMilliseconds(ms));
 
     // Whole milliseconds, as the link logs them.
     private static long Ms(TimeSpan? span) => (long)Math.Round(span!.Value.TotalMilliseconds);
