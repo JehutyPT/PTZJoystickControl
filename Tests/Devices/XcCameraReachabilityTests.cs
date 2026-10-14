@@ -32,7 +32,8 @@ public class XcCameraReachabilityTests
         Assert.True(camera.Connected);
         Assert.Equal("item=s", fake.Probes[0].Query);
         await XcTestCameras.WaitForLogAsync(trace, name, "connected");
-        Assert.Single(XcTestCameras.LogFor(trace, name));
+        // On a busy host a probe can time out before one succeeds, adding a warning; the connect is one line.
+        Assert.Single(XcTestCameras.LogFor(trace, name), l => l.Message.Contains("is connected"));
     }
 
     [Fact]
@@ -63,6 +64,8 @@ public class XcCameraReachabilityTests
         camera.Address = "127.0.0.1";
         await connected.WaitAsync(Wait);
         var unreachable = ConnectedBecomes(camera, false);
+        // On a busy host a probe can time out before the camera connects; only the lines from here on count.
+        var loggedBefore = XcTestCameras.LogFor(trace, name).Count;
 
         Volatile.Write(ref answering, 0);
 
@@ -70,8 +73,9 @@ public class XcCameraReachabilityTests
         Assert.False(camera.Connected);
         await XcTestCameras.WaitForLogAsync(trace, name, "not reachable");
         await Task.Delay(3 * (Interval + ShortTimeout));
-        Assert.Single(XcTestCameras.LogFor(trace, name), l => l.Message.Contains("not reachable"));
-        Assert.Single(XcTestCameras.LogFor(trace, name), l => l.Type == TraceEventType.Warning);
+        var sinceSilent = XcTestCameras.LogFor(trace, name).Skip(loggedBefore).ToList();
+        Assert.Single(sinceSilent, l => l.Message.Contains("not reachable"));
+        Assert.Single(sinceSilent, l => l.Type == TraceEventType.Warning);
     }
 
     // Longer timings than the other tests: they leave room for a busy host, while a camera that waited
