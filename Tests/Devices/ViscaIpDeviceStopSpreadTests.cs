@@ -149,6 +149,28 @@ public class ViscaIpDeviceStopSpreadTests : ViscaLoopbackTests
         AssertStopsWithin(packets, IsPanTiltStop, ForceStopSpread);
     }
 
+    // Removal disposes a camera right after the selection chain stops it (docs/live-safety.md §1):
+    // the stop repeats already running finish, then the camera closes its socket and never reopens it.
+    [Fact]
+    public async Task Dispose_LetsPendingStopRepeatsFinish_ThenClosesWithoutReopeningTheSocket()
+    {
+        using var camera = new LoopbackCamera();
+        camera.Device.Stop();
+
+        camera.Device.Dispose();
+
+        await camera.WaitForReleaseAsync();
+        var packets = await camera.CollectAsync();
+        AssertRepeatedStops(packets, IsPanTiltStop);
+        AssertRepeatedStops(packets, IsZoomStop);
+        AssertRepeatedStops(packets, IsFocusStop);
+        // Exactly 9: each of the 3 axes' stops and its 2 repeats, and nothing else.
+        Assert.True(packets.Count == 9, Describe(packets));
+        Assert.False(camera.Device.Connected);
+        Assert.Null(UdpSocket.ListenerFor(camera.Endpoint));
+        Assert.Empty(await camera.CollectAsync());
+    }
+
     [Fact]
     public async Task AStop_SendsSpeedZeroForTheStoppedAxis_WhateverTheFraction()
     {

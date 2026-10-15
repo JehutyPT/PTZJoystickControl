@@ -16,7 +16,8 @@ namespace PtzJoystickControl.Application.Devices;
 /// combines every axis group that changed; a preset recall goes in a request of its own, the next one
 /// sent, and takes the place of the pending stops, which are restored if it fails. With a username
 /// set, a request the camera answers with HTTP 401 is repeated at once with Basic or Digest
-/// credentials, and later requests carry them up front.
+/// credentials, and later requests carry them up front. Once disposed, the camera ignores commands,
+/// sends only its pending stops, and then closes its connection (<see cref="Dispose"/>).
 /// </summary>
 public class XcCamera : XcCameraBase, IDisposable
 {
@@ -90,7 +91,8 @@ public class XcCamera : XcCameraBase, IDisposable
     private readonly object _lock = new();
     // Released (under _lock) when there is something new for the loop to look at.
     private readonly SemaphoreSlim _wake = new(0, 1);
-    // Cancelled by Dispose to end the loop. Never disposed itself, so reading its Token stays safe.
+    // Cancelled when the camera is released, to end the loop. Never disposed itself, so reading its
+    // Token stays safe.
     private readonly CancellationTokenSource disposeCancellation = new();
     // One client, so one keep-alive connection, per camera. Cameras are on the local network: a
     // system proxy would only add a hop that can fail.
@@ -100,7 +102,11 @@ public class XcCamera : XcCameraBase, IDisposable
         Timeout = Timeout.InfiniteTimeSpan,
     };
     private Task? _loop;
+    // Set by Dispose: from then on every command is ignored, and only the pending stops are sent.
     private bool _disposed;
+    // Set once a disposed camera has no stop left to send, by Dispose or by the loop: the loop ends
+    // and the connection closes.
+    private bool _released;
 
     private PanDir _pan = PanDir.Stop;
     private int _panSpeed = SpeedMin;
@@ -196,6 +202,20 @@ public class XcCamera : XcCameraBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// True once the disposed camera is released: from then on it sends and logs nothing more, its
+    /// send loop ends, if it ever started, and its connection closes. For tests, as
+    /// <see cref="Core.Utils.UdpSocket.ListenerFor"/> exposes a VISCA camera's listener.
+    /// </summary>
+    internal bool Released
+    {
+        get
+        {
+            lock (_lock)
+                return _released;
+        }
+    }
+
     public override bool IsMoving
     {
         get
@@ -207,12 +227,15 @@ public class XcCamera : XcCameraBase, IDisposable
 
     // The next request goes to the new address and port, with a probe as soon as nothing else is
     // wanted. A request in flight to the old one finishes or times out, and its outcome is ignored.
+    // A disposed camera only records the new address or port (the base class).
     protected override void OnEndpointChanged()
     {
         string? information = null;
         bool failureChanged;
         lock (_lock)
         {
+            if (_disposed)
+                return;
             OnReconfiguredLocked();
             failureChanged = _failure != null;
             _failure = null;
@@ -235,11 +258,13 @@ public class XcCamera : XcCameraBase, IDisposable
     // The next request carries the new login, or none, with a probe as soon as nothing else is wanted.
     // A request in flight with the old login finishes or times out, and its outcome is ignored. Unlike
     // an address change, Connected and FailureReason keep their values until a request with the new
-    // login settles them.
+    // login settles them. A disposed camera only records the new login (the base class).
     protected override void OnLoginChanged()
     {
         lock (_lock)
         {
+            if (_disposed)
+                return;
             _login = Username.Length > 0 ? new NetworkCredential(Username, Password) : null;
             OnReconfiguredLocked();
         }
@@ -297,7 +322,7 @@ public class XcCamera : XcCameraBase, IDisposable
         var speed = panDir == PanDir.Stop ? SpeedMin : ToXcSpeed(panSpeed);
         lock (_lock)
         {
-            if (_pan == panDir && _panSpeed == speed)
+            if (_disposed || _pan == panDir && _panSpeed == speed)
                 return;
             var enteredStop = _pan != PanDir.Stop && panDir == PanDir.Stop;
             _pan = panDir;
@@ -311,7 +336,7 @@ public class XcCamera : XcCameraBase, IDisposable
         var speed = tiltDir == TiltDir.Stop ? SpeedMin : ToXcSpeed(tiltSpeed);
         lock (_lock)
         {
-            if (_tilt == tiltDir && _tiltSpeed == speed)
+            if (_disposed || _tilt == tiltDir && _tiltSpeed == speed)
                 return;
             var enteredStop = _tilt != TiltDir.Stop && tiltDir == TiltDir.Stop;
             _tilt = tiltDir;
@@ -325,7 +350,7 @@ public class XcCamera : XcCameraBase, IDisposable
         var speed = zoomDir == ZoomDir.Stop ? ZoomSpeedMin : ToXcStep(zoomSpeed, ZoomSpeedMin, ZoomSpeedMax);
         lock (_lock)
         {
-            if (_zoom == zoomDir && _zoomSpeed == speed)
+            if (_disposed || _zoom == zoomDir && _zoomSpeed == speed)
                 return;
             var enteredStop = _zoom != ZoomDir.Stop && zoomDir == ZoomDir.Stop;
             _zoom = zoomDir;
@@ -339,7 +364,7 @@ public class XcCamera : XcCameraBase, IDisposable
         var speed = focusDir == FocusDir.Stop ? FocusSpeedMin : ToXcStep(focusSpeed, FocusSpeedMin, FocusSpeedMax);
         lock (_lock)
         {
-            if (_focus == focusDir && _focusSpeed == speed)
+            if (_disposed || _focus == focusDir && _focusSpeed == speed)
                 return;
             var enteredStop = _focus != FocusDir.Stop && focusDir == FocusDir.Stop;
             _focus = focusDir;
@@ -354,6 +379,8 @@ public class XcCamera : XcCameraBase, IDisposable
         // sent was a stop (it may have failed).
         lock (_lock)
         {
+            if (_disposed)
+                return;
             _pan = PanDir.Stop;
             _panSpeed = SpeedMin;
             _tilt = TiltDir.Stop;
@@ -397,13 +424,23 @@ public class XcCamera : XcCameraBase, IDisposable
     {
         var presetSpeed = ToXcPresetSpeed(speed);
         lock (_lock)
-            _presetSpeed = presetSpeed;
+        {
+            if (!_disposed)
+                _presetSpeed = presetSpeed;
+        }
     }
 
     // Recalls the app's 0-based preset presetNumber as the camera preset presetNumber + 1. Saving or
     // resetting a camera preset is not supported on an XC camera.
     public override void Preset(Preset preset, byte presetNumber)
     {
+        // First, so a disposed camera logs nothing either.
+        lock (_lock)
+        {
+            if (_disposed)
+                return;
+        }
+
         if (preset != Core.Devices.Preset.Recall)
         {
             Unsupported($"{nameof(Preset)} {preset.ToString().ToLowerInvariant()}");
@@ -419,6 +456,8 @@ public class XcCamera : XcCameraBase, IDisposable
 
         lock (_lock)
         {
+            if (_disposed)
+                return;
             _recall = (cameraPreset, _presetSpeed);
             WakeLocked();
         }
@@ -428,6 +467,8 @@ public class XcCamera : XcCameraBase, IDisposable
     {
         lock (_lock)
         {
+            if (_disposed)
+                return;
             var now = Stopwatch.GetTimestamp();
             if (_unsupportedLoggedAt.TryGetValue(operation, out var loggedAt) && now - loggedAt < StopwatchTicks(UnsupportedLogInterval))
                 return;
@@ -436,7 +477,14 @@ public class XcCamera : XcCameraBase, IDisposable
         Trace.TraceInformation($"Camera {Name}: {operation} is not supported on an XC camera; nothing sent");
     }
 
-    /// <summary>Ends the send loop and closes the connection. Later calls are recorded and send nothing.</summary>
+    /// <summary>
+    /// From now on the camera ignores every command; its setters still record their values and start
+    /// nothing. With no stop pending, the camera is released at once: the send loop ends, cancelling
+    /// the request in flight, and the connection closes. Otherwise the loop sends only the pending
+    /// stops, under the usual rules, and the camera is released once none is left (RunAsync). A recall
+    /// not yet sent is dropped, so the stops it would have taken the place of go out instead. Returns
+    /// at once: nothing waits on the network.
+    /// </summary>
     public void Dispose()
     {
         lock (_lock)
@@ -444,7 +492,26 @@ public class XcCamera : XcCameraBase, IDisposable
             if (_disposed)
                 return;
             _disposed = true;
+            _recall = null;
+            if (!ReleaseDueLocked())
+            {
+                // Directly: WakeLocked starts nothing once the camera is disposed.
+                if (_wake.CurrentCount == 0)
+                    _wake.Release();
+                return;
+            }
+            _released = true;
         }
+        Release();
+    }
+
+    // Whether a disposed camera has nothing left to send: no stop pending, or no loop or address to
+    // send one with. Called with _lock held.
+    private bool ReleaseDueLocked() => _loop == null || Address.Length == 0 || !_groups.Any(g => g.StopActive);
+
+    // Ends the loop, cancelling the request in flight, and closes the connection.
+    private void Release()
+    {
         disposeCancellation.Cancel();
         _http.Dispose();
     }
@@ -466,9 +533,11 @@ public class XcCamera : XcCameraBase, IDisposable
             _wake.Release();
     }
 
-    // The camera's only background task. Runs until disposed; nothing may escape it.
+    // The camera's only background task. Runs until the camera is released; nothing may escape it.
     private async Task RunAsync(CancellationToken stopping)
     {
+        // Whether this loop released the camera, rather than Dispose.
+        var release = false;
         while (!stopping.IsCancellationRequested)
         {
             Request? request = null;
@@ -476,7 +545,17 @@ public class XcCamera : XcCameraBase, IDisposable
             {
                 TimeSpan wait;
                 lock (_lock)
+                {
+                    // Dispose released a camera with no stop pending; the loop releases one that had,
+                    // once none is left.
+                    if (_disposed && (_released || ReleaseDueLocked()))
+                    {
+                        release = !_released;
+                        _released = true;
+                        break;
+                    }
                     request = NextRequestLocked(Stopwatch.GetTimestamp(), out wait);
+                }
                 if (request == null)
                 {
                     await _wake.WaitAsync(wait, stopping).ConfigureAwait(false);
@@ -512,6 +591,9 @@ public class XcCamera : XcCameraBase, IDisposable
                 }
             }
         }
+
+        if (release)
+            Release();
     }
 
     // The bookkeeping of one group of axes a control request carries together (pan and tilt, zoom, or
@@ -570,7 +652,7 @@ public class XcCamera : XcCameraBase, IDisposable
         // A recall goes out next, ahead of every stop and move, and takes the place of the pending
         // stops (below), so neither continuous movement nor a stop that keeps failing holds it back.
         var recall = _recall != null;
-        var control = recall || _groups.Any(g => g.Pending);
+        var control = recall || _groups.Any(CarriesLocked);
 
         // Gaps count from the previous request's completion, so request starts are further apart. A
         // stop's first send waits only the normal gap; while any stop is being repeated or retried,
@@ -615,12 +697,12 @@ public class XcCamera : XcCameraBase, IDisposable
         }
         if (!control)
             return new Request(uri, Recall: false, stopIds, _endpointVersion, login, challenge);
-        if (_panTiltGroup.Pending)
+        if (CarriesLocked(_panTiltGroup))
             _sentPanTilt = (_pan, _panSpeed, _tilt, _tiltSpeed);
         for (var i = 0; i < _groups.Length; i++)
         {
             var group = _groups[i];
-            if (!group.Pending)
+            if (!CarriesLocked(group))
                 continue;
             group.SentVersion = group.WantedVersion;
             if (!group.StopActive)
@@ -630,6 +712,10 @@ public class XcCamera : XcCameraBase, IDisposable
         }
         return new Request(uri, Recall: false, stopIds, _endpointVersion, login, challenge);
     }
+
+    // Whether the next control request carries the group: a pending group, or once the camera is
+    // disposed, only a group whose stop is pending, so no move goes out.
+    private bool CarriesLocked(AxisGroup group) => _disposed ? group.StopActive : group.Pending;
 
     // Whether pan or tilt is wanted moving at a direction or speed other than the last one sent for
     // it. An axis wanted at stop, or at the move last sent for it, has nothing to send.
@@ -643,18 +729,19 @@ public class XcCamera : XcCameraBase, IDisposable
     private static TimeSpan WaitUntil(long due, long now) =>
         TimeSpan.FromMilliseconds(Math.Ceiling((due - now) * 1000.0 / Stopwatch.Frequency));
 
-    // Carries each pending axis group, in the order pan/tilt, zoom, focus; a group not pending is left
-    // out. Each axis's speed goes before its direction. A stopped axis sends the slowest speed.
+    // Carries each axis group the request carries (CarriesLocked), in the order pan/tilt, zoom, focus;
+    // any other group is left out. Each axis's speed goes before its direction. A stopped axis sends
+    // the slowest speed.
     private Uri ControlUri()
     {
         var parameters = new List<string>();
-        if (_panTiltGroup.Pending)
+        if (CarriesLocked(_panTiltGroup))
             parameters.Add(string.Create(CultureInfo.InvariantCulture,
                 $"c.1.pan.speed.dir={_panSpeed}&c.1.pan={PanValue(_pan)}&c.1.tilt.speed.dir={_tiltSpeed}&c.1.tilt={TiltValue(_tilt)}"));
-        if (_zoomGroup.Pending)
+        if (CarriesLocked(_zoomGroup))
             parameters.Add(string.Create(CultureInfo.InvariantCulture,
                 $"c.1.zoom.speed.dir={_zoomSpeed}&c.1.zoom={ZoomValue(_zoom)}"));
-        if (_focusGroup.Pending)
+        if (CarriesLocked(_focusGroup))
             parameters.Add(string.Create(CultureInfo.InvariantCulture,
                 $"c.1.focus.speed={_focusSpeed}&c.1.focus.action={FocusValue(_focus)}"));
         return new(string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ControlPath}?{string.Join('&', parameters)}"));
@@ -774,6 +861,9 @@ public class XcCamera : XcCameraBase, IDisposable
         var failureChanged = false;
         lock (_lock)
         {
+            // Released while the request was in flight: the camera sends and logs nothing more.
+            if (_released)
+                return;
             var now = Stopwatch.GetTimestamp();
             _lastCompletedAt = now;
             SettleStopsLocked(request, succeeded: failure == null, now);

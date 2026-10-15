@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using PtzJoystickControl.Application.Commands;
@@ -10,6 +11,7 @@ using PtzJoystickControl.Core.Model;
 using PtzJoystickControl.Core.Services;
 using PtzJoystickControl.Core.Utils;
 using PtzJoystickControl.Tests.Services;
+using PtzJoystickControl.Tests.Skaarhoj;
 using Xunit;
 
 namespace PtzJoystickControl.Tests.Devices;
@@ -56,6 +58,27 @@ public abstract class ViscaLoopbackTests
         Assert.True(actual <= spread, $"Stops spread over {actual.TotalMilliseconds:F0} ms (max {spread.TotalMilliseconds:F0} ms). {Describe(packets)}");
     }
 
+    // A repeat waits StopRepeatInterval on a timer that counts whole milliseconds, so it can go out up
+    // to 1 ms short of it (49.8 ms measured), and the receive loop timestamps each packet a little
+    // late. Still well clear of the 30 ms send throttle that spaces stops not waiting on the interval.
+    protected static readonly TimeSpan RepeatGapTolerance = TimeSpan.FromMilliseconds(5);
+
+    /// <summary>
+    /// Asserts at least 3 packets match, consecutive matches StopRepeatInterval apart, less
+    /// RepeatGapTolerance. Only for the timing-bound tests: a parallel run delays the receive loop.
+    /// </summary>
+    protected static void AssertRepeatedStops(List<Packet> packets, Func<byte[], bool> isStop)
+    {
+        var stops = packets.Where(p => isStop(p.Payload)).ToList();
+        Assert.True(stops.Count >= MinStopSends, Describe(packets));
+        for (var i = 1; i < stops.Count; i++)
+        {
+            var gap = stops[i].ReceivedAt - stops[i - 1].ReceivedAt;
+            Assert.True(gap >= ViscaIpDevice.StopRepeatInterval - RepeatGapTolerance,
+                $"Stops {i - 1} and {i} arrived {gap.TotalMilliseconds:0.0} ms apart. {Describe(packets)}");
+        }
+    }
+
     protected static bool IsPanTilt(byte[] p) =>
         p.Length == 9 && p[0] == 0x81 && p[1] == 0x01 && p[2] == 0x06 && p[3] == 0x01;
 
@@ -69,14 +92,25 @@ public abstract class ViscaLoopbackTests
 
     protected static bool IsFocusStop(byte[] p) => p.SequenceEqual(new byte[] { 0x81, 0x01, 0x04, 0x08, 0x00, 0xFF });
 
+    protected static bool IsStop(Packet p) => IsPanTiltStop(p.Payload) || IsZoomStop(p.Payload) || IsFocusStop(p.Payload);
+
     protected static string Describe(IEnumerable<Packet> packets) =>
         "Received: " + string.Join(" | ", packets.Select(p => BitConverter.ToString(p.Payload)));
+
+    // Trace listeners are global and test classes run in parallel: log assertions filter on this name.
+    protected static string UniqueName() => $"VISCA test {Guid.NewGuid():N}";
+
+    private protected static List<(TraceEventType Type, string Message)> LogFor(TraceRecorder trace, string name) =>
+        trace.Events.Where(e => e.Message.Contains(name)).ToList();
 
     protected sealed record Packet(byte[] Payload, TimeSpan ReceivedAt, int HeaderPayloadLength);
 
     /// <summary>A ViscaIpDevice pointed at a loopback UDP receiver that records VISCA payloads.</summary>
     protected sealed class LoopbackCamera : IDisposable
     {
+        // A disposed device sends the stops it has pending before it is released: at most about 2.1 s.
+        private static readonly TimeSpan ReleaseWait = TimeSpan.FromSeconds(5);
+
         private readonly UdpClient receiver = new(new IPEndPoint(IPAddress.Loopback, 0));
         private readonly List<Packet> received = new();
         private readonly System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
@@ -84,11 +118,11 @@ public abstract class ViscaLoopbackTests
         private readonly Task receiveLoop;
         private int consumed;
 
-        public LoopbackCamera()
+        public LoopbackCamera(string name = "Test camera")
         {
             var port = ((IPEndPoint)receiver.Client.LocalEndPoint!).Port;
             Endpoint = new IPEndPoint(IPAddress.Loopback, port);
-            Device = new ViscaIpDevice("Test camera", new IPEndPoint(IPAddress.Loopback, port));
+            Device = new ViscaIpDevice(name, new IPEndPoint(IPAddress.Loopback, port));
             // The first send after construction only opens the socket; open it up front.
             Device.BeginSocket();
             receiveLoop = Task.Run(ReceiveLoop);
@@ -139,14 +173,48 @@ public abstract class ViscaLoopbackTests
             }
         }
 
+        // The disposed device sends nothing more and no longer receives the replies from Endpoint.
+        private bool IsReleased =>
+            Device.Released && !ReferenceEquals(UdpSocket.ListenerFor(Endpoint)?.Target, Device);
+
+        /// <summary>
+        /// Waits until the disposed device is released: it sends nothing more, and its listener is
+        /// gone. Throws a <see cref="TimeoutException"/> after ReleaseWait. Dispose also blocks on it,
+        /// so it never resumes on the caller's context.
+        /// </summary>
+        public async Task WaitForReleaseAsync()
+        {
+            var deadline = DateTime.UtcNow + ReleaseWait;
+            while (!IsReleased)
+            {
+                if (DateTime.UtcNow > deadline)
+                {
+                    string packets;
+                    lock (received) packets = Describe(received);
+                    throw new TimeoutException($"Camera {Device.Name} was not released within {ReleaseWait.TotalSeconds:0} s. {packets}");
+                }
+                await Task.Delay(5).ConfigureAwait(false);
+            }
+        }
+
         public void Dispose()
         {
-            // Cancels the device's pending stop repeats, so none outlive this test and touch the
-            // static UdpSocket listener registry while the next test runs.
+            // The device sends its pending stops before it closes its socket. Waits until it has, so
+            // no stop repeat outlives this test and touches the static UdpSocket listener registry
+            // while the next test runs. Blocks on the task rather than spinning: the thread pool then
+            // knows this thread is blocked and adds one, so the stop repeats still run when the end
+            // of many parallel tests blocks every pool thread.
             Device.Dispose();
-            cts.Cancel();
-            receiver.Dispose();
-            try { receiveLoop.Wait(TimeSpan.FromSeconds(1)); } catch { }
+            try
+            {
+                WaitForReleaseAsync().GetAwaiter().GetResult();
+            }
+            finally
+            {
+                cts.Cancel();
+                receiver.Dispose();
+                try { receiveLoop.Wait(TimeSpan.FromSeconds(1)); } catch { }
+            }
         }
     }
 

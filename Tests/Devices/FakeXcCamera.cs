@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using PtzJoystickControl.Application.Devices;
 
 namespace PtzJoystickControl.Tests.Devices;
 
@@ -15,7 +16,8 @@ namespace PtzJoystickControl.Tests.Devices;
 /// status and <c>livescope-status</c>, after the test releases it, after a delay, or never. With a
 /// <see cref="Login"/>, a request without valid credentials is answered with HTTP 401 and the login's
 /// challenges instead, at the time the responder decides.
-/// Connections are kept alive, so a client that reuses one is served on it.
+/// Connections are kept alive, so a client that reuses one is served on it. Disposing it lets the
+/// cameras addressed to it send their pending stops first (<see cref="Dispose"/>).
 /// </summary>
 internal sealed class FakeXcCamera : IDisposable
 {
@@ -25,7 +27,11 @@ internal sealed class FakeXcCamera : IDisposable
     private static readonly TimeSpan DefaultWait = TimeSpan.FromSeconds(5);
 
     private readonly TcpListener _listener;
+    // Cancelled first by Dispose: from then on every request is answered at once with success.
+    private readonly CancellationTokenSource _draining = new();
     private readonly CancellationTokenSource _stopping = new();
+    // The cameras addressed to the fake (Serves), released before it stops.
+    private readonly List<XcCamera> _cameras = new();
     private readonly ConcurrentDictionary<TcpClient, byte> _clients = new();
     private readonly List<XcRequest> _requests = new();
     private TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -66,6 +72,19 @@ internal sealed class FakeXcCamera : IDisposable
     public IReadOnlyList<XcRequest> ControlRequests => Requests.Where(r => r.IsControl).ToList();
 
     public IReadOnlyList<XcRequest> Probes => Requests.Where(r => r.IsProbe).ToList();
+
+    /// <summary>
+    /// Registers a camera addressed to the fake, so that disposing the fake disposes the camera and waits
+    /// until it is released (<see cref="Dispose"/>). Does nothing once the fake is disposed.
+    /// </summary>
+    public void Serves(XcCamera camera)
+    {
+        lock (_cameras)
+        {
+            if (!_draining.IsCancellationRequested)
+                _cameras.Add(camera);
+        }
+    }
 
     /// <summary>Answers every request held by <see cref="XcReply.Held"/> so far.</summary>
     public void Release() => Interlocked.Exchange(ref _release, new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
@@ -111,12 +130,48 @@ internal sealed class FakeXcCamera : IDisposable
             + (r.Authorization != null ? " [auth]" : "") + (r.Challenged ? " [401]" : "")));
     }
 
+    /// <summary>
+    /// Drains, then stops. Draining answers every request at once with success, whatever the responder
+    /// or login: each one held or delayed so far, and every later one. A request never to be answered
+    /// has its connection closed instead, so the camera sends it again. Meanwhile each camera addressed
+    /// to the fake (<see cref="Serves"/>) is disposed, so it sends its pending stops, and waited for
+    /// until it is released: no camera's send loop outlives the test. Throws if one is not released
+    /// within 5 s.
+    /// </summary>
     public void Dispose()
     {
-        _stopping.Cancel();
-        _listener.Stop();
-        foreach (var client in _clients.Keys)
-            client.Dispose();
+        try
+        {
+            XcCamera[] cameras;
+            lock (_cameras)
+            {
+                _draining.Cancel();
+                cameras = _cameras.ToArray();
+                _cameras.Clear();
+            }
+            foreach (var camera in cameras)
+            {
+                camera.Dispose();
+                // Blocks on the task rather than spinning: the thread pool then knows this thread is
+                // blocked and adds one, so the send loops and replies that release the cameras still
+                // run when the end of many parallel tests blocks every pool thread here.
+                try
+                {
+                    XcTestCameras.WaitForReleaseAsync(camera).GetAwaiter().GetResult();
+                }
+                catch (TimeoutException e)
+                {
+                    throw new TimeoutException($"{e.Message} {Describe(Requests)}", e);
+                }
+            }
+        }
+        finally
+        {
+            _stopping.Cancel();
+            _listener.Stop();
+            foreach (var client in _clients.Keys)
+                client.Dispose();
+        }
     }
 
     private async Task AcceptLoop()
@@ -168,10 +223,12 @@ internal sealed class FakeXcCamera : IDisposable
                     .Where(header => header.Length == 2 && header[0].Trim().Equals("Authorization", StringComparison.OrdinalIgnoreCase))
                     .Select(header => header[1].Trim())
                     .FirstOrDefault();
-                // Checked on arrival, so the nonce counts follow the order the requests came in.
+                // Checked on arrival, so the nonce counts follow the order the requests came in. A
+                // request arriving while the fake drains is answered with success, whatever the login.
+                var draining = _draining.IsCancellationRequested;
                 var login = Login;
                 var stale = false;
-                var challenged = login != null && !login.Accepts(authorization, target, out stale);
+                var challenged = !draining && login != null && !login.Accepts(authorization, target, out stale);
                 var question = target.IndexOf('?');
                 var request = new XcRequest(
                     question < 0 ? target : target[..question],
@@ -193,21 +250,28 @@ internal sealed class FakeXcCamera : IDisposable
                     {
                     }
 
-                    var reply = Responder(request);
+                    var reply = draining ? XcReply.Ok : Responder(request);
                     switch (reply.Kind)
                     {
                         case XcReplyKind.Never:
-                            // Until the client gives up and closes the connection.
-                            while (await stream.ReadAsync(buffer, _stopping.Token) > 0)
+                            // Until the client gives up and closes the connection, or the fake drains,
+                            // which closes it (the cancelled read ends in the catch below).
+                            while (await stream.ReadAsync(buffer, _draining.Token) > 0)
                             {
                             }
                             return;
                         case XcReplyKind.Held:
-                            await Volatile.Read(ref _release).Task.WaitAsync(_stopping.Token);
+                            await UntilDrainingAsync(Volatile.Read(ref _release).Task);
                             break;
                         case XcReplyKind.Delayed:
-                            await Task.Delay(reply.Delay, _stopping.Token);
+                            await UntilDrainingAsync(Task.Delay(reply.Delay, _draining.Token));
                             break;
+                    }
+
+                    if (_draining.IsCancellationRequested)
+                    {
+                        reply = XcReply.Ok;
+                        challenged = false;
                     }
 
                     // A challenged request gets the login's 401 whatever the responder answers.
@@ -234,6 +298,18 @@ internal sealed class FakeXcCamera : IDisposable
         {
             _clients.TryRemove(client, out _);
             client.Dispose();
+        }
+    }
+
+    // Waits for the task, or until the fake drains, whichever comes first.
+    private async Task UntilDrainingAsync(Task task)
+    {
+        try
+        {
+            await task.WaitAsync(_draining.Token);
+        }
+        catch (OperationCanceledException) when (_draining.IsCancellationRequested)
+        {
         }
     }
 }
