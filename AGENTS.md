@@ -6,6 +6,7 @@ A C# / Avalonia tray app that drives two Canon CR-N500 PTZ cameras over VISCA-ov
 
 - **Live-safety:** cameras stop when anything fails, and the process never crashes. Read [docs/live-safety.md](docs/live-safety.md) before changing input, commands, networking, threading or error handling.
 - **Repo:** work lands on `main` of `JehutyPT/PTZJoystickControl`; pass `--repo JehutyPT/PTZJoystickControl` to `gh`.
+- **Running the app:** only with `--settings-dir` and a fresh temporary folder ([docs/development.md](docs/development.md#another-settings-folder)), never on the default settings folder: it holds the real cameras, controllers and SKAARHOJ panel settings, and a run on it can connect to the real panel and rewrite them.
 
 ## Docs
 

@@ -11,14 +11,36 @@
 
 ```
 dotnet build PTZJoystickControl.sln
-dotnet run --project Gui
+dotnet run --project Gui -- --settings-dir <new temporary folder>
 ```
+
+Without `--settings-dir`, the app runs on the default settings folder, with the real cameras, controllers and SKAARHOJ panel settings (see [Another settings folder](#another-settings-folder)).
 
 Avalonia 12 sends anonymous build-time telemetry unless `AVALONIA_TELEMETRY_OPTOUT=1` is set in the environment. CI sets it for every job; set it in your shell profile to opt out locally.
 
 The solution builds on Windows, macOS and Linux.
 
 Only one instance can run at a time (named mutex, `Application/SingleInstance.cs`); a second launch shows an "already running" window instead. If the previous instance died without releasing the mutex, the next launch takes it over, starts normally and logs a `WARN` that the previous instance did not exit cleanly. The name must not contain `/` (.NET on macOS and Linux throws) or `\`.
+
+### Another settings folder
+
+The app keeps its settings and log in the default folder for the OS (see [Logs](#logs)). `--settings-dir <folder>` runs it on another folder instead: every settings file, the log and its archives, and each save's `.tmp` file are then read from and written to that folder, and the app reads and writes nothing in the default folder. A relative folder is taken from the current directory; a missing one is created, with its parents.
+
+```
+dotnet run --project Gui -- --settings-dir <folder>
+Gui.exe --settings-dir <folder>
+```
+
+A fresh folder starts with no cameras, controller mappings, SKAARHOJ panel or Companion settings, so it reaches no real camera or panel: a smoke test runs on a new temporary folder. Only one copy runs per user session, whatever its folder: a second copy, on any folder, shows "already running".
+
+The switch is matched exactly, and its folder is the next argument. Single-dash arguments, such as `-m` (start minimized), are passed on as before. Startup fails when `--settings-dir` has no folder after it or is given more than once, when the folder cannot be created or written to (the app creates and deletes a uniquely named file in it to check), or when any other argument starts with `--`, `--settings-dir=<folder>` included, so a mistyped switch never starts the app on the default folder. Failing means one line on standard error and exit code 2, before the single-instance check: no window, tray icon or log file, and no settings read. The lines:
+
+- `PTZJoystickControl: cannot start: --settings-dir needs a folder, as in --settings-dir /path/to/folder`
+- `PTZJoystickControl: cannot start: --settings-dir is given more than once`
+- `PTZJoystickControl: cannot start: unknown argument '<argument>'; to choose the settings folder, give it as the next argument: --settings-dir <folder>`
+- `PTZJoystickControl: cannot start: settings folder '<full path>' (--settings-dir) cannot be used: <reason>`, the reason being the system's error message
+
+A macOS or Linux terminal shows the line. `Gui.exe` has no console, so on Windows the line shows only when standard error is redirected, as with PowerShell's `Start-Process .\Gui.exe -ArgumentList ... -RedirectStandardError err.txt -Wait -PassThru` (the returned process's `ExitCode` is 2); otherwise the only signs are exit code 2 and no tray icon.
 
 ## Windows package
 
@@ -30,7 +52,7 @@ dotnet publish Gui/Gui.csproj -c PublishRelease -r win-x64 --self-contained -p:P
 
 `publish/` then holds `Gui.exe` (single file: the .NET runtime and every managed assembly), the native DLLs it loads (`av_libglesv2.dll`, `SDL2.dll`, `libSkiaSharp.dll`, `libHarfBuzzSharp.dll`), the managed pdbs (line numbers in logged stack traces; `Gui.csproj` leaves out the native SkiaSharp/HarfBuzz pdbs, about 105 MB) and `SdlGamepads.dll.config`. CI zips that folder as is. The native DLLs stay beside the exe on purpose: `IncludeNativeLibrariesForSelfExtract` would unpack them to `%TEMP%` on first run, which can fail on the show PC (antivirus, temp clean-up), while beside the exe they load from the app folder as they did from the old MSI's install folder.
 
-Installing is unzipping to a permanent folder and running `Gui.exe`; settings and logs live in `%APPDATA%\PTZJoystickControl`, so replacing the folder with a newer zip keeps them. There are no shortcuts, Apps entry or uninstaller. The zip and exe are unsigned (so was the old MSI), so Windows SmartScreen may ask on first run.
+Installing is unzipping to a permanent folder and running `Gui.exe`; settings and logs live in `%APPDATA%\PTZJoystickControl` (unless [`--settings-dir`](#another-settings-folder) names another folder), so replacing the folder with a newer zip keeps them. There are no shortcuts, Apps entry or uninstaller. The zip and exe are unsigned (so was the old MSI), so Windows SmartScreen may ask on first run.
 
 Use `-r win-x86` for the 32-bit zip.
 
@@ -38,13 +60,15 @@ Use `-r win-x86` for the 32-bit zip.
 
 Everything the app writes through `System.Diagnostics.Trace` (and `Debug`, in Debug builds only), plus any unhandled exception, goes through one listener (`Application/Logging/AppLogListener.cs`) to a log file and to the in-app Log window (tray menu → **Show log**, which shows the last 1000 entries since startup or since **Clear Log**; clearing never touches the file).
 
-The file sits next to the settings files (`Cameras.json`, `Gamepads.json`, `Companion.json`):
+The file sits next to the settings files (`Cameras.json`, `Gamepads.json`, `Companion.json`), in the default folder for the OS unless [`--settings-dir`](#another-settings-folder) names another:
 
 | OS | Log file |
 |---|---|
 | Windows | `%APPDATA%\PTZJoystickControl\PTZJoystickControl.log` |
 | macOS | `~/Library/Application Support/PTZJoystickControl/PTZJoystickControl.log` |
 | Linux | `~/.PTZJoystickControl/PTZJoystickControl.log` |
+
+Each start logs the folder in use at `INFO`: `PTZJoystickControl <version> started; settings folder <full path>; log file <path>`, with ` (from --settings-dir)` after the folder when the switch named it.
 
 One entry per line, UTF-8:
 
