@@ -10,7 +10,8 @@ namespace PtzJoystickControl.Application.Db;
 /// Keeps the speed profiles and the active one in <c>SpeedProfiles.json</c>. Loading never stops the
 /// app starting: with no file the defaults are used; a file that cannot be used falls back to the
 /// defaults with an ERROR; a percentage outside 1–100 is clamped, and a missing or out-of-range active
-/// position selects position 1, each with a WARN.
+/// position makes the last speed profile active, each with a WARN. The list runs finest first, so the
+/// last is taken as the fastest, whatever its name (#57).
 /// </summary>
 public class SpeedProfileSettingsStore : ISpeedProfileSettingsStore
 {
@@ -68,8 +69,8 @@ public class SpeedProfileSettingsStore : ISpeedProfileSettingsStore
                 var problem = settings.ActivePosition == null
                     ? "no active position"
                     : $"active position {settings.ActivePosition} is not between 1 and {profiles.Count}";
-                Trace.TraceWarning($"Speed profiles in {_filePath}: {problem}; speed profile 1 ({profiles[0].Name}) is active");
-                activePosition = 1;
+                Trace.TraceWarning($"Speed profiles in {_filePath}: {problem}; speed profile {profiles.Count} ({profiles[^1].Name}), the last, is active");
+                activePosition = profiles.Count;
             }
 
             return new SpeedProfileList(profiles, activePosition);

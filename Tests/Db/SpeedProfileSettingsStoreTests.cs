@@ -160,20 +160,51 @@ public sealed class SpeedProfileSettingsStoreTests : IDisposable
         Assert.DoesNotContain(LoggedAboutThisFile, e => e.Type == TraceEventType.Error);
     }
 
+    // The last is the fastest, whatever its name (#57): this list has no "Full".
     [Theory]
     [InlineData("")]
     [InlineData("'ActivePosition':null,")]
     [InlineData("'ActivePosition':0,")]
     [InlineData("'ActivePosition':-1,")]
     [InlineData("'ActivePosition':3,")]
-    public void AMissingActivePosition_OrOneOutsideTheList_MakesPosition1Active_WithAWarningNamingTheFile(string activePosition)
+    public void AMissingActivePosition_OrOneOutsideTheList_MakesTheLastPositionActive_WithAWarningNamingTheFile(string activePosition)
     {
         var profiles = Load(("{" + activePosition + "'Profiles':[{'Name':'Slow','Pan':10,'Tilt':20,'Zoom':30,'Focus':40},{'Name':'Quick','Pan':90,'Tilt':90,'Zoom':90,'Focus':90}]}").Replace('\'', '"'));
 
         Assert.Equal(new[] { ("Slow", 10, 20, 30, 40), ("Quick", 90, 90, 90, 90) }, Rows(profiles));
-        Assert.Equal(1, profiles.ActivePosition);
-        Assert.Contains(LoggedAboutThisFile, e => e.Type == TraceEventType.Warning);
+        Assert.Equal(2, profiles.ActivePosition);
+        Assert.Equal("Quick", profiles.Active.Name);
+        var warning = Assert.Single(LoggedAboutThisFile, e => e.Type == TraceEventType.Warning);
+        Assert.Contains("speed profile 2 (Quick), the last, is active", warning.Message);
         Assert.DoesNotContain(LoggedAboutThisFile, e => e.Type == TraceEventType.Error);
+    }
+
+    // With one speed profile, the last is also the first.
+    [Fact]
+    public void InAOneProfileFile_AnActivePositionOutsideTheList_MakesItsOnlyProfileActive_WithAWarningNamingTheFile()
+    {
+        var profiles = Load("{'ActivePosition':2,'Profiles':[{'Name':'Only','Pan':50,'Tilt':50,'Zoom':50,'Focus':50}]}".Replace('\'', '"'));
+
+        Assert.Equal(new[] { ("Only", 50, 50, 50, 50) }, Rows(profiles));
+        Assert.Equal(1, profiles.ActivePosition);
+        var warning = Assert.Single(LoggedAboutThisFile, e => e.Type == TraceEventType.Warning);
+        Assert.Contains("speed profile 1 (Only), the last, is active", warning.Message);
+        Assert.DoesNotContain(LoggedAboutThisFile, e => e.Type == TraceEventType.Error);
+    }
+
+    // Loading never writes (#57): the file keeps its active position until a speed profile changes.
+    [Fact]
+    public void WithAnActivePositionOutsideTheList_TheSpeedProfilesServiceStartsOnTheLastProfile_AndWritesNothing()
+    {
+        var contents = "{'ActivePosition':7,'Profiles':[{'Name':'Slow','Pan':10,'Tilt':20,'Zoom':30,'Focus':40},{'Name':'Quick','Pan':90,'Tilt':90,'Zoom':90,'Focus':90}]}".Replace('\'', '"');
+        File.WriteAllText(_path, contents);
+
+        var service = new SpeedProfilesService(new SpeedProfileSettingsStore(_path));
+
+        Assert.Equal(2, service.Profiles.ActivePosition);
+        Assert.Equal("Quick", service.Profiles.Active.Name);
+        Assert.Equal(contents, File.ReadAllText(_path));
+        Assert.Equal(new[] { "SpeedProfiles.json" }, FolderEntries());
     }
 
     // Removing write permission from the folder makes creating the temp file fail: a save that dies
