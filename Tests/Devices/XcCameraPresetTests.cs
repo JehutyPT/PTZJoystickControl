@@ -54,6 +54,70 @@ public class XcCameraPresetTests
         Assert.Contains("preset 101", warning.Message);
     }
 
+    // A controller may recall on every input: each camera preset beyond the camera's presets is logged
+    // at most once a minute, not on every recall.
+    [Fact]
+    public async Task RepeatedRecallsBeyondTheCamerasPresets_SendNothing_AndLogOneWarningPerCameraPreset()
+    {
+        using var trace = new TraceRecorder();
+        var name = XcTestCameras.UniqueName();
+        using var fake = new FakeXcCamera();
+        using var camera = XcTestCameras.CameraFor(fake, name, probeInterval: LongProbeInterval);
+        await fake.WaitForProbeAsync(1);
+
+        // Recall - 101 three times, Recall - 102 twice and Recall - 128 once.
+        var calls = Record.Exception(() =>
+        {
+            foreach (var preset in new byte[] { 100, 101, 100, 127, 101, 100 })
+                camera.Preset(Preset.Recall, preset);
+        });
+        await Task.Delay(SettleTime);
+
+        Assert.Null(calls);
+        Assert.Empty(fake.ControlRequests);
+        var warnings = XcTestCameras.LogFor(trace, name).Where(l => l.Type == TraceEventType.Warning).Select(l => l.Message);
+        Assert.Equal(new[]
+        {
+            $"Camera {name}: preset 101 is outside the XC camera's presets 1..100; nothing sent",
+            $"Camera {name}: preset 102 is outside the XC camera's presets 1..100; nothing sent",
+            $"Camera {name}: preset 128 is outside the XC camera's presets 1..100; nothing sent",
+        }, warnings);
+    }
+
+    // Each camera keeps its own minute for each camera preset: one camera's warning hides none on another.
+    [Fact]
+    public async Task TwoCamerasRecallingAPresetBeyondTheirPresets_EachLogTheirOwnWarning()
+    {
+        using var trace = new TraceRecorder();
+        var firstName = XcTestCameras.UniqueName();
+        var secondName = XcTestCameras.UniqueName();
+        using var firstFake = new FakeXcCamera();
+        using var secondFake = new FakeXcCamera();
+        using var first = XcTestCameras.CameraFor(firstFake, firstName, probeInterval: LongProbeInterval);
+        using var second = XcTestCameras.CameraFor(secondFake, secondName, probeInterval: LongProbeInterval);
+        await firstFake.WaitForProbeAsync(1);
+        await secondFake.WaitForProbeAsync(1);
+
+        // Recall - 101 on each camera in turn, twice.
+        var calls = Record.Exception(() =>
+        {
+            for (var i = 0; i < 2; i++)
+            {
+                first.Preset(Preset.Recall, 100);
+                second.Preset(Preset.Recall, 100);
+            }
+        });
+        await Task.Delay(SettleTime);
+
+        Assert.Null(calls);
+        Assert.Empty(firstFake.ControlRequests);
+        Assert.Empty(secondFake.ControlRequests);
+        var firstWarning = Assert.Single(XcTestCameras.LogFor(trace, firstName), l => l.Type == TraceEventType.Warning);
+        Assert.Equal($"Camera {firstName}: preset 101 is outside the XC camera's presets 1..100; nothing sent", firstWarning.Message);
+        var secondWarning = Assert.Single(XcTestCameras.LogFor(trace, secondName), l => l.Type == TraceEventType.Warning);
+        Assert.Equal($"Camera {secondName}: preset 101 is outside the XC camera's presets 1..100; nothing sent", secondWarning.Message);
+    }
+
     // Preset Recall Speed v (1..24) goes out with each later recall as round(1 + (v − 1) · 99 / 23)
     // on the CR-N500's p.ptzspeed 1..100: 12 is 48.3, sent as 48.
     [Theory]

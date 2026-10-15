@@ -70,6 +70,10 @@ public class XcCamera : XcCameraBase, IDisposable
     // An unsupported operation is logged at most once per this long, per operation.
     private static readonly TimeSpan UnsupportedLogInterval = TimeSpan.FromMinutes(1);
 
+    // A recall of a camera preset outside PresetMin..PresetMax is logged at most once per this long, per
+    // camera preset.
+    private static readonly TimeSpan OutOfRangePresetLogInterval = TimeSpan.FromMinutes(1);
+
     // A login failure (an HTTP 401 the camera cannot get past) is logged at most once per this long,
     // until the address, port or login changes.
     private static readonly TimeSpan LoginFailureLogInterval = TimeSpan.FromMinutes(1);
@@ -161,6 +165,8 @@ public class XcCamera : XcCameraBase, IDisposable
     private long _loginFailureLoggedAt = long.MinValue / 4;
     // Stopwatch timestamp each unsupported operation was last logged at.
     private readonly Dictionary<string, long> _unsupportedLoggedAt = new();
+    // Stopwatch timestamp each camera preset outside PresetMin..PresetMax was last logged at.
+    private readonly Dictionary<int, long> _outOfRangePresetLoggedAt = new();
 
     public XcCamera(string name) : this(name, DefaultRequestTimeout, DefaultProbeInterval) { }
 
@@ -431,7 +437,9 @@ public class XcCamera : XcCameraBase, IDisposable
     }
 
     // Recalls the app's 0-based preset presetNumber as the camera preset presetNumber + 1. Saving or
-    // resetting a camera preset is not supported on an XC camera.
+    // resetting a camera preset is not supported on an XC camera. A camera preset outside
+    // PresetMin..PresetMax sends nothing and is logged, at most once per camera preset per
+    // OutOfRangePresetLogInterval, since a controller may recall it on every input.
     public override void Preset(Preset preset, byte presetNumber)
     {
         // First, so a disposed camera logs nothing either.
@@ -450,7 +458,7 @@ public class XcCamera : XcCameraBase, IDisposable
         var cameraPreset = presetNumber + 1;
         if (cameraPreset < PresetMin || cameraPreset > PresetMax)
         {
-            Trace.TraceWarning($"Camera {Name}: preset {cameraPreset} is outside the XC camera's presets {PresetMin}..{PresetMax}; nothing sent");
+            OutOfRangePreset(cameraPreset);
             return;
         }
 
@@ -475,6 +483,20 @@ public class XcCamera : XcCameraBase, IDisposable
             _unsupportedLoggedAt[operation] = now;
         }
         Trace.TraceInformation($"Camera {Name}: {operation} is not supported on an XC camera; nothing sent");
+    }
+
+    private void OutOfRangePreset(int cameraPreset)
+    {
+        lock (_lock)
+        {
+            if (_disposed)
+                return;
+            var now = Stopwatch.GetTimestamp();
+            if (_outOfRangePresetLoggedAt.TryGetValue(cameraPreset, out var loggedAt) && now - loggedAt < StopwatchTicks(OutOfRangePresetLogInterval))
+                return;
+            _outOfRangePresetLoggedAt[cameraPreset] = now;
+        }
+        Trace.TraceWarning($"Camera {Name}: preset {cameraPreset} is outside the XC camera's presets {PresetMin}..{PresetMax}; nothing sent");
     }
 
     /// <summary>
