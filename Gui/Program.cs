@@ -14,7 +14,6 @@ using Splat;
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Octokit;
@@ -37,9 +36,18 @@ internal class Program
         AppDomain.CurrentDomain.UnhandledException += log.OnUnhandledException;
         TaskScheduler.UnobservedTaskException += log.OnUnobservedTaskException;
 
-        string settingsDirectory = RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".PTZJoystickControl/")
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "PTZJoystickControl/");
+        // Before anything else starts: bad arguments, or a --settings-dir folder that cannot be used,
+        // stop the app here, with no log file, window or tray icon, rather than fall back to the
+        // default folder (#59). Not logged: the log file belongs in the settings folder, which is
+        // then unknown or unusable, and writing it anywhere else would touch the default folder.
+        var settingsFolder = SettingsFolder.Resolve(args);
+        if (!settingsFolder.IsResolved)
+        {
+            Console.Error.WriteLine(settingsFolder.Failure);
+            Environment.ExitCode = 2;
+            return;
+        }
+        string settingsDirectory = settingsFolder.Path;
         Directory.CreateDirectory(settingsDirectory);
         Debug.AutoFlush = true;
 
@@ -58,7 +66,9 @@ internal class Program
             // Only the instance that owns the mutex writes the log file.
             var logFile = new RollingLogFile(settingsDirectory);
             log.AttachFile(logFile);
-            Trace.TraceInformation($"PTZJoystickControl {Assembly.GetExecutingAssembly().GetName().Version} started; log file {logFile.Path}");
+            Trace.TraceInformation($"PTZJoystickControl {Assembly.GetExecutingAssembly().GetName().Version} started; " +
+                $"settings folder {settingsDirectory}{(settingsFolder.FromSwitch ? $" (from {SettingsFolder.Switch})" : "")}; " +
+                $"log file {logFile.Path}");
             // Logged after AttachFile so the warning reaches the log file.
             if (abandoned)
                 Trace.TraceWarning("The previous PTZJoystickControl instance did not exit cleanly (crashed or was killed); starting normally");
@@ -69,7 +79,7 @@ internal class Program
             // Started only now, so the panel controller has subscribed and cannot miss its first LinkUp.
             panel?.Start();
 
-            appBuilder.StartWithClassicDesktopLifetime(args, Avalonia.Controls.ShutdownMode.OnExplicitShutdown);
+            appBuilder.StartWithClassicDesktopLifetime(settingsFolder.PassedOnArguments, Avalonia.Controls.ShutdownMode.OnExplicitShutdown);
             // Also cancels a pending listener start retry.
             companion.StopListening();
             panel?.Dispose();
@@ -103,9 +113,12 @@ internal class Program
             "PTZJoystickControl",
             Assembly.GetExecutingAssembly().GetName().Version!));
 
-        services.RegisterConstant<ICameraSettingsStore>(new CameraSettingsStore());
-        services.RegisterConstant<IGamepadSettingsStore>(new GamepadSettingsStore());
-        services.RegisterConstant<ISpeedProfileSettingsStore>(new SpeedProfileSettingsStore());
+        services.RegisterConstant<ICameraSettingsStore>(new CameraSettingsStore(
+            Path.Combine(settingsDirectory, CameraSettingsStore.FileName)));
+        services.RegisterConstant<IGamepadSettingsStore>(new GamepadSettingsStore(
+            Path.Combine(settingsDirectory, GamepadSettingsStore.FileName)));
+        services.RegisterConstant<ISpeedProfileSettingsStore>(new SpeedProfileSettingsStore(
+            Path.Combine(settingsDirectory, SpeedProfileSettingsStore.FileName)));
 
         // Before the commands: every pan, tilt, zoom and focus command reads the active speed profile.
         services.RegisterConstant<ISpeedProfilesService>(new SpeedProfilesService(
@@ -116,7 +129,7 @@ internal class Program
             resolver.GetServiceOrThrow<ICameraSettingsStore>()));
 
         // Read once: a change to Companion.json takes effect on the next start.
-        var companionSettings = new CompanionSettingsStore().Load();
+        var companionSettings = new CompanionSettingsStore(Path.Combine(settingsDirectory, CompanionSettingsStore.FileName)).Load();
         Trace.TraceInformation($"Companion: listening on http://localhost:{companionSettings.ListenerPort}/");
         var companion = new BitfocusCompanionService(
             companionSettings,

@@ -1,27 +1,17 @@
 ﻿using PtzJoystickControl.Core.Db;
 using PtzJoystickControl.Core.Model;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace PtzJoystickControl.Application.Db;
 
 public class GamepadSettingsStore : IGamepadSettingsStore
 {
+    /// <summary>The USB joysticks' mappings. The SKAARHOJ panel's, in the same format, are in <c>SkaarhojGamepads.json</c>.</summary>
+    public const string FileName = "Gamepads.json";
+
     private List<GamepadSettings>? StoredGamepadSettings;
     private readonly string _camerasFilePath;
-
-    public GamepadSettingsStore()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            _camerasFilePath = Path.Combine(Environment.GetFolderPath(
-               Environment.SpecialFolder.UserProfile),
-               ".PTZJoystickControl/Gamepads.json");
-        else
-            _camerasFilePath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "PTZJoystickControl/Gamepads.json");
-    }
 
     public GamepadSettingsStore(string filePath)
     {

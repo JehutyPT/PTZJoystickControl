@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using PtzJoystickControl.Core.Db;
 using PtzJoystickControl.Core.Model;
@@ -15,19 +14,9 @@ namespace PtzJoystickControl.Application.Db;
 /// </summary>
 public class SpeedProfileSettingsStore : ISpeedProfileSettingsStore
 {
-    private readonly string _filePath;
+    public const string FileName = "SpeedProfiles.json";
 
-    public SpeedProfileSettingsStore()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            _filePath = Path.Combine(Environment.GetFolderPath(
-                Environment.SpecialFolder.UserProfile),
-                ".PTZJoystickControl/SpeedProfiles.json");
-        else
-            _filePath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "PTZJoystickControl/SpeedProfiles.json");
-    }
+    private readonly string _filePath;
 
     public SpeedProfileSettingsStore(string filePath)
     {
