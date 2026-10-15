@@ -6,6 +6,16 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### Companion surface plugin #22: a four-way button's centre press is one press
+
+This change is in the SKAARHOJ surface plugin (JehutyPT/companion-surface-skaarhoj-rawpanel), not in this app; it is listed here because it is checked on the same panel. A press near a four-way button's centre could let go of every edge for a moment and then close another edge, which Companion got as two presses. Key up now waits out a release debounce, the surface setting **Four-way button release debounce (ms)** (default 30, 0 to 500, 0 turns it off); an edge pressed again within it continues the same press. Key down is never delayed, and plain buttons are not debounced. The cost: Companion gets a four-way button's key up that much later. Install the plugin build with the change, then in Companion's **Surfaces** tab open the panel's settings. Give a four-way button a test page action that shows each press, for example a counter variable incremented on press.
+
+- [ ] The setting shows 30. Press the four-way button firmly in its centre, rocking slightly, 10 times: the counter goes up by 10, not more.
+- [ ] Press each edge once, separately: each is one press, and its release action runs at once to the eye.
+- [ ] Set the debounce to 0 and repeat the centre presses: note whether the counter now goes up by more than 10, which shows the debounce is what holds it. Set it back to 30 (or the lowest value that held), and note that value.
+- [ ] Hold a four-way button and pull the panel's Ethernet cable: the button's release action runs when the link drops, and no press is left stuck once the link is back.
+- [ ] Restore the button's show action.
+
 ### #60: XC zoom and focus use the camera's speed ranges
 
 An XC camera now reads its zoom and focus speed ranges from its `info.cgi` on each connect and maps the joystick's deflection onto them, instead of Canon's spec values (zoom 0..15, focus 0..2), which on firmware 1.5.2 (zoom 0..127, focus 0..63) made full-deflection zoom about 12 % of the camera's top speed. A camera that reports no usable range for an axis keeps the spec's for it. Each connect's first probe fetches the whole `info.cgi` once; later probes are unchanged. Pan, tilt, presets and VISCA cameras are unchanged. The cost: until that first read completes (a fraction of a second after the camera connects), zoom and focus still use the spec's ranges. Keep the log open (tray menu → **Show log**).
