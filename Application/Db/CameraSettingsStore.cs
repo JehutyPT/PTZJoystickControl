@@ -3,26 +3,14 @@ using PtzJoystickControl.Core.Devices;
 using System.Diagnostics;
 using PtzJoystickControl.Core.Db;
 using PtzJoystickControl.Core.Model;
-using System.Runtime.InteropServices;
 
 namespace PtzJoystickControl.Application.Db
 {
     public class CameraSettingsStore : ICameraSettingsStore
     {
+        public const string FileName = "Cameras.json";
+
         private readonly string _cameratFilePath;
-
-        public CameraSettingsStore()
-        {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                _cameratFilePath = Path.Combine(Environment.GetFolderPath(
-                    Environment.SpecialFolder.UserProfile),
-                    ".PTZJoystickControl/Cameras.json");
-            else
-                _cameratFilePath = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "PTZJoystickControl/Cameras.json");
-
-        }
 
         public CameraSettingsStore(string filePath)
         {

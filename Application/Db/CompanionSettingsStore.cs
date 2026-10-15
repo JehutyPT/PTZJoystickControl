@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using PtzJoystickControl.Core.Model;
 
@@ -12,6 +11,8 @@ namespace PtzJoystickControl.Application.Db;
 /// </summary>
 public class CompanionSettingsStore
 {
+    public const string FileName = "Companion.json";
+
     // Keys that only configured the app's calls to Companion, removed in #15. Files written
     // before then may still have them: they are ignored with an INFO, not warned about as typos.
     private static readonly string[] RetiredKeys = { "Host", "Port" };
@@ -24,18 +25,6 @@ public class CompanionSettingsStore
     };
 
     private readonly string _filePath;
-
-    public CompanionSettingsStore()
-    {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-            _filePath = Path.Combine(Environment.GetFolderPath(
-                Environment.SpecialFolder.UserProfile),
-                ".PTZJoystickControl/Companion.json");
-        else
-            _filePath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "PTZJoystickControl/Companion.json");
-    }
 
     public CompanionSettingsStore(string filePath)
     {
