@@ -6,6 +6,15 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #56: A removed camera is disposed once its stops are out
+
+Removing a camera from the camera list now also disposes it. A removed XC camera no longer probes the camera or logs under its name, and a removed VISCA camera closes its socket and frees its UDP replies, so a camera added again with the same address and port receives them. A camera removed while a controller drives it still stops: it sends its pending stops, then closes its connection. The cost: a removed XC camera that cannot be reached keeps trying its stops for up to 5 s, logging as before (its failure `WARN`, possibly the "not reachable" `INFO`, then the give-up `ERROR`), and a removed camera is no longer stopped when a controller disconnects. The **Select camera** mappings go by position in the camera list, so until the backups are restored, a controller button may select a different camera than before; Companion selects by **Companion #**. Back up `%APPDATA%\PTZJoystickControl\Cameras.json`, `Gamepads.json` and `SkaarhojGamepads.json` before starting, and keep the log open (tray menu → **Show log**).
+
+- [ ] Add an XC camera for one CR-N500 and wait until it shows Connected. Remove it (the row's remove button, tooltip **Remove Camera**). Pull that CR-N500's network cable for about 10 s, then plug it back: no log line names the removed camera.
+- [ ] Note a VISCA camera row's values, **Companion #** included. Remove it, then **Add VISCA camera** and give the new row the same values: no "another camera already receives the replies" `WARN`. Select it (from Companion or the USB joystick), then pan and release: the camera moves, stops, and shows Connected.
+- [ ] Select a VISCA camera, hold a pan on the USB joystick and click that camera's remove button: the camera stops at once. Do the same with an XC camera added for a CR-N500.
+- [ ] Quit (tray menu → **Quit**), restore the three backups, and restart.
+
 ### #53: XC stops are given up after 5 s
 
 An XC camera's stop whose sends all fail is no longer retried without limit. Once it has been sent 3 times and 5 s have passed since it started with no send succeeding, the app gives it up: it sends no more of it, logs one `ERROR` naming the camera, the axes (`pan/tilt`, `zoom`, `focus`) and the last failure, and probes the camera again. The cost: the app no longer tries to stop that camera, so it may keep moving, even once the network returns, until that axis is moved and released, stopped again, recalled to a preset, or at its limit. VISCA cameras are unchanged. Keep the log open (tray menu → **Show log**).

@@ -18,7 +18,7 @@ The panel's buttons, LED colours and display text are not on this roadmap: they 
 
 ## Phase 4: Canon XC
 
-Canon XC protocol cameras alongside VISCA, and global speed profiles stepped from Companion (#41, label `phase 4: xc`). Order: camera-selection cast fix (#42), speed fractions (#43), camera abstraction (#44), speed profiles (#45) and Companion stepping (#46), then the XC camera (#47, #48, #49, #54, #55, #53).
+Canon XC protocol cameras alongside VISCA, and global speed profiles stepped from Companion (#41, label `phase 4: xc`). Order: camera-selection cast fix (#42), speed fractions (#43), camera abstraction (#44), speed profiles (#45) and Companion stepping (#46), then the XC camera (#47, #48, #49, #54, #55, #53) and disposing a removed camera (#56).
 
 ## Later
 
