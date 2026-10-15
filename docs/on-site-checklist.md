@@ -6,6 +6,12 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #58: XC presets above 100 log at most once a minute
+
+An XC camera now logs a recall of a preset above 100, which the CR-N500 does not have, at most once a minute per preset number, instead of on every recall. The recall still does nothing, its `WARN` reads as before, and each camera keeps its own minute for each number. VISCA cameras are unchanged. The cost: a second press of the same out-of-range recall within a minute shows no new line, so the Log window does not show each press. Keep the log open (tray menu → **Show log**).
+
+- [ ] Map a USB joystick button to **Recall - 101**, select an XC camera, and press the button 3 times. The camera does not move, and the log has one `WARN` for preset 101. Restore the button's previous mapping.
+
 ### #59: `--settings-dir` runs the app on another settings folder
 
 The app takes one switch, `--settings-dir <folder>`: every settings file and the log are then read from and written to that folder, created if missing, and nothing in `%APPDATA%\PTZJoystickControl` is read or written. Without it, nothing changes, except that the log's start line now names the settings folder in use. A folder that cannot be used, a `--settings-dir` with no folder, or any other argument that starts with `--` stops the app before it starts, with one line on standard error and exit code 2. The cost: `Gui.exe` has no console, so that line shows only when standard error is redirected; otherwise the only signs are exit code 2 and no tray icon. Run these from PowerShell in the app's folder, with the app quit (tray menu → **Quit**). First note the modified times of the files in `%APPDATA%\PTZJoystickControl`, with `Get-ChildItem "$env:APPDATA\PTZJoystickControl"`, and pick a new folder: `$base = Join-Path $env:TEMP "ptz59-$(Get-Random)"`.
@@ -84,7 +90,7 @@ An XC camera row now has **Username** and **Password** fields, for a camera that
 
 ### #48: XC zoom, focus and presets
 
-An XC camera now also zooms, focuses (manual focus) and recalls presets, on the same send path as its pan and tilt (#47). The app's preset N (**Recall - N**) recalls the camera's preset N; presets above 100, which the CR-N500 does not have, do nothing and log a `WARN`. A recall moves at the **Preset Recall Speed** last set on that camera (1..24, mapped onto the camera's preset speeds 1..100); until one has been set since the app started, the camera uses the speeds saved with its preset. Focus mode, focus lock, power and preset save still do nothing on an XC camera and only log an `INFO` line; Companion's Canon module covers them. VISCA cameras are unchanged. Keep the log open (tray menu → **Show log**).
+An XC camera now also zooms, focuses (manual focus) and recalls presets, on the same send path as its pan and tilt (#47). The app's preset N (**Recall - N**) recalls the camera's preset N; presets above 100, which the CR-N500 does not have, do nothing and log a `WARN`, at most once a minute per preset number. A recall moves at the **Preset Recall Speed** last set on that camera (1..24, mapped onto the camera's preset speeds 1..100); until one has been set since the app started, the camera uses the speeds saved with its preset. Focus mode, focus lock, power and preset save still do nothing on an XC camera and only log an `INFO` line; Companion's Canon module covers them. VISCA cameras are unchanged. Keep the log open (tray menu → **Show log**).
 
 - [ ] On each CR-N500, open `http://<camera address>/-wvhttp-01-/info.cgi` in a browser and record `s.firmware`, `c.1.zoom.speed.min`, `c.1.zoom.speed.max`, `c.1.focus.speed.min` and `c.1.focus.speed.max`. The app assumes zoom speeds 0..15 and focus speeds 0..2 (the CR-N500's values in Canon's spec): if a camera reports other ranges, file an issue to change the constants in `XcCamera`.
 - [ ] Zoom each XC camera tele and wide from the USB joystick and from the panel, slowly and at full deflection: the zoom speed follows the deflection, and the zoom stops on release.
