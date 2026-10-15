@@ -30,7 +30,8 @@ public class XcCameraReachabilityTests
 
         await connected.WaitAsync(Wait);
         Assert.True(camera.Connected);
-        Assert.Equal("item=s", fake.Probes[0].Query);
+        // The first probe reads the whole info.cgi for the speed ranges (#60).
+        Assert.Equal("", fake.Probes[0].Query);
         await XcTestCameras.WaitForLogAsync(trace, name, "connected");
         // On a busy host a probe can time out before one succeeds, adding a warning; the connect is one line.
         Assert.Single(XcTestCameras.LogFor(trace, name), l => l.Message.Contains("is connected"));

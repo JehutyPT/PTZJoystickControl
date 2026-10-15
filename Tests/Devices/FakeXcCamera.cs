@@ -281,8 +281,9 @@ internal sealed class FakeXcCamera : IDisposable
                         response.Append($"livescope-status: {reply.Livescope}\r\n");
                     foreach (var challenge in challenged ? login!.Challenges(stale && login.Stale) : reply.Challenges)
                         response.Append($"WWW-Authenticate: {challenge}\r\n");
-                    response.Append("Content-Length: 0\r\n\r\n");
-                    await stream.WriteAsync(Encoding.ASCII.GetBytes(response.ToString()), _stopping.Token);
+                    var body = challenged ? Array.Empty<byte>() : Encoding.ASCII.GetBytes(reply.Body);
+                    response.Append($"Content-Length: {body.Length}\r\n\r\n");
+                    await stream.WriteAsync(Encoding.ASCII.GetBytes(response.ToString()).Concat(body).ToArray(), _stopping.Token);
                 }
                 finally
                 {
@@ -329,6 +330,9 @@ internal sealed record XcRequest(string Path, string Query, long ArrivedAt)
 
     public bool IsProbe => Path == FakeXcCamera.InfoPath;
 
+    // A probe reading the camera's whole info.cgi, which carries its speed ranges.
+    public bool IsFullInfo => IsProbe && Query.Length == 0;
+
     public string? Parameter(string name) =>
         Query.Split('&').Select(p => p.Split('=', 2)).FirstOrDefault(p => p[0] == name) is { Length: 2 } pair ? pair[1] : null;
 
@@ -363,6 +367,9 @@ internal sealed record XcReply(XcReplyKind Kind, int Status = 200, string? Lives
 
     /// <summary>The <c>WWW-Authenticate</c> challenges the answer carries, one header each.</summary>
     public IReadOnlyList<string> Challenges { get; init; } = Array.Empty<string>();
+
+    /// <summary>The answer's body; empty by default.</summary>
+    public string Body { get; init; } = "";
 
     /// <summary>How long a <see cref="XcReplyKind.Delayed"/> reply waits before it is answered.</summary>
     public TimeSpan Delay { get; init; }
