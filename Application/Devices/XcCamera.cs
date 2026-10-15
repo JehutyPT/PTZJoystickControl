@@ -25,8 +25,9 @@ public class XcCamera : XcCameraBase, IDisposable
     internal const int SpeedMin = 10, SpeedMax = 10000;
 
     // The CR-N500's zoom speed range (c.1.zoom.speed.dir) and manual-focus speed range
-    // (c.1.focus.speed), from appendix A of Canon's XC protocol spec. Other XC cameras differ; the
-    // on-site checklist confirms them with info.cgi.
+    // (c.1.focus.speed), from appendix A of Canon's XC protocol spec. Used until the camera reports
+    // its own in info.cgi (c.1.zoom.speed.min/max, c.1.focus.speed.min/max), and when it reports none
+    // usable: firmware 1.5.2 reports zoom 0..127 and focus 0..63 (#60).
     internal const int ZoomSpeedMin = 0, ZoomSpeedMax = 15;
     internal const int FocusSpeedMin = 0, FocusSpeedMax = 2;
     // The CR-N500's camera preset numbers (p, 1..p.count) and preset movement speeds (p.ptzspeed),
@@ -85,6 +86,8 @@ public class XcCamera : XcCameraBase, IDisposable
     private const string ControlPath = "/-wvhttp-01-/control.cgi";
     // The probe: a sessionless, read-only info request for one item group, which needs no control right.
     private const string ProbePathAndQuery = "/-wvhttp-01-/info.cgi?item=s";
+    // The whole info.cgi, read by the first probe after a connect for the camera's speed ranges.
+    private const string InfoPath = "/-wvhttp-01-/info.cgi";
     private const string LivescopeStatusHeader = "livescope-status";
 
     private readonly TimeSpan _requestTimeout;
@@ -120,6 +123,16 @@ public class XcCamera : XcCameraBase, IDisposable
     private int _zoomSpeed = ZoomSpeedMin;
     private FocusDir _focus = FocusDir.Stop;
     private int _focusSpeed = FocusSpeedMin;
+
+    // The zoom and focus speed ranges in use: the camera's, once its info.cgi reported them, else the
+    // spec's. Reset to the spec's on an address, port or login change.
+    private (int Min, int Max) _zoomRange = (ZoomSpeedMin, ZoomSpeedMax);
+    private (int Min, int Max) _focusRange = (FocusSpeedMin, FocusSpeedMax);
+    // Whether the next probe reads the whole info.cgi for the speed ranges: after an address, port or
+    // login change, and after the camera turned unreachable, until the camera answers one.
+    private bool _rangesWanted = true;
+    // The speed ranges last logged, so a reconnect with the same ones logs nothing.
+    private string? _rangesLogged;
     // The axes a request carries together when one of them changed: pan and tilt as one pair, zoom,
     // and focus.
     private readonly AxisGroup _panTiltGroup = new("pan/tilt");
@@ -283,6 +296,9 @@ public class XcCamera : XcCameraBase, IDisposable
     {
         _endpointVersion++;
         _probeNow = true;
+        _rangesWanted = true;
+        _zoomRange = (ZoomSpeedMin, ZoomSpeedMax);
+        _focusRange = (FocusSpeedMin, FocusSpeedMax);
         _challenge = null;
         _loginFailureLoggedAt = long.MinValue / 4;
         WakeLocked();
@@ -353,9 +369,9 @@ public class XcCamera : XcCameraBase, IDisposable
 
     public override void Zoom(double zoomSpeed, ZoomDir zoomDir)
     {
-        var speed = zoomDir == ZoomDir.Stop ? ZoomSpeedMin : ToXcStep(zoomSpeed, ZoomSpeedMin, ZoomSpeedMax);
         lock (_lock)
         {
+            var speed = zoomDir == ZoomDir.Stop ? _zoomRange.Min : ToXcStep(zoomSpeed, _zoomRange.Min, _zoomRange.Max);
             if (_disposed || _zoom == zoomDir && _zoomSpeed == speed)
                 return;
             var enteredStop = _zoom != ZoomDir.Stop && zoomDir == ZoomDir.Stop;
@@ -367,9 +383,9 @@ public class XcCamera : XcCameraBase, IDisposable
 
     public override void Focus(double focusSpeed, FocusDir focusDir)
     {
-        var speed = focusDir == FocusDir.Stop ? FocusSpeedMin : ToXcStep(focusSpeed, FocusSpeedMin, FocusSpeedMax);
         lock (_lock)
         {
+            var speed = focusDir == FocusDir.Stop ? _focusRange.Min : ToXcStep(focusSpeed, _focusRange.Min, _focusRange.Max);
             if (_disposed || _focus == focusDir && _focusSpeed == speed)
                 return;
             var enteredStop = _focus != FocusDir.Stop && focusDir == FocusDir.Stop;
@@ -392,9 +408,9 @@ public class XcCamera : XcCameraBase, IDisposable
             _tilt = TiltDir.Stop;
             _tiltSpeed = SpeedMin;
             _zoom = ZoomDir.Stop;
-            _zoomSpeed = ZoomSpeedMin;
+            _zoomSpeed = _zoomRange.Min;
             _focus = FocusDir.Stop;
-            _focusSpeed = FocusSpeedMin;
+            _focusSpeed = _focusRange.Min;
             // Unlike VISCA, which sends a recall at once and the stop after it, a recall not yet sent
             // is kept: it goes out next and takes the place of these stops, which are sent only if it
             // fails (NextRequestLocked, SettleStopsLocked).
@@ -584,8 +600,8 @@ public class XcCamera : XcCameraBase, IDisposable
                     continue;
                 }
 
-                var (failure, loginFailure, challenge) = await SendAsync(request, stopping).ConfigureAwait(false);
-                OnCompleted(request, failure, loginFailure, challenge);
+                var (failure, loginFailure, challenge, body) = await SendAsync(request, stopping).ConfigureAwait(false);
+                OnCompleted(request, failure, loginFailure, challenge, body);
             }
             catch (Exception) when (stopping.IsCancellationRequested)
             {
@@ -660,7 +676,8 @@ public class XcCamera : XcCameraBase, IDisposable
     // username and password, null when no username is set; Challenge the one the camera gave at that
     // address and port, answered up front, or null. Neither shows in a log: both print as their type
     // name.
-    private sealed record Request(Uri Uri, bool Recall, long[] StopIds, long EndpointVersion, NetworkCredential? Login, Challenge? Challenge);
+    // ReadsRanges marks a probe of the whole info.cgi, whose answer carries the speed ranges.
+    private sealed record Request(Uri Uri, bool Recall, long[] StopIds, long EndpointVersion, NetworkCredential? Login, Challenge? Challenge, bool ReadsRanges = false);
 
     // The request to send now, or null and how long to wait before looking again (infinite with no
     // address; a wake ends the wait early). Only the newest wanted state is ever sent, and a probe
@@ -692,7 +709,7 @@ public class XcCamera : XcCameraBase, IDisposable
         }
 
         // Built before any state changes, so a failure here leaves the request wanted.
-        var uri = recall ? RecallUri(_recall!.Value) : control ? ControlUri() : ProbeUri();
+        var uri = recall ? RecallUri(_recall!.Value) : control ? ControlUri() : ProbeUri(_rangesWanted);
         var login = _login;
         // Answered only at the address and port it came from: the base class sets a new address or
         // port before OnEndpointChanged forgets the challenge, and a request built in between goes to
@@ -718,7 +735,7 @@ public class XcCamera : XcCameraBase, IDisposable
             return new Request(uri, Recall: true, stopIds, _endpointVersion, login, challenge);
         }
         if (!control)
-            return new Request(uri, Recall: false, stopIds, _endpointVersion, login, challenge);
+            return new Request(uri, Recall: false, stopIds, _endpointVersion, login, challenge, ReadsRanges: _rangesWanted);
         if (CarriesLocked(_panTiltGroup))
             _sentPanTilt = (_pan, _panSpeed, _tilt, _tiltSpeed);
         for (var i = 0; i < _groups.Length; i++)
@@ -774,7 +791,7 @@ public class XcCamera : XcCameraBase, IDisposable
         ? string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ControlPath}?p={recall.Preset}&p.ptzspeed={speed}")
         : string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ControlPath}?p={recall.Preset}"));
 
-    private Uri ProbeUri() => new(string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ProbePathAndQuery}"));
+    private Uri ProbeUri(bool whole) => new(string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{(whole ? InfoPath : ProbePathAndQuery)}"));
 
     private static string PanValue(PanDir dir) => dir switch
     {
@@ -807,9 +824,10 @@ public class XcCamera : XcCameraBase, IDisposable
     // Sends one request; returns null when it succeeded, else why it failed and whether that is a login
     // failure, with the camera's challenge to answer from now on (null when it did not challenge, or
     // challenged with nothing the app can answer). A request the camera challenges is repeated once,
-    // at once, answering the challenge: both share the request's one timeout. Throws only when
-    // stopping (or on an unexpected error, which the loop logs).
-    private async Task<(string? Failure, bool LoginFailure, Challenge? Challenge)> SendAsync(Request request, CancellationToken stopping)
+    // at once, answering the challenge: both share the request's one timeout. For a request that
+    // reads the speed ranges, also the answer's body once the camera answered other than with a login
+    // failure, else null. Throws only when stopping (or on an unexpected error, which the loop logs).
+    private async Task<(string? Failure, bool LoginFailure, Challenge? Challenge, string? Body)> SendAsync(Request request, CancellationToken stopping)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stopping);
         timeout.CancelAfter(_requestTimeout);
@@ -819,27 +837,76 @@ public class XcCamera : XcCameraBase, IDisposable
             var login = request.Login;
             using var response = await GetAsync(request.Uri, login != null ? request.Challenge?.Answer(login, request.Uri) : null, timeout.Token).ConfigureAwait(false);
             if (response.StatusCode != HttpStatusCode.Unauthorized)
-                return (Failure(response), false, null);
+                return (Failure(response), false, null, await BodyAsync(request, response, timeout.Token).ConfigureAwait(false));
             if (login == null)
-                return (LoginRequired, true, null);
+                return (LoginRequired, true, null, null);
 
             challenge = Challenge.From(response, request.Uri, request.Challenge);
             if (challenge == null)
-                return ($"{LoginUnsupported} (offered: {Challenge.Offered(response)})", true, null);
+                return ($"{LoginUnsupported} (offered: {Challenge.Offered(response)})", true, null, null);
 
             using var retry = await GetAsync(request.Uri, challenge.Answer(login, request.Uri), timeout.Token).ConfigureAwait(false);
             if (retry.StatusCode == HttpStatusCode.Unauthorized)
-                return (LoginRefused, true, Challenge.From(retry, request.Uri, challenge) ?? challenge);
-            return (Failure(retry), false, challenge);
+                return (LoginRefused, true, Challenge.From(retry, request.Uri, challenge) ?? challenge, null);
+            return (Failure(retry), false, challenge, await BodyAsync(request, retry, timeout.Token).ConfigureAwait(false));
         }
         catch (OperationCanceledException) when (!stopping.IsCancellationRequested)
         {
-            return ($"no answer within {_requestTimeout.TotalMilliseconds:0} ms", false, challenge);
+            return ($"no answer within {_requestTimeout.TotalMilliseconds:0} ms", false, challenge, null);
         }
         catch (HttpRequestException e) when (!stopping.IsCancellationRequested)
         {
-            return (e.GetBaseException().Message, false, challenge);
+            return (e.GetBaseException().Message, false, challenge, null);
         }
+    }
+
+    // The answer's body for a request that reads the speed ranges, else null. Already buffered by the
+    // client within the request's timeout.
+    private static async Task<string?> BodyAsync(Request request, HttpResponseMessage response, CancellationToken cancellation) =>
+        request.ReadsRanges ? await response.Content.ReadAsStringAsync(cancellation).ConfigureAwait(false) : null;
+
+    /// <summary>
+    /// The speed range <paramref name="item"/> (such as <c>c.1.zoom.speed</c>) that an info.cgi answer
+    /// reports in its <c>item.min:=n</c> and <c>item.max:=n</c> lines, or null when either is missing
+    /// or not an integer, or the minimum is not below the maximum.
+    /// </summary>
+    internal static (int Min, int Max)? SpeedRange(string info, string item)
+    {
+        int? min = null, max = null;
+        foreach (var raw in info.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            var separator = line.IndexOf(":=", StringComparison.Ordinal);
+            if (separator < 0)
+                continue;
+            var key = line[..separator];
+            if (key != item + ".min" && key != item + ".max")
+                continue;
+            if (!int.TryParse(line[(separator + 2)..].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var value))
+                return null;
+            if (key.EndsWith(".min", StringComparison.Ordinal))
+                min = value;
+            else
+                max = value;
+        }
+        return min is { } lo && max is { } hi && lo < hi ? (lo, hi) : null;
+    }
+
+    // Takes the speed ranges from an info.cgi answer, each the spec's when it reports none usable, and
+    // returns the line to log when they differ from those last logged, else null. Called with _lock held.
+    private string? TakeRangesLocked(string info)
+    {
+        var zoom = SpeedRange(info, "c.1.zoom.speed");
+        var focus = SpeedRange(info, "c.1.focus.speed");
+        _zoomRange = zoom ?? (ZoomSpeedMin, ZoomSpeedMax);
+        _focusRange = focus ?? (FocusSpeedMin, FocusSpeedMax);
+        const string Spec = " (Canon's spec; the camera reported no usable range)";
+        var ranges = string.Create(CultureInfo.InvariantCulture,
+            $"zoom speeds {_zoomRange.Min}..{_zoomRange.Max}{(zoom != null ? " (from the camera)" : Spec)}, focus speeds {_focusRange.Min}..{_focusRange.Max}{(focus != null ? " (from the camera)" : Spec)}");
+        if (ranges == _rangesLogged)
+            return null;
+        _rangesLogged = ranges;
+        return $"Camera {Name}: the XC camera at {Address}:{Port} uses {ranges}";
     }
 
     // A GET of the uri, with the Authorization header when there is one.
@@ -874,10 +941,11 @@ public class XcCamera : XcCameraBase, IDisposable
     // login failure instead at most once per LoginFailureLogInterval), the first success after one,
     // each Connected change, and the stops a failed request gives up, in one ERROR; never once per
     // request.
-    private void OnCompleted(Request request, string? failure, bool loginFailure, Challenge? challenge)
+    private void OnCompleted(Request request, string? failure, bool loginFailure, Challenge? challenge, string? body)
     {
         string? warning = null;
         string? information = null;
+        string? ranges = null;
         string? error = null;
         var connectedChanged = false;
         var failureChanged = false;
@@ -902,6 +970,15 @@ public class XcCamera : XcCameraBase, IDisposable
             else if (loginFailure)
                 _challenge = null;
 
+            // Any answer ends the read, so an answer that keeps failing does not keep the whole
+            // info.cgi in every probe; only a successful one carries the ranges.
+            if (request.ReadsRanges && body != null)
+            {
+                _rangesWanted = false;
+                if (failure == null)
+                    ranges = TakeRangesLocked(body);
+            }
+
             if (failure == null)
             {
                 _lastSuccessAt = now;
@@ -925,6 +1002,8 @@ public class XcCamera : XcCameraBase, IDisposable
                 {
                     _connected = false;
                     connectedChanged = true;
+                    // It may come back with other firmware: the next connect reads its ranges again.
+                    _rangesWanted = true;
                     information = $"Camera {Name}: the XC camera at {Address}:{Port} is not reachable";
                 }
                 if (GiveUpFailedStopsLocked(request, now) is { } givenUp)
@@ -937,6 +1016,8 @@ public class XcCamera : XcCameraBase, IDisposable
             Trace.TraceWarning(warning);
         if (information != null)
             Trace.TraceInformation(information);
+        if (ranges != null)
+            Trace.TraceInformation(ranges);
         if (error != null)
             Trace.TraceError(error);
         if (connectedChanged)
