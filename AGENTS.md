@@ -1,6 +1,6 @@
 # AGENTS.md
 
-A C# / Avalonia tray app that drives two Canon CR-N500 PTZ cameras over VISCA-over-IP from a joystick, integrated with Bitfocus Companion. It runs **live shows**: reliability outranks every other concern.
+A C# / Avalonia tray app that drives two Canon CR-N500 PTZ cameras over VISCA-over-IP or Canon's XC protocol (HTTP) from a joystick, integrated with Bitfocus Companion. It runs **live shows**: reliability outranks every other concern.
 
 ## Always
 
