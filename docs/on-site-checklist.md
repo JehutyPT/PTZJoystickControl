@@ -6,6 +6,12 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #57: An invalid active position falls back to the last speed profile
+
+When `SpeedProfiles.json` is usable but its active position is missing or outside its list, the last speed profile is now active instead of the first. In a list kept finest first, that is the fastest, so a bad position does not make the cameras slow on air. One `WARN` names the file, the problem and that speed profile, and the file is not rewritten until a speed profile changes. With no file, or one that cannot be used, "Full" is still active (#52), and removing the active speed profile still makes the first one active (#45). The cost: the last is used whatever its name, so if the list has been reordered with a slower speed profile last, that one is made active.
+
+- [ ] If there is no `SpeedProfiles.json` yet, make another speed profile active in the window, which writes it, then make the previous one active again. Quit (tray menu → **Quit**) and copy `%APPDATA%\PTZJoystickControl\SpeedProfiles.json` aside. Set `"ActivePosition": 0` in it, start the app and open the log (tray menu → **Show log**). The last speed profile in the **Speed profiles** section is active, and one `WARN` names the file and that speed profile. Quit, put the copy back and restart.
+
 ### #53: XC stops are given up after 5 s
 
 An XC camera's stop whose sends all fail is no longer retried without limit. Once it has been sent 3 times and 5 s have passed since it started with no send succeeding, the app gives it up: it sends no more of it, logs one `ERROR` naming the camera, the axes (`pan/tilt`, `zoom`, `focus`) and the last failure, and probes the camera again. The cost: the app no longer tries to stop that camera, so it may keep moving, even once the network returns, until that axis is moved and released, stopped again, recalled to a preset, or at its limit. VISCA cameras are unchanged. Keep the log open (tray menu → **Show log**).
