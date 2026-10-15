@@ -4,12 +4,14 @@ using System.Net;
 using System.Net.Sockets;
 using PtzJoystickControl.Application.Commands;
 using PtzJoystickControl.Application.Devices;
+using PtzJoystickControl.Application.Services;
 using PtzJoystickControl.Core.Commands;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
 using PtzJoystickControl.Core.Services;
 using PtzJoystickControl.Core.Utils;
 using PtzJoystickControl.Tests.Services;
+using PtzJoystickControl.Tests.Skaarhoj;
 using Xunit;
 
 namespace PtzJoystickControl.Tests.Devices;
@@ -48,23 +50,108 @@ public class ViscaIpDeviceStopRepeatTests : ViscaLoopbackTests
         Assert.Equal(new byte[] { 0x81, 0x01, 0x06, 0x01, 8, 0, (byte)PanDir.Right, (byte)TiltDir.Stop, 0xFF }, packets.Last().Payload);
     }
 
+    // Removal disposes the camera (docs/live-safety.md §1). With nothing pending it is released at
+    // once, so a camera added again with the same address and port receives the replies.
     [Fact]
-    public async Task Dispose_CancelsPendingRepeatsWithoutReopeningTheSocket()
+    public async Task DisposingAnIdleCamera_ReleasesItAtOnce_SoACameraAddedAgainReceivesTheReplies()
     {
-        var camera = new LoopbackCamera();
-        var endpoint = camera.Endpoint;
+        using var trace = new TraceRecorder();
+        using var camera = new LoopbackCamera();
+        camera.Device.Preset(Preset.Recall, 1);
+        await camera.WaitForPacketsAsync(1);
+        await camera.CollectAsync();
+
+        camera.Device.Dispose();
+
+        Assert.True(camera.Device.Released);
+        Assert.False(camera.Device.Connected);
+        Assert.Null(UdpSocket.ListenerFor(camera.Endpoint));
+        var name = UniqueName();
+        using var again = new ViscaIpDevice(name, new IPEndPoint(IPAddress.Loopback, camera.Endpoint.Port));
+        again.BeginSocket();
+        Assert.Same(again, UdpSocket.ListenerFor(camera.Endpoint)?.Target);
+        Assert.Empty(LogFor(trace, name));
+    }
+
+    [Fact]
+    public async Task CommandsAfterDispose_AreIgnored_AndThePendingStopsStillCarryStop()
+    {
+        using var trace = new TraceRecorder();
+        var name = UniqueName();
+        using var camera = new LoopbackCamera(name);
         camera.Device.Stop();
         camera.Device.Dispose();
-        var packets = await camera.CollectAsync();
-        camera.Dispose();
 
-        // Only the initial, immediate stops can have gone out; repeats are cancelled.
-        Assert.True(packets.Count(p => IsPanTiltStop(p.Payload)) < MinStopSends, Describe(packets));
-        Assert.True(packets.Count(p => IsZoomStop(p.Payload)) < MinStopSends, Describe(packets));
-        Assert.True(packets.Count(p => IsFocusStop(p.Payload)) < MinStopSends, Describe(packets));
+        camera.Device.Pan(0.5, PanDir.Right);
+        camera.Device.Tilt(0.5, TiltDir.Up);
+        camera.Device.Zoom(0.5, ZoomDir.Tele);
+        camera.Device.Focus(0.5, FocusDir.Far);
+        camera.Device.FocusMode(FocusMode.Auto);
+        camera.Device.FocusLock(FocusLock.Lock);
+        camera.Device.Power(Power.On);
+        camera.Device.PresetRecallSpeed(12);
+        camera.Device.Preset(Preset.Recall, 4);
+        camera.Device.Stop();
+        await camera.WaitForReleaseAsync();
+        var packets = await camera.CollectAsync();
+
+        Assert.False(camera.Device.IsMoving);
+        Assert.All(packets, p => Assert.True(IsStop(p), Describe(packets)));
+        // Exactly 3 of each: the first Stop() and its 2 repeats. The second Stop() sends nothing.
+        Assert.True(packets.Count(p => IsPanTiltStop(p.Payload)) == 3, Describe(packets));
+        Assert.True(packets.Count(p => IsZoomStop(p.Payload)) == 3, Describe(packets));
+        Assert.True(packets.Count(p => IsFocusStop(p.Payload)) == 3, Describe(packets));
+        Assert.Empty(LogFor(trace, name));
+    }
+
+    // Setting a disposed camera's address or port still records it, and closes its socket while its
+    // stops are going out. It never opens another: those stops are dropped, and it logs nothing, not
+    // even that it is connecting.
+    [Fact]
+    public async Task ADisposedCamera_NeverReopensItsSocket_AndLogsNothing()
+    {
+        using var trace = new TraceRecorder();
+        var name = UniqueName();
+        using var camera = new LoopbackCamera(name);
+        var newPort = camera.Endpoint.Port == IPEndPoint.MaxPort ? camera.Endpoint.Port - 1 : camera.Endpoint.Port + 1;
+        camera.Device.Stop();
+        camera.Device.Dispose();
+
+        camera.Device.Port = newPort;
+
+        await camera.WaitForReleaseAsync();
+        await camera.CollectAsync();
+        Assert.Equal(newPort, camera.Device.Port);
         Assert.False(camera.Device.Connected);
-        // A repeat that reopened the socket would have re-registered this endpoint's listener.
-        Assert.Null(UdpSocket.ListenerFor(endpoint));
+        Assert.Null(UdpSocket.ListenerFor(camera.Endpoint));
+        Assert.Null(UdpSocket.ListenerFor(new IPEndPoint(IPAddress.Loopback, newPort)));
+        Assert.Empty(LogFor(trace, name));
+    }
+
+    // Removal stops the camera a controller is driving, through the selection, before it disposes it.
+    [Fact]
+    public async Task RemovingTheDrivenCamera_SendsItsStops_ThenNothingMore()
+    {
+        using var trace = new TraceRecorder();
+        var name = UniqueName();
+        using var camera = new LoopbackCamera(name);
+        var service = new CamerasService(new MemoryCameraStore(camera.Device));
+        SelectingGamepad.Driving(service, camera.Device);
+        camera.Device.Pan(0.5, PanDir.Left);
+        await camera.WaitForPacketsAsync(1);
+        await camera.CollectAsync(TimeSpan.Zero);
+
+        service.RemoveCamera(camera.Device);
+
+        await camera.WaitForReleaseAsync();
+        var packets = await camera.CollectAsync();
+        // Exactly 3: the stop the removal sends and its 2 repeats.
+        Assert.True(packets.Count(p => IsPanTiltStop(p.Payload)) == 3, Describe(packets));
+        Assert.All(packets, p => Assert.True(IsStop(p), Describe(packets)));
+        Assert.False(camera.Device.Connected);
+        Assert.Null(UdpSocket.ListenerFor(camera.Endpoint));
+        Assert.Empty(await camera.CollectAsync());
+        Assert.Empty(LogFor(trace, name));
     }
 
     [Fact]

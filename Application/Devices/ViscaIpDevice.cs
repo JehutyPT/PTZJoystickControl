@@ -26,11 +26,13 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
     private static readonly TimeSpan PendingPollInterval = TimeSpan.FromMilliseconds(5);
     private static readonly TimeSpan MaxPendingWait = TimeSpan.FromSeconds(1);
 
-    // Cancelled by Dispose so pending stop repeats end and cannot reopen the socket. EndSocket
-    // deliberately does not cancel them: it also runs on send/TCP errors, and SendCommand
-    // reconnects, which is exactly when a repeated stop matters. Never disposed itself, so
-    // reading its Token after Dispose stays safe; it holds no timer or other resource.
-    private readonly CancellationTokenSource disposeCancellation = new();
+    // Guarded by commandsToSend. Once disposed, the camera ignores commands and never opens a
+    // socket. busy counts the send loops (AddCommand) and stop repeats still running: the last of
+    // them to end on a disposed camera releases it, or Dispose does if none is running. Released,
+    // the camera has closed its socket and unregistered its listener, and sends and logs nothing.
+    private bool disposed;
+    private bool released;
+    private int busy;
 
     // The endpoint this camera receives UDP replies from, as registered: ViscaIpEndpont changes in
     // place when the address or port is set, before EndSocket runs. Null when not registered.
@@ -40,9 +42,25 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
 
     public ViscaIpDevice(string name, IPEndPoint? viscaEndpint) : base(name, viscaEndpint) { }
 
+    /// <summary>
+    /// True once the disposed camera is released: from then on it sends and logs nothing more, its
+    /// socket closes and its UDP reply listener is unregistered. For tests, as
+    /// <see cref="UdpSocket.ListenerFor"/> exposes the listener.
+    /// </summary>
+    internal bool Released
+    {
+        get { lock (commandsToSend) return released; }
+    }
+
+    private bool IsDisposed
+    {
+        get { lock (commandsToSend) return disposed; }
+    }
+
     public override void BeginSocket()
     {
-        if (disposeCancellation.IsCancellationRequested)
+        // A disposed camera never opens a socket, so none of its stops can re-register the listener.
+        if (IsDisposed)
             return;
 
         if (socket == null)
@@ -94,6 +112,9 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         }
         catch (Exception e)
         {
+            // Released: the camera closed this socket itself and logs nothing more.
+            if (Released)
+                return;
             Trace.TraceWarning($"TCP OnConnected {name}: {eventArgs?.SocketError} {e.Message}");
             EndSocket();
         }
@@ -114,6 +135,9 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         }
         catch (Exception e)
         {
+            // Released: closing the socket ended the receive, which is no connection loss.
+            if (Released)
+                return;
             Trace.TraceWarning($"TCP OnReceive {name}: connection lost: {e.Message}");
             NotifyPropertyChanged(nameof(Connected));
             EndSocket();
@@ -153,6 +177,8 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
 
     public override void Power(Power power)
     {
+        if (IsDisposed)
+            return;
         powerCmd = (byte)power;
         AddCommand(AddPowerCommand);
     }
@@ -202,6 +228,9 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
     // Change detection compares VISCA bytes, so fractions that quantize to the same speed send nothing.
     private void PanTilt(byte panSpeed, byte tiltSpeed, PanDir panDir, TiltDir tiltDir)
     {
+        if (IsDisposed)
+            return;
+
         bool enteredStop = (this.panDir != PanDir.Stop && panDir == PanDir.Stop)
             || (this.tiltDir != TiltDir.Stop && tiltDir == TiltDir.Stop);
         bool panTiltChanged = false;
@@ -230,6 +259,9 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
 
     public override void Zoom(double zoomSpeedFraction, ZoomDir zoomDir)
     {
+        if (IsDisposed)
+            return;
+
         byte zoomSpeed = zoomDir == ZoomDir.Stop ? (byte)0 : ToViscaSpeed(zoomSpeedFraction, ZoomSpeedMin, ZoomSpeedMax);
 
         //zoomCmd byte is split in direction and speed. 1 is dir and 2 is speed in 0x12
@@ -256,6 +288,9 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
 
     public override void Focus(double focusSpeedFraction, FocusDir focusDir)
     {
+        if (IsDisposed)
+            return;
+
         byte focusSpeed = focusDir == FocusDir.Stop ? (byte)0 : ToViscaSpeed(focusSpeedFraction, FocusSpeedMin, FocusSpeedMax);
 
         bool focusChanged = false;
@@ -281,18 +316,24 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
 
     public override void FocusMode(FocusMode focusMode)
     {
+        if (IsDisposed)
+            return;
         focusModeCmd = (byte)focusMode;
         AddCommand(AddFocusModeCommand);
     }
 
     public override void FocusLock(FocusLock focusLock)
     {
+        if (IsDisposed)
+            return;
         focusLockCmd = (byte)focusLock;
         AddCommand(AddFocusLockCommand);
     }
 
     public override void Preset(Preset preset, byte presetNumber)
     {
+        if (IsDisposed)
+            return;
         presetCmd = (byte)preset;
         presetCmdNumber = presetNumber;
         AddCommand(AddPresetCommand);
@@ -300,12 +341,17 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
 
     public override void PresetRecallSpeed(byte value)
     {
+        if (IsDisposed)
+            return;
         presetRecallSpeed = value;
         AddCommand(AddPresetRecallSpeedCommand);
     }
 
     public override void Stop()
     {
+        if (IsDisposed)
+            return;
+
         // Bypass change detection: the camera may still be moving even if the last command
         // we sent was a stop (it may have been lost).
         panDir = PanDir.Stop;
@@ -319,12 +365,38 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
     }
 
     /// <summary>
-    /// Cancels pending stop repeats and closes the socket. A disposed device never reopens its
-    /// socket, so a repeat that was already sending cannot re-register the UDP listener.
+    /// Returns at once. From here on the camera ignores commands: they change no state and send
+    /// nothing; the address, port and protocol setters still record their values and open nothing.
+    /// The stop repeats already running finish, so each pending stop still goes out 3 times. Once
+    /// none is running and nothing is queued (at once if the camera is idle), the camera is released:
+    /// it closes its socket and unregisters its UDP reply listener, and sends and logs nothing more.
+    /// It never opens or reconnects a socket, so a stop that cannot go out on the socket it has is
+    /// dropped, and a repeat cannot re-register the listener.
     /// </summary>
     public void Dispose()
     {
-        disposeCancellation.Cancel();
+        lock (commandsToSend)
+        {
+            if (disposed)
+                return;
+            disposed = true;
+            if (busy > 0)
+                return;
+            released = true;
+        }
+        EndSocket();
+    }
+
+    // Ends a send loop or stop repeat. The last one to end on a disposed camera releases it.
+    private void EndBusy()
+    {
+        lock (commandsToSend)
+        {
+            busy--;
+            if (!disposed || released || busy > 0)
+                return;
+            released = true;
+        }
         EndSocket();
     }
 
@@ -339,33 +411,36 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
     /// until the previous send of the same command has left the queue: pending commands are a
     /// set, so adding one that is still queued would merge into a single packet. The packet is
     /// built from the device's state at send time, so if the operator moves the camera again
-    /// within the window the repeat carries the new motion rather than a stale stop.
+    /// within the window the repeat carries the new motion rather than a stale stop. Disposing the
+    /// camera lets the repeats finish: it ignores commands from then on, so they carry the stop.
     /// </summary>
     private void RepeatCommand(Func<ViscaIPHeaderType> commandFunction)
     {
+        lock (commandsToSend)
+            busy++;
         _ = RepeatCommandAsync(commandFunction);
     }
 
     private async Task RepeatCommandAsync(Func<ViscaIPHeaderType> commandFunction)
     {
-        var cancellation = disposeCancellation.Token;
         try
         {
-            for (int i = 0; i < StopRepeatCount; i++)
+            try
             {
-                var waitUntil = DateTime.UtcNow + MaxPendingWait;
-                while (IsPending(commandFunction) && DateTime.UtcNow < waitUntil)
-                    await Task.Delay(PendingPollInterval, cancellation).ConfigureAwait(false);
+                for (int i = 0; i < StopRepeatCount; i++)
+                {
+                    var waitUntil = DateTime.UtcNow + MaxPendingWait;
+                    while (IsPending(commandFunction) && DateTime.UtcNow < waitUntil)
+                        await Task.Delay(PendingPollInterval).ConfigureAwait(false);
 
-                await Task.Delay(StopRepeatInterval, cancellation).ConfigureAwait(false);
-                if (cancellation.IsCancellationRequested)
-                    return;
-                AddCommand(commandFunction);
+                    await Task.Delay(StopRepeatInterval).ConfigureAwait(false);
+                    AddCommand(commandFunction);
+                }
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // Device disposed: drop the remaining repeats.
+            finally
+            {
+                EndBusy();
+            }
         }
         catch (Exception e)
         {
@@ -513,19 +588,27 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
         {
             lock (commandsToSend)
             {
+                busy++;
                 commandsToSend.Add(commandFunction);
             }
 
-            while (await Task.Run(() => trySendCommandsWithLock()))
+            try
             {
-                lock (commandsToSend)
+                while (await Task.Run(() => trySendCommandsWithLock()))
                 {
-                    if (commandsToSend.Count == 0)
+                    lock (commandsToSend)
                     {
-                        break;
+                        if (commandsToSend.Count == 0)
+                        {
+                            break;
+                        }
                     }
-                }
-            };
+                };
+            }
+            finally
+            {
+                EndBusy();
+            }
         }
         catch (Exception e)
         {
@@ -591,8 +674,11 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
 
     public void SendCommand()
     {
+        // A disposed camera never opens or reconnects a socket: the command is dropped.
         if (socket == null)
         {
+            if (IsDisposed)
+                return;
             Trace.TraceInformation($"Camera {name}: no socket, connecting to {ViscaIpEndpont}");
             BeginSocket();
             return;
@@ -601,6 +687,8 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
 
         if (protocol == Protocol.Tcp && !socket.Connected)
         {
+            if (IsDisposed)
+                return;
             Trace.TraceWarning($"Camera {name}: TCP not connected, reconnecting to {ViscaIpEndpont}");
             BeginSocket();
             return;

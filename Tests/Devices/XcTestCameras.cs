@@ -12,10 +12,12 @@ internal static class XcTestCameras
     // Every stop goes out at least this many times (docs/live-safety.md §1).
     private const int MinStopSends = 3;
 
+    // A camera addressed to the fake, which releases it when the fake is disposed (FakeXcCamera.Serves).
     internal static XcCamera CameraFor(FakeXcCamera fake, string? name = null, TimeSpan? requestTimeout = null, TimeSpan? probeInterval = null, string username = "", string password = "", TimeSpan? stopGiveUpAfter = null)
     {
         var camera = new XcCamera(name ?? UniqueName(), requestTimeout ?? XcCamera.DefaultRequestTimeout, probeInterval ?? XcCamera.DefaultProbeInterval,
             stopGiveUpAfter ?? XcCamera.DefaultStopGiveUpAfter);
+        fake.Serves(camera);
         // The login and port first: setting the address starts the camera's requests.
         camera.Username = username;
         camera.Password = password;
@@ -46,6 +48,22 @@ internal static class XcTestCameras
             var gap = Stopwatch.GetElapsedTime(stops[i - 1].ArrivedAt, stops[i].ArrivedAt);
             Assert.True(gap >= XcCamera.StopRepeatInterval,
                 $"Stops {i - 1} and {i} arrived {gap.TotalMilliseconds:0.0} ms apart. {FakeXcCamera.Describe(requests)}");
+        }
+    }
+
+    /// <summary>
+    /// Waits until the disposed camera is released: it sends nothing more. Throws a
+    /// <see cref="TimeoutException"/> after 5 s. FakeXcCamera.Dispose also blocks on it, so it never
+    /// resumes on the caller's context.
+    /// </summary>
+    internal static async Task WaitForReleaseAsync(XcCamera camera)
+    {
+        var deadline = Stopwatch.GetTimestamp() + 5 * Stopwatch.Frequency;
+        while (!camera.Released)
+        {
+            if (Stopwatch.GetTimestamp() > deadline)
+                throw new TimeoutException($"Camera {camera.Name} was not released.");
+            await Task.Delay(5).ConfigureAwait(false);
         }
     }
 
