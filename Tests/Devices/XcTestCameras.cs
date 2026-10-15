@@ -12,9 +12,10 @@ internal static class XcTestCameras
     // Every stop goes out at least this many times (docs/live-safety.md §1).
     private const int MinStopSends = 3;
 
-    internal static XcCamera CameraFor(FakeXcCamera fake, string? name = null, TimeSpan? requestTimeout = null, TimeSpan? probeInterval = null, string username = "", string password = "")
+    internal static XcCamera CameraFor(FakeXcCamera fake, string? name = null, TimeSpan? requestTimeout = null, TimeSpan? probeInterval = null, string username = "", string password = "", TimeSpan? stopGiveUpAfter = null)
     {
-        var camera = new XcCamera(name ?? UniqueName(), requestTimeout ?? XcCamera.DefaultRequestTimeout, probeInterval ?? XcCamera.DefaultProbeInterval);
+        var camera = new XcCamera(name ?? UniqueName(), requestTimeout ?? XcCamera.DefaultRequestTimeout, probeInterval ?? XcCamera.DefaultProbeInterval,
+            stopGiveUpAfter ?? XcCamera.DefaultStopGiveUpAfter);
         // The login and port first: setting the address starts the camera's requests.
         camera.Username = username;
         camera.Password = password;

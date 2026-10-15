@@ -47,10 +47,21 @@ public class XcCamera : XcCameraBase, IDisposable
 
     // Like the VISCA stop repeat: a stop (an axis entering stop, or Stop()) is sent once and then
     // StopRepeatCount more times, each StopRepeatInterval after the previous request completed, and
-    // then again until one of those sends succeeds. Every send carries the wanted state at send time,
-    // so a move made within the window goes out instead of a stale stop.
+    // then again until one of those sends succeeds or the stop is given up (DefaultStopGiveUpAfter).
+    // Every send carries the wanted state at send time, so a move made within the window goes out
+    // instead of a stale stop.
     internal const int StopRepeatCount = 2;
     internal static readonly TimeSpan StopRepeatInterval = TimeSpan.FromMilliseconds(50);
+
+    // A stop none of whose sends succeeded is given up, with one ERROR, when a send of it fails once it
+    // was sent StopRepeatCount + 1 times and this long has passed since it started (or since a failed
+    // recall restored it). Nothing more of it is sent and the idle probe runs again, but the camera may
+    // keep moving until that axis is moved and released, stopped again, recalled to a preset, or at its
+    // limit. 5 s exceeds the probe interval plus two request timeouts plus the stop repeat interval
+    // (4.05 s), so the camera shows not reachable first. It still allows about 9 sends to a camera that
+    // does not answer, enough to ride out a transient; a stop failing for longer points to something
+    // persistent. Tune on site against how long the link takes to come back.
+    internal static readonly TimeSpan DefaultStopGiveUpAfter = TimeSpan.FromSeconds(5);
 
     // After an unexpected error the loop pauses this long, so a recurring one cannot flood the log.
     private static readonly TimeSpan UnexpectedErrorPause = TimeSpan.FromSeconds(1);
@@ -73,6 +84,7 @@ public class XcCamera : XcCameraBase, IDisposable
 
     private readonly TimeSpan _requestTimeout;
     private readonly TimeSpan _probeInterval;
+    private readonly TimeSpan _stopGiveUpAfter;
 
     // Guards the wanted state and everything the loop decides on. Never held across an await.
     private readonly object _lock = new();
@@ -100,9 +112,9 @@ public class XcCamera : XcCameraBase, IDisposable
     private int _focusSpeed = FocusSpeedMin;
     // The axes a request carries together when one of them changed: pan and tilt as one pair, zoom,
     // and focus.
-    private readonly AxisGroup _panTiltGroup = new();
-    private readonly AxisGroup _zoomGroup = new();
-    private readonly AxisGroup _focusGroup = new();
+    private readonly AxisGroup _panTiltGroup = new("pan/tilt");
+    private readonly AxisGroup _zoomGroup = new("zoom");
+    private readonly AxisGroup _focusGroup = new("focus");
     private readonly AxisGroup[] _groups;
     // The pan and tilt the last control request carrying them was sent with: a recall that takes the
     // place of a pan/tilt stop leaves a move the camera was never sent to go out after it.
@@ -146,10 +158,13 @@ public class XcCamera : XcCameraBase, IDisposable
 
     public XcCamera(string name) : this(name, DefaultRequestTimeout, DefaultProbeInterval) { }
 
-    internal XcCamera(string name, TimeSpan requestTimeout, TimeSpan probeInterval) : base(name)
+    internal XcCamera(string name, TimeSpan requestTimeout, TimeSpan probeInterval) : this(name, requestTimeout, probeInterval, DefaultStopGiveUpAfter) { }
+
+    internal XcCamera(string name, TimeSpan requestTimeout, TimeSpan probeInterval, TimeSpan stopGiveUpAfter) : base(name)
     {
         _requestTimeout = requestTimeout;
         _probeInterval = probeInterval;
+        _stopGiveUpAfter = stopGiveUpAfter;
         _groups = new[] { _panTiltGroup, _zoomGroup, _focusGroup };
     }
 
@@ -287,7 +302,7 @@ public class XcCamera : XcCameraBase, IDisposable
             var enteredStop = _pan != PanDir.Stop && panDir == PanDir.Stop;
             _pan = panDir;
             _panSpeed = speed;
-            OnWantedChangedLocked(_panTiltGroup, enteredStop, supersedesStop: _pan != PanDir.Stop && _tilt != TiltDir.Stop);
+            OnWantedChangedLocked(_panTiltGroup, enteredStop, supersedesStop: _pan != PanDir.Stop && _tilt != TiltDir.Stop, Stopwatch.GetTimestamp());
         }
     }
 
@@ -301,7 +316,7 @@ public class XcCamera : XcCameraBase, IDisposable
             var enteredStop = _tilt != TiltDir.Stop && tiltDir == TiltDir.Stop;
             _tilt = tiltDir;
             _tiltSpeed = speed;
-            OnWantedChangedLocked(_panTiltGroup, enteredStop, supersedesStop: _pan != PanDir.Stop && _tilt != TiltDir.Stop);
+            OnWantedChangedLocked(_panTiltGroup, enteredStop, supersedesStop: _pan != PanDir.Stop && _tilt != TiltDir.Stop, Stopwatch.GetTimestamp());
         }
     }
 
@@ -315,7 +330,7 @@ public class XcCamera : XcCameraBase, IDisposable
             var enteredStop = _zoom != ZoomDir.Stop && zoomDir == ZoomDir.Stop;
             _zoom = zoomDir;
             _zoomSpeed = speed;
-            OnWantedChangedLocked(_zoomGroup, enteredStop, supersedesStop: zoomDir != ZoomDir.Stop);
+            OnWantedChangedLocked(_zoomGroup, enteredStop, supersedesStop: zoomDir != ZoomDir.Stop, Stopwatch.GetTimestamp());
         }
     }
 
@@ -329,7 +344,7 @@ public class XcCamera : XcCameraBase, IDisposable
             var enteredStop = _focus != FocusDir.Stop && focusDir == FocusDir.Stop;
             _focus = focusDir;
             _focusSpeed = speed;
-            OnWantedChangedLocked(_focusGroup, enteredStop, supersedesStop: focusDir != FocusDir.Stop);
+            OnWantedChangedLocked(_focusGroup, enteredStop, supersedesStop: focusDir != FocusDir.Stop, Stopwatch.GetTimestamp());
         }
     }
 
@@ -350,19 +365,21 @@ public class XcCamera : XcCameraBase, IDisposable
             // Unlike VISCA, which sends a recall at once and the stop after it, a recall not yet sent
             // is kept: it goes out next and takes the place of these stops, which are sent only if it
             // fails (NextRequestLocked, SettleStopsLocked).
+            // One start for all its stops, so if they all fail they are given up together.
+            var now = Stopwatch.GetTimestamp();
             foreach (var group in _groups)
-                OnWantedChangedLocked(group, enteredStop: true, supersedesStop: false);
+                OnWantedChangedLocked(group, enteredStop: true, supersedesStop: false, now);
         }
     }
 
     // Records that the group's wanted state changed, so the next control request carries it. An axis
-    // entering stop starts the group's stop; a move that leaves nothing stopped to deliver in the
-    // group supersedes it.
-    private void OnWantedChangedLocked(AxisGroup group, bool enteredStop, bool supersedesStop)
+    // entering stop starts the group's stop, at now; a move that leaves nothing stopped to deliver in
+    // the group supersedes it.
+    private void OnWantedChangedLocked(AxisGroup group, bool enteredStop, bool supersedesStop, long now)
     {
         group.WantedVersion++;
         if (enteredStop)
-            group.StartStop();
+            group.StartStop(now);
         else if (supersedesStop)
             group.StopActive = false;
         WakeLocked();
@@ -483,7 +500,7 @@ public class XcCamera : XcCameraBase, IDisposable
                 if (request is { Recall: true })
                 {
                     lock (_lock)
-                        SettleStopsLocked(request, succeeded: false);
+                        SettleStopsLocked(request, succeeded: false, Stopwatch.GetTimestamp());
                 }
                 try
                 {
@@ -500,10 +517,14 @@ public class XcCamera : XcCameraBase, IDisposable
     // The bookkeeping of one group of axes a control request carries together (pan and tilt, zoom, or
     // focus): whether its wanted state changed since it was last sent, and the stop it is repeating,
     // from an axis entering stop (or Stop()) until it was sent StopRepeatCount + 1 times and one send
-    // succeeded, a move superseded it, or a recall that took its place succeeded. StopId tells a send
-    // of an earlier stop from one of the current stop.
+    // succeeded, a move superseded it, a recall that took its place succeeded, or it was given up.
+    // StopId tells a send of an earlier stop from one of the current stop.
     private sealed class AxisGroup
     {
+        public AxisGroup(string name) => Name = name;
+
+        // The group's name in the log.
+        public string Name { get; }
         // Bumped on every wanted change; the group is sent while the version it last sent differs.
         public long WantedVersion;
         public long SentVersion;
@@ -511,17 +532,21 @@ public class XcCamera : XcCameraBase, IDisposable
         public long StopId;
         public int StopSends;
         public bool StopSucceeded;
+        // Stopwatch timestamp of when the stop started (or a failed recall restored it): its give-up
+        // bound counts from here.
+        public long StopStartedAt;
 
         // Whether the next control request carries the group: a change not sent yet, or a stop still
         // being repeated or retried.
         public bool Pending => WantedVersion != SentVersion || StopActive;
 
-        public void StartStop()
+        public void StartStop(long now)
         {
             StopActive = true;
             StopId++;
             StopSends = 0;
             StopSucceeded = false;
+            StopStartedAt = now;
         }
     }
 
@@ -735,20 +760,23 @@ public class XcCamera : XcCameraBase, IDisposable
     }
 
     // Settles the stops the request sent or took the place of (SettleStopsLocked), keeps the camera's
-    // challenge, and updates Connected. Logs a failure when a run of failures starts or its reason
-    // changes (a login failure instead at most once per LoginFailureLogInterval), the first success
-    // after one, and each Connected change; never once per request.
+    // challenge, updates Connected, and gives up the failed stops past their bound
+    // (GiveUpFailedStopsLocked). Logs a failure when a run of failures starts or its reason changes (a
+    // login failure instead at most once per LoginFailureLogInterval), the first success after one,
+    // each Connected change, and the stops a failed request gives up, in one ERROR; never once per
+    // request.
     private void OnCompleted(Request request, string? failure, bool loginFailure, Challenge? challenge)
     {
         string? warning = null;
         string? information = null;
+        string? error = null;
         var connectedChanged = false;
         var failureChanged = false;
         lock (_lock)
         {
             var now = Stopwatch.GetTimestamp();
             _lastCompletedAt = now;
-            SettleStopsLocked(request, succeeded: failure == null);
+            SettleStopsLocked(request, succeeded: failure == null, now);
 
             if (request.EndpointVersion != _endpointVersion)
             {
@@ -787,6 +815,9 @@ public class XcCamera : XcCameraBase, IDisposable
                     connectedChanged = true;
                     information = $"Camera {Name}: the XC camera at {Address}:{Port} is not reachable";
                 }
+                if (GiveUpFailedStopsLocked(request, now) is { } givenUp)
+                    error = string.Create(CultureInfo.InvariantCulture,
+                        $"Camera {Name}: gave up stopping the XC camera at {Address}:{Port} ({string.Join(", ", givenUp)}) after {_stopGiveUpAfter.TotalSeconds:0.###} s with no successful send (last failure: {failure}); it may still be moving");
             }
         }
 
@@ -794,6 +825,8 @@ public class XcCamera : XcCameraBase, IDisposable
             Trace.TraceWarning(warning);
         if (information != null)
             Trace.TraceInformation(information);
+        if (error != null)
+            Trace.TraceError(error);
         if (connectedChanged)
             RaiseChanged(nameof(Connected));
         if (failureChanged)
@@ -804,7 +837,7 @@ public class XcCamera : XcCameraBase, IDisposable
     // StopRepeatCount + 1 times and one send succeeded. A recall ends the stops it took the place of if
     // it succeeded, and restores each as a new stop if not. A stop a newer action took the place of is
     // left alone: a newer stop (a new StopId) or a move that superseded it.
-    private void SettleStopsLocked(Request request, bool succeeded)
+    private void SettleStopsLocked(Request request, bool succeeded, long now)
     {
         for (var i = 0; i < _groups.Length; i++)
         {
@@ -816,7 +849,7 @@ public class XcCamera : XcCameraBase, IDisposable
                 if (succeeded)
                     group.StopActive = false;
                 else
-                    group.StartStop();
+                    group.StartStop(now);
             }
             else
             {
@@ -825,6 +858,27 @@ public class XcCamera : XcCameraBase, IDisposable
                     group.StopActive = false;
             }
         }
+    }
+
+    // Gives up the stops a failed request sent that were sent StopRepeatCount + 1 times and have been
+    // failing for _stopGiveUpAfter since they started. Returns the names of the groups given up, or
+    // null for none. None is given up while a recall is wanted: it goes out next and takes the stops'
+    // place, which ends them if it succeeds and restores them, each with a fresh bound, if not.
+    private List<string>? GiveUpFailedStopsLocked(Request request, long now)
+    {
+        if (_recall != null)
+            return null;
+        List<string>? givenUp = null;
+        for (var i = 0; i < _groups.Length; i++)
+        {
+            var group = _groups[i];
+            if (!group.StopActive || request.StopIds[i] != group.StopId || group.StopSucceeded
+                || group.StopSends <= StopRepeatCount || now - group.StopStartedAt < StopwatchTicks(_stopGiveUpAfter))
+                continue;
+            group.StopActive = false;
+            (givenUp ??= new()).Add(group.Name);
+        }
+        return givenUp;
     }
 
     // Whether a login failure may be logged now; if so, counts it as logged.
