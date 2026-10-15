@@ -5,7 +5,8 @@ using Xunit;
 namespace PtzJoystickControl.Tests.Devices;
 
 // The XC counterpart of ViscaIpDeviceStopRepeatTests: stops beat pending moves, are sent at least
-// three times at least StopRepeatInterval apart, and are retried until one succeeds.
+// three times at least StopRepeatInterval apart, and are retried until one succeeds or the stop is
+// given up (XcCameraStopGiveUpTests).
 public class XcCameraStopTests
 {
     private const int MinStopSends = 3;
