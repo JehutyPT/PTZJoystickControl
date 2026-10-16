@@ -20,8 +20,8 @@ This change is in the SKAARHOJ surface plugin (JehutyPT/companion-surface-skaarh
 
 An XC camera now reads its zoom and focus speed ranges from its `info.cgi` on each connect and maps the joystick's deflection onto them, instead of Canon's spec values (zoom 0..15, focus 0..2), which on firmware 1.5.2 (zoom 0..127, focus 0..63) made full-deflection zoom about 12 % of the camera's top speed. A camera that reports no usable range for an axis keeps the spec's for it. Each connect's first probe fetches the whole `info.cgi` once; later probes are unchanged. Pan, tilt, presets and VISCA cameras are unchanged. The cost: until that first read completes (a fraction of a second after the camera connects), zoom and focus still use the spec's ranges. Keep the log open (tray menu → **Show log**).
 
-- [ ] Start the app with both XC cameras: each logs one `INFO` line "uses zoom speeds 0..127 (from the camera), focus speeds 0..63 (from the camera)".
-- [ ] Zoom each XC camera tele and wide at full deflection: the zoom matches the VISCA top zoom speed on the same camera, and stops on release.
+- [x] Start the app with both XC cameras: each logs one `INFO` line "uses zoom speeds 0..127 (from the camera), focus speeds 0..63 (from the camera)".
+- [x] Zoom each XC camera tele and wide at full deflection: the zoom matches the VISCA top zoom speed on the same camera, and stops on release.
 - [ ] With the camera in manual focus, focus far and near at full deflection: focus moves at a usable speed, and stops on release.
 
 ### #58: XC presets above 100 log at most once a minute
