@@ -26,12 +26,6 @@ The app takes one switch, `--settings-dir <folder>`: every settings file and the
 - [ ] Start the app as the show starts it, with no switch. Both cameras and the controller mappings are as before, and the start line names `%APPDATA%\PTZJoystickControl`, with no "(from --settings-dir)".
 - [ ] Delete what the checks created: `Remove-Item -Recurse "$base"`.
 
-### #57: An invalid active position falls back to the last speed profile
-
-When `SpeedProfiles.json` is usable but its active position is missing or outside its list, the last speed profile is now active instead of the first. In a list kept finest first, that is the fastest, so a bad position does not make the cameras slow on air. One `WARN` names the file, the problem and that speed profile, and the file is not rewritten until a speed profile changes. With no file, or one that cannot be used, "Full" is still active (#52), and removing the active speed profile still makes the first one active (#45). The cost: the last is used whatever its name, so if the list has been reordered with a slower speed profile last, that one is made active.
-
-- [ ] If there is no `SpeedProfiles.json` yet, make another speed profile active in the window, which writes it, then make the previous one active again. Quit (tray menu → **Quit**) and copy `%APPDATA%\PTZJoystickControl\SpeedProfiles.json` aside. Set `"ActivePosition": 0` in it, start the app and open the log (tray menu → **Show log**). The last speed profile in the **Speed profiles** section is active, and one `WARN` names the file and that speed profile. Quit, put the copy back and restart.
-
 ### #40: SKAARHOJ dead-man rides out an app freeze
 
 Needs the panel at 192.168.1.163 set up as in the #35 entry, with no other Raw Panel client connected. The link now counts any line from the panel as hearing from it, sends `ping` only after 500 ms of quiet and drops after 1 s of silence; a freeze of the app itself restarts that count instead of dropping the link. These checks change no panel setting.
@@ -46,23 +40,6 @@ Each VISCA camera over UDP now listens for replies on the IP:port it registered,
 - [ ] Start the new build with the existing `Cameras.json`: both CR-N500 rows load with their settings, and the log (tray menu → **Show log**) has no settings `WARN` or `ERROR`. Pan, tilt, zoom and focus each camera: it moves and stops on release.
 - [ ] In a UDP camera row, change the **Port** to another number and back, then the **IP Address** to another address and back: no `WARN` or `ERROR` in the log, and the camera still moves and stops on release.
 - [ ] Set camera 2's **IP Address** and **Port** to camera 1's: one `WARN` line says another camera already receives the replies from that IP:port, both rows stay in the list, and the app keeps running. Undo it: camera 2 moves and stops again. Quit and restart the app: both rows load as before.
-
-### #47: XC cameras (pan and tilt over HTTP)
-
-The camera list now has **Add VISCA camera** and **Add XC camera** buttons. An XC camera drives a CR-N500 over Canon's XC protocol (HTTP) instead of VISCA. This entry covers its pan and tilt; #48 above covers its zoom, focus and presets. VISCA cameras are unchanged. Back up `%APPDATA%\PTZJoystickControl\Cameras.json` before starting the new build, and keep the log open (tray menu → **Show log**): XC request failures are logged at `WARN` with the reason.
-
-- [ ] Start the new build with the existing `Cameras.json`: no settings `WARN` or `ERROR` in the log, and the VISCA rows are unchanged. **Add VISCA camera** adds a VISCA row as **Add** did. **Add XC camera** adds a row named `Camera <n>` with only **Name**, **Address** (empty), **Port** (80), **Username** and **Password** (empty; #49 above), **Log in** (disabled; #55 above), **Status** (Disconnected) and **Companion #**: no Protocol, Header or Interval, and never "Unsupported camera type".
-- [ ] For each CR-N500, add an XC camera next to its VISCA row, with the camera's IP address, port 80 and a free **Companion #**. Within a few seconds its status shows Connected (green). Pull the camera's network cable: within about 4 s the status shows Disconnected (red), with one `WARN` and one "not reachable" line in the log. Plug it back: Connected again, with one line saying so.
-- [ ] In an XC row, type an invalid address (`192.168.1`, `10.0.0.1:80`), a port of 0, then a **Companion #** of 0 or another camera's number, one at a time: each field shows a red border and message, as in a VISCA row. Undo each. Quit and restart the app: the XC rows keep their name, address, port and Companion #, and the VISCA rows are unchanged.
-- [ ] Select an XC camera from Companion, then pan and tilt it from the USB joystick and from the panel: it responds and stops on release.
-- [ ] At a low **Max speed** (or the finest speed profile), very small stick deflections give smooth, fine moves.
-- [ ] Move the stick continuously (circles) for a minute while watching the camera and the log. The app spaces requests at least 30 ms apart per camera, as Canon recommends: the camera follows without visible lag, stutter or queued-up moves after the stick stops, and the log shows no `WARN`. Note whether the gap could be lowered.
-- [ ] Note whether the order of the parameters within a request matters to the camera. The app sends each axis's speed before its direction, so a quick reversal from a fast pan left to a slow pan right should go slowly right at once, with no jerk at the old speed: report any jerk.
-- [ ] Pan an XC camera and pull its network cable while still moving the stick. Release the stick and plug the cable straight back (longer pulls are #53's check): the camera stops within about a second of the network returning and stays stopped for at least 30 s (watch for a late move), and the app stays responsive throughout.
-- [ ] Pan an XC camera and, while holding the stick, select another camera from Companion: the XC camera stops. Pan it again and, while holding the stick, unplug the USB joystick: it stops.
-- [ ] Note whether guest (unauthenticated) control works, with the row's **Username** empty: if the camera requires a login, the status stays Disconnected and the log shows "camera requires a login; set username and password" (#49 above covers the login).
-- [ ] Drive one CR-N500 through its VISCA row and its XC row at the same time (two controllers): note how the camera behaves, and any `no camera control right` `WARN` in the log.
-- [ ] Compare VISCA and XC on the same camera, side by side: speed range, smoothness at small deflections, and how quickly it stops.
 
 ### #46: Companion steps and shows the speed profile
 
