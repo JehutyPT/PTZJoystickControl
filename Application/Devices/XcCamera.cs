@@ -10,11 +10,13 @@ using System.Text.RegularExpressions;
 namespace PtzJoystickControl.Application.Devices;
 
 /// <summary>
-/// A camera driven over Canon's XC protocol (HTTP). Pan, tilt, zoom, focus and preset recall calls
-/// only record the wanted state; one background loop per camera sends it as sessionless
+/// A camera driven over Canon's XC protocol (HTTP). Pan, tilt, zoom, focus, focus step and preset
+/// recall calls only record the wanted state; one background loop per camera sends it as sessionless
 /// <c>control.cgi</c> requests, one in flight at a time, newest wanted state first. A request
 /// combines every axis group that changed; a preset recall goes in a request of its own, the next one
-/// sent, and takes the place of the pending stops, which are restored if it fails. With a username
+/// sent, and takes the place of the pending stops, which are restored if it fails. Focus steps go in
+/// requests of their own, after any recall and pending stop and taking turns with moves: a read of the
+/// focus position when the one known may be stale, then a write of the newest wanted one. With a username
 /// set, a request the camera answers with HTTP 401 is repeated at once with Basic or Digest
 /// credentials, and later requests carry them up front. Once disposed, the camera ignores commands,
 /// sends only its pending stops, and then closes its connection (<see cref="Dispose"/>).
@@ -30,6 +32,12 @@ public class XcCamera : XcCameraBase, IDisposable
     // usable: firmware 1.5.2 reports zoom 0..127 and focus 0..63 (#60).
     internal const int ZoomSpeedMin = 0, ZoomSpeedMax = 15;
     internal const int FocusSpeedMin = 0, FocusSpeedMax = 2;
+    // The CR-N500's focus position range (c.1.focus.value), which focus steps move within. Used until
+    // the camera reports its own in info.cgi (c.1.focus.value.min/max), and when it reports none usable.
+    internal const int FocusPositionMin = 0, FocusPositionMax = 2048;
+    // Far raises c.1.focus.value and Near lowers it. The on-site check confirms it
+    // (docs/on-site-checklist.md, #62, Far's direction); if Far lowers the value there, this is -1.
+    internal const int FarFocusValueSign = 1;
     // The CR-N500's camera preset numbers (p, 1..p.count) and preset movement speeds (p.ptzspeed),
     // also from appendix A.
     internal const int PresetMin = 1, PresetMax = 100;
@@ -65,10 +73,17 @@ public class XcCamera : XcCameraBase, IDisposable
     // persistent. Tune on site against how long the link takes to come back.
     internal static readonly TimeSpan DefaultStopGiveUpAfter = TimeSpan.FromSeconds(5);
 
+    // A focus step reads the camera's focus position before it writes one when no focus step reached
+    // the camera for this long: meanwhile the position may have changed by other means, such as the
+    // camera's own web page. Compared when a step arrives, with the previous step's arrival; no timer.
+    // Tune on site.
+    internal static readonly TimeSpan DefaultFocusStepPause = TimeSpan.FromMilliseconds(500);
+
     // After an unexpected error the loop pauses this long, so a recurring one cannot flood the log.
     private static readonly TimeSpan UnexpectedErrorPause = TimeSpan.FromSeconds(1);
 
-    // An unsupported operation is logged at most once per this long, per operation.
+    // An unsupported operation is logged at most once per this long, per operation, and so is a focus
+    // position not available.
     private static readonly TimeSpan UnsupportedLogInterval = TimeSpan.FromMinutes(1);
 
     // A recall of a camera preset outside PresetMin..PresetMax is logged at most once per this long, per
@@ -88,11 +103,15 @@ public class XcCamera : XcCameraBase, IDisposable
     private const string ProbePathAndQuery = "/-wvhttp-01-/info.cgi?item=s";
     // The whole info.cgi, read by the first probe after a connect for the camera's speed ranges.
     private const string InfoPath = "/-wvhttp-01-/info.cgi";
+    // The focus position: read alone from info.cgi, which needs no control right, and written alone
+    // with control.cgi.
+    private const string FocusPositionItem = "c.1.focus.value";
     private const string LivescopeStatusHeader = "livescope-status";
 
     private readonly TimeSpan _requestTimeout;
     private readonly TimeSpan _probeInterval;
     private readonly TimeSpan _stopGiveUpAfter;
+    private readonly TimeSpan _focusStepPause;
 
     // Guards the wanted state and everything the loop decides on. Never held across an await.
     private readonly object _lock = new();
@@ -128,10 +147,14 @@ public class XcCamera : XcCameraBase, IDisposable
     // spec's. Reset to the spec's on an address, port or login change.
     private (int Min, int Max) _zoomRange = (ZoomSpeedMin, ZoomSpeedMax);
     private (int Min, int Max) _focusRange = (FocusSpeedMin, FocusSpeedMax);
-    // Whether the next probe reads the whole info.cgi for the speed ranges: after an address, port or
-    // login change, and after the camera turned unreachable, until the camera answers one.
+    // The focus position range in use, read and reset with the speed ranges: the camera's, once its
+    // info.cgi reported it, else the spec's.
+    private (int Min, int Max) _focusPositionRange = (FocusPositionMin, FocusPositionMax);
+    // Whether the next probe reads the whole info.cgi for the speed ranges and the focus position range:
+    // after an address, port or login change, and after the camera turned unreachable, until the camera
+    // answers one.
     private bool _rangesWanted = true;
-    // The speed ranges last logged, so a reconnect with the same ones logs nothing.
+    // The ranges last logged, so a reconnect with the same ones logs nothing.
     private string? _rangesLogged;
     // The axes a request carries together when one of them changed: pan and tilt as one pair, zoom,
     // and focus.
@@ -150,6 +173,27 @@ public class XcCamera : XcCameraBase, IDisposable
     // Recall Speed. Null until one is set, so a recall moves at the speeds saved with the camera
     // preset. Not saved.
     private int? _presetSpeed;
+    // The focus position the camera last reported, or took from a successful write, with the address and
+    // port (the URI authority) it came from; null while it may be stale, so the next focus request reads
+    // it before any write (MarkFocusStaleLocked).
+    private (int Value, string Authority)? _focusPosition;
+    // Bumped each time the known focus position turns stale: the answer to a focus request sent before
+    // says nothing about the position now.
+    private long _focusVersion;
+    // Stopwatch timestamp of the last focus step's arrival; long ago until the first.
+    private long _lastFocusStepAt = long.MinValue / 4;
+    // The focus steps not yet sent, added up as one move of the known position p to
+    // clamp(p + _focusStepOffset, _focusStepLow, _focusStepHigh): each step in turn, clamped to the
+    // range at that step. Only while _focusStepsWanted.
+    private bool _focusStepsWanted;
+    private long _focusStepOffset;
+    private long _focusStepLow;
+    private long _focusStepHigh;
+    // Whether the last request sent was a focus request, so focus requests and moves take turns.
+    private bool _focusWentLast;
+    // Stopwatch timestamp of the last time a focus position not available was logged; long ago until
+    // the first.
+    private long _focusUnavailableLoggedAt = long.MinValue / 4;
     // Stopwatch timestamp of the last request's completion; long ago until the first.
     private long _lastCompletedAt = long.MinValue / 4;
     // Why the current run of failed requests fails; null while requests succeed. Logged when it changes.
@@ -185,11 +229,14 @@ public class XcCamera : XcCameraBase, IDisposable
 
     internal XcCamera(string name, TimeSpan requestTimeout, TimeSpan probeInterval) : this(name, requestTimeout, probeInterval, DefaultStopGiveUpAfter) { }
 
-    internal XcCamera(string name, TimeSpan requestTimeout, TimeSpan probeInterval, TimeSpan stopGiveUpAfter) : base(name)
+    internal XcCamera(string name, TimeSpan requestTimeout, TimeSpan probeInterval, TimeSpan stopGiveUpAfter) : this(name, requestTimeout, probeInterval, stopGiveUpAfter, DefaultFocusStepPause) { }
+
+    internal XcCamera(string name, TimeSpan requestTimeout, TimeSpan probeInterval, TimeSpan stopGiveUpAfter, TimeSpan focusStepPause) : base(name)
     {
         _requestTimeout = requestTimeout;
         _probeInterval = probeInterval;
         _stopGiveUpAfter = stopGiveUpAfter;
+        _focusStepPause = focusStepPause;
         _groups = new[] { _panTiltGroup, _zoomGroup, _focusGroup };
     }
 
@@ -291,7 +338,8 @@ public class XcCamera : XcCameraBase, IDisposable
 
     // After an address, port or login change: the outcome of a request sent before is ignored, no
     // credentials go up front until the camera challenges again, the next login failure is logged at
-    // once, and a probe goes out as soon as the gap allows.
+    // once, a probe goes out as soon as the gap allows, and the next focus step reads the focus
+    // position first.
     private void OnReconfiguredLocked()
     {
         _endpointVersion++;
@@ -299,6 +347,8 @@ public class XcCamera : XcCameraBase, IDisposable
         _rangesWanted = true;
         _zoomRange = (ZoomSpeedMin, ZoomSpeedMax);
         _focusRange = (FocusSpeedMin, FocusSpeedMax);
+        _focusPositionRange = (FocusPositionMin, FocusPositionMax);
+        MarkFocusStaleLocked();
         _challenge = null;
         _loginFailureLoggedAt = long.MinValue / 4;
         WakeLocked();
@@ -388,6 +438,13 @@ public class XcCamera : XcCameraBase, IDisposable
             var speed = focusDir == FocusDir.Stop ? _focusRange.Min : ToXcStep(focusSpeed, _focusRange.Min, _focusRange.Max);
             if (_disposed || _focus == focusDir && _focusSpeed == speed)
                 return;
+            if (focusDir != FocusDir.Stop)
+            {
+                // A Manual focus move: it changes the focus position, so focus steps not yet sent are
+                // dropped and the next one reads the position first.
+                DropFocusStepsLocked();
+                MarkFocusStaleLocked();
+            }
             var enteredStop = _focus != FocusDir.Stop && focusDir == FocusDir.Stop;
             _focus = focusDir;
             _focusSpeed = speed;
@@ -403,6 +460,7 @@ public class XcCamera : XcCameraBase, IDisposable
         {
             if (_disposed)
                 return;
+            DropFocusStepsLocked();
             _pan = PanDir.Stop;
             _panSpeed = SpeedMin;
             _tilt = TiltDir.Stop;
@@ -420,6 +478,68 @@ public class XcCamera : XcCameraBase, IDisposable
                 OnWantedChangedLocked(group, enteredStop: true, supersedesStop: false, now);
         }
     }
+
+    // Moves the wanted focus position by the share of the focus position range, toward Far or Near; the
+    // send loop reads the position when the one known may be stale and writes the newest wanted one
+    // (NextRequestLocked). Steps that arrive while one is wanted or in flight add up. Ignored while the
+    // app moves focus at a speed (Manual focus), and once disposed. Not a move: it leaves IsMoving and
+    // the stops alone.
+    public override void FocusStep(double focusShare, FocusDir focusDir)
+    {
+        if (double.IsNaN(focusShare)) focusShare = 0;
+        focusShare = Math.Clamp(focusShare, 0, 1);
+        var sign = focusDir switch
+        {
+            FocusDir.Far => FarFocusValueSign,
+            FocusDir.Near => -FarFocusValueSign,
+            _ => 0,
+        };
+        if (focusShare == 0 || sign == 0)
+            return;
+
+        lock (_lock)
+        {
+            if (_disposed || _focus != FocusDir.Stop)
+                return;
+            var now = Stopwatch.GetTimestamp();
+            // No step for the pause: the position may have changed by other means meanwhile.
+            if (now - _lastFocusStepAt >= StopwatchTicks(_focusStepPause))
+                MarkFocusStaleLocked();
+            _lastFocusStepAt = now;
+
+            // The nearest whole number of units, never less than 1.
+            var (min, max) = _focusPositionRange;
+            var delta = sign * Math.Max(1L, (long)Math.Round(focusShare * ((long)max - min), MidpointRounding.AwayFromZero));
+            if (!_focusStepsWanted)
+            {
+                _focusStepsWanted = true;
+                _focusStepOffset = 0;
+                _focusStepLow = min;
+                _focusStepHigh = max;
+            }
+            // clamp(clamp(p + offset, low, high) + delta, min, max)
+            // = clamp(p + offset + delta, clamp(low + delta, min, max), clamp(high + delta, min, max)).
+            _focusStepOffset += delta;
+            _focusStepLow = Math.Clamp(_focusStepLow + delta, min, max);
+            _focusStepHigh = Math.Clamp(_focusStepHigh + delta, min, max);
+            WakeLocked();
+        }
+    }
+
+    // The known focus position may be stale from now on: the next focus request reads it before any
+    // write, and the answer to one sent before does not set it.
+    private void MarkFocusStaleLocked()
+    {
+        _focusPosition = null;
+        _focusVersion++;
+    }
+
+    // Drops the focus steps not yet sent. A focus request in flight completes.
+    private void DropFocusStepsLocked() => _focusStepsWanted = false;
+
+    // The position the wanted focus steps move the known position to, within the range in use.
+    private int FocusTargetLocked(int known) =>
+        (int)Math.Clamp(Math.Clamp(known + _focusStepOffset, _focusStepLow, _focusStepHigh), _focusPositionRange.Min, _focusPositionRange.Max);
 
     // Records that the group's wanted state changed, so the next control request carries it. An axis
     // entering stop starts the group's stop, at now; a move that leaves nothing stopped to deliver in
@@ -520,8 +640,8 @@ public class XcCamera : XcCameraBase, IDisposable
     /// nothing. With no stop pending, the camera is released at once: the send loop ends, cancelling
     /// the request in flight, and the connection closes. Otherwise the loop sends only the pending
     /// stops, under the usual rules, and the camera is released once none is left (RunAsync). A recall
-    /// not yet sent is dropped, so the stops it would have taken the place of go out instead. Returns
-    /// at once: nothing waits on the network.
+    /// not yet sent is dropped, so the stops it would have taken the place of go out instead, and so are
+    /// the focus steps not yet sent. Returns at once: nothing waits on the network.
     /// </summary>
     public void Dispose()
     {
@@ -531,6 +651,7 @@ public class XcCamera : XcCameraBase, IDisposable
                 return;
             _disposed = true;
             _recall = null;
+            DropFocusStepsLocked();
             if (!ReleaseDueLocked())
             {
                 // Directly: WakeLocked starts nothing once the camera is disposed.
@@ -600,8 +721,8 @@ public class XcCamera : XcCameraBase, IDisposable
                     continue;
                 }
 
-                var (failure, loginFailure, challenge, body) = await SendAsync(request, stopping).ConfigureAwait(false);
-                OnCompleted(request, failure, loginFailure, challenge, body);
+                var (failure, loginFailure, challenge, body, livescope) = await SendAsync(request, stopping).ConfigureAwait(false);
+                OnCompleted(request, failure, loginFailure, challenge, body, livescope);
             }
             catch (Exception) when (stopping.IsCancellationRequested)
             {
@@ -610,7 +731,14 @@ public class XcCamera : XcCameraBase, IDisposable
             catch (Exception e)
             {
                 // Should not happen; keep the camera's loop alive rather than lose the camera for the
-                // rest of the show.
+                // rest of the show. Like a failed request, it drops the focus steps not yet sent, so none
+                // goes out after the pause, and the next step reads the position first; before the log
+                // line, so a step that comes after the line is kept.
+                lock (_lock)
+                {
+                    DropFocusStepsLocked();
+                    MarkFocusStaleLocked();
+                }
                 Trace.TraceError($"Camera {Name}: unexpected error in the XC send loop: {e}");
                 // A recall that ends this way did not succeed: the stops it took the place of are
                 // restored, as for any failed recall.
@@ -670,18 +798,24 @@ public class XcCamera : XcCameraBase, IDisposable
         }
     }
 
-    // A request the loop sends: a control request (moves, stops or a preset recall) or a probe, to the
-    // address and port current at EndpointVersion. StopIds, one per axis group, is the stop the request
-    // repeats in that group, or 0 for none; for a recall, the stop it takes the place of. Login is the
-    // username and password, null when no username is set; Challenge the one the camera gave at that
-    // address and port, answered up front, or null. Neither shows in a log: both print as their type
-    // name.
+    // A request the loop sends: a control request (moves, stops or a preset recall), a focus read or
+    // write, or a probe, to the address and port current at EndpointVersion. StopIds, one per axis
+    // group, is the stop the request repeats in that group, or 0 for none; for a recall, the stop it
+    // takes the place of. Login is the username and password, null when no username is set; Challenge
+    // the one the camera gave at that address and port, answered up front, or null. Neither shows in a
+    // log: both print as their type name.
     // ReadsRanges marks a probe of the whole info.cgi, whose answer carries the speed ranges.
-    private sealed record Request(Uri Uri, bool Recall, long[] StopIds, long EndpointVersion, NetworkCredential? Login, Challenge? Challenge, bool ReadsRanges = false);
+    // ReadsFocus marks a focus read, and WritesFocus a focus write with the position it sends;
+    // FocusVersion is the known focus position's version when it was built.
+    private sealed record Request(Uri Uri, bool Recall, long[] StopIds, long EndpointVersion, NetworkCredential? Login, Challenge? Challenge, bool ReadsRanges = false,
+        bool ReadsFocus = false, int? WritesFocus = null, long FocusVersion = 0)
+    {
+        public bool IsFocus => ReadsFocus || WritesFocus != null;
+    }
 
     // The request to send now, or null and how long to wait before looking again (infinite with no
     // address; a wake ends the wait early). Only the newest wanted state is ever sent, and a probe
-    // only while no control request is wanted.
+    // only while no control or focus request is wanted.
     private Request? NextRequestLocked(long now, out TimeSpan wait)
     {
         wait = Timeout.InfiniteTimeSpan;
@@ -691,16 +825,21 @@ public class XcCamera : XcCameraBase, IDisposable
         // A recall goes out next, ahead of every stop and move, and takes the place of the pending
         // stops (below), so neither continuous movement nor a stop that keeps failing holds it back.
         var recall = _recall != null;
-        var control = recall || _groups.Any(CarriesLocked);
+        var moves = _groups.Any(CarriesLocked);
+        // Focus steps go after a recall, and wait while any stop is pending, until it is done or given
+        // up. When moves are wanted too, they take turns.
+        var focusWanted = !_disposed && _focusStepsWanted && !_groups.Any(g => g.StopActive);
+        var focus = !recall && focusWanted && (!moves || !_focusWentLast);
+        var control = !focus && (recall || moves);
 
         // Gaps count from the previous request's completion, so request starts are further apart. A
         // stop's first send waits only the normal gap; while any stop is being repeated or retried,
         // every request but a recall waits the repeat interval, so no stop's sends come closer
-        // together than it. A recall, which takes those stops' place, waits only the normal gap. A
-        // probe waits until no request has completed for the probe interval.
+        // together than it. A recall, which takes those stops' place, waits only the normal gap, and so
+        // does a focus request. A probe waits until no request has completed for the probe interval.
         var gap = control
             ? !recall && _groups.Any(g => g.StopActive && g.StopSends > 0) ? StopRepeatInterval : MinRequestGap
-            : _probeNow ? MinRequestGap : _probeInterval;
+            : focus || _probeNow ? MinRequestGap : _probeInterval;
         var due = _lastCompletedAt + StopwatchTicks(gap);
         if (now < due)
         {
@@ -708,18 +847,26 @@ public class XcCamera : XcCameraBase, IDisposable
             return null;
         }
 
-        // Built before any state changes, so a failure here leaves the request wanted.
-        var uri = recall ? RecallUri(_recall!.Value) : control ? ControlUri() : ProbeUri(_rangesWanted);
+        // Built before any state changes, so a failure here leaves the request wanted. A focus request
+        // reads the position while the one known may be stale, else writes the wanted one. The known
+        // position counts only at the address and port it came from, as the challenge below does.
+        int? focusTarget = focus && _focusPosition is { } known && known.Authority == FocusUri(null).Authority ? FocusTargetLocked(known.Value) : null;
+        var uri = recall ? RecallUri(_recall!.Value) : control ? ControlUri() : focus ? FocusUri(focusTarget) : ProbeUri(_rangesWanted);
         var login = _login;
         // Answered only at the address and port it came from: the base class sets a new address or
         // port before OnEndpointChanged forgets the challenge, and a request built in between goes to
         // the new one.
         var challenge = login != null && _challenge?.Authority == uri.Authority ? _challenge : null;
         _probeNow = false;
+        _focusWentLast = focus;
         var stopIds = new long[_groups.Length];
         if (recall)
         {
             _recall = null;
+            // The recall moves focus too: focus steps not yet sent are dropped, and the next one reads
+            // the position first.
+            DropFocusStepsLocked();
+            MarkFocusStaleLocked();
             // The recall takes the place of every pending stop: none is sent while it is in flight,
             // and OnCompleted ends them once it succeeds. The stop is all such a group has left to
             // send, except a pan or tilt move the camera was never sent, which goes out after it.
@@ -733,6 +880,15 @@ public class XcCamera : XcCameraBase, IDisposable
                 stopIds[i] = group.StopId;
             }
             return new Request(uri, Recall: true, stopIds, _endpointVersion, login, challenge);
+        }
+        if (focus)
+        {
+            // A write sends every step wanted so far: steps that arrive while it is in flight add up
+            // anew, from the position it sets. A read leaves them wanted, for the write after it.
+            if (focusTarget != null)
+                DropFocusStepsLocked();
+            return new Request(uri, Recall: false, stopIds, _endpointVersion, login, challenge,
+                ReadsFocus: focusTarget == null, WritesFocus: focusTarget, FocusVersion: _focusVersion);
         }
         if (!control)
             return new Request(uri, Recall: false, stopIds, _endpointVersion, login, challenge, ReadsRanges: _rangesWanted);
@@ -793,6 +949,11 @@ public class XcCamera : XcCameraBase, IDisposable
 
     private Uri ProbeUri(bool whole) => new(string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{(whole ? InfoPath : ProbePathAndQuery)}"));
 
+    // A focus read carries the focus position item only, and so does a focus write, with the position.
+    private Uri FocusUri(int? position) => new(position is { } value
+        ? string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{ControlPath}?{FocusPositionItem}={value}")
+        : string.Create(CultureInfo.InvariantCulture, $"http://{Address}:{Port}{InfoPath}?item={FocusPositionItem}"));
+
     private static string PanValue(PanDir dir) => dir switch
     {
         PanDir.Left => "left",
@@ -826,8 +987,10 @@ public class XcCamera : XcCameraBase, IDisposable
     // challenged with nothing the app can answer). A request the camera challenges is repeated once,
     // at once, answering the challenge: both share the request's one timeout. For a request that
     // reads the speed ranges, also the answer's body once the camera answered other than with a login
-    // failure, else null. Throws only when stopping (or on an unexpected error, which the loop logs).
-    private async Task<(string? Failure, bool LoginFailure, Challenge? Challenge, string? Body)> SendAsync(Request request, CancellationToken stopping)
+    // failure, and for a focus read or write the body of an HTTP 200 answer; else null. Also the
+    // answer's livescope-status, null when it had none or there was no answer other than a login
+    // failure. Throws only when stopping (or on an unexpected error, which the loop logs).
+    private async Task<(string? Failure, bool LoginFailure, Challenge? Challenge, string? Body, string? Livescope)> SendAsync(Request request, CancellationToken stopping)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(stopping);
         timeout.CancelAfter(_requestTimeout);
@@ -837,40 +1000,53 @@ public class XcCamera : XcCameraBase, IDisposable
             var login = request.Login;
             using var response = await GetAsync(request.Uri, login != null ? request.Challenge?.Answer(login, request.Uri) : null, timeout.Token).ConfigureAwait(false);
             if (response.StatusCode != HttpStatusCode.Unauthorized)
-                return (Failure(response), false, null, await BodyAsync(request, response, timeout.Token).ConfigureAwait(false));
+                return (Failure(response), false, null, await BodyAsync(request, response, timeout.Token).ConfigureAwait(false), LivescopeStatus(response));
             if (login == null)
-                return (LoginRequired, true, null, null);
+                return (LoginRequired, true, null, null, null);
 
             challenge = Challenge.From(response, request.Uri, request.Challenge);
             if (challenge == null)
-                return ($"{LoginUnsupported} (offered: {Challenge.Offered(response)})", true, null, null);
+                return ($"{LoginUnsupported} (offered: {Challenge.Offered(response)})", true, null, null, null);
 
             using var retry = await GetAsync(request.Uri, challenge.Answer(login, request.Uri), timeout.Token).ConfigureAwait(false);
             if (retry.StatusCode == HttpStatusCode.Unauthorized)
-                return (LoginRefused, true, Challenge.From(retry, request.Uri, challenge) ?? challenge, null);
-            return (Failure(retry), false, challenge, await BodyAsync(request, retry, timeout.Token).ConfigureAwait(false));
+                return (LoginRefused, true, Challenge.From(retry, request.Uri, challenge) ?? challenge, null, null);
+            return (Failure(retry), false, challenge, await BodyAsync(request, retry, timeout.Token).ConfigureAwait(false), LivescopeStatus(retry));
         }
         catch (OperationCanceledException) when (!stopping.IsCancellationRequested)
         {
-            return ($"no answer within {_requestTimeout.TotalMilliseconds:0} ms", false, challenge, null);
+            return ($"no answer within {_requestTimeout.TotalMilliseconds:0} ms", false, challenge, null, null);
         }
         catch (HttpRequestException e) when (!stopping.IsCancellationRequested)
         {
-            return (e.GetBaseException().Message, false, challenge, null);
+            return (e.GetBaseException().Message, false, challenge, null, null);
         }
     }
 
-    // The answer's body for a request that reads the speed ranges, else null. Already buffered by the
-    // client within the request's timeout.
-    private static async Task<string?> BodyAsync(Request request, HttpResponseMessage response, CancellationToken cancellation) =>
-        request.ReadsRanges ? await response.Content.ReadAsStringAsync(cancellation).ConfigureAwait(false) : null;
+    // The answer's body for a request that reads the speed ranges, and for a focus read or write
+    // answered with HTTP 200; else null. Already buffered by the client within the request's timeout. A
+    // focus answer is read as UTF-8, or as its byte order mark says, whatever charset its Content-Type
+    // names: reading it as one the client does not know would throw.
+    private static async Task<string?> BodyAsync(Request request, HttpResponseMessage response, CancellationToken cancellation)
+    {
+        if (request.IsFocus && response.StatusCode == HttpStatusCode.OK)
+        {
+            using var reader = new StreamReader(await response.Content.ReadAsStreamAsync(cancellation).ConfigureAwait(false), Encoding.UTF8);
+            return await reader.ReadToEndAsync(cancellation).ConfigureAwait(false);
+        }
+        return request.ReadsRanges ? await response.Content.ReadAsStringAsync(cancellation).ConfigureAwait(false) : null;
+    }
+
+    // The answer's livescope-status, or null when it has none.
+    private static string? LivescopeStatus(HttpResponseMessage response) =>
+        response.Headers.TryGetValues(LivescopeStatusHeader, out var values) ? values.FirstOrDefault()?.Trim() : null;
 
     /// <summary>
-    /// The speed range <paramref name="item"/> (such as <c>c.1.zoom.speed</c>) that an info.cgi answer
-    /// reports in its <c>item.min:=n</c> and <c>item.max:=n</c> lines, or null when either is missing
-    /// or not an integer, or the minimum is not below the maximum.
+    /// The range of <paramref name="item"/> (such as <c>c.1.zoom.speed</c> or <c>c.1.focus.value</c>)
+    /// that an info.cgi answer reports in its <c>item.min:=n</c> and <c>item.max:=n</c> lines, or null
+    /// when either is missing or not an integer, or the minimum is not below the maximum.
     /// </summary>
-    internal static (int Min, int Max)? SpeedRange(string info, string item)
+    internal static (int Min, int Max)? ReportedRange(string info, string item)
     {
         int? min = null, max = null;
         foreach (var raw in info.Split('\n'))
@@ -892,17 +1068,46 @@ public class XcCamera : XcCameraBase, IDisposable
         return min is { } lo && max is { } hi && lo < hi ? (lo, hi) : null;
     }
 
-    // Takes the speed ranges from an info.cgi answer, each the spec's when it reports none usable, and
-    // returns the line to log when they differ from those last logged, else null. Called with _lock held.
+    /// <summary>
+    /// What a focus read's or write's answer says of the focus position: a <c>c.1.focus.value==?</c>
+    /// line says the camera has none in its current mode (Unavailable); else the first
+    /// <c>c.1.focus.value:=n</c> or <c>c.1.focus.value==n</c> line with a whole number gives it
+    /// (Value), null when there is none. Never throws.
+    /// </summary>
+    internal static (bool Unavailable, int? Value) FocusPositionAnswer(string body)
+    {
+        int? value = null;
+        foreach (var raw in body.Split('\n'))
+        {
+            var line = raw.TrimEnd('\r');
+            var assigned = line.IndexOf(":=", StringComparison.Ordinal);
+            var reported = line.IndexOf("==", StringComparison.Ordinal);
+            var separator = assigned < 0 ? reported : reported < 0 ? assigned : Math.Min(assigned, reported);
+            if (separator < 0 || line[..separator] != FocusPositionItem)
+                continue;
+            var text = line[(separator + 2)..].Trim();
+            if (separator == reported && text == "?")
+                return (true, null);
+            if (value == null && int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var position))
+                value = position;
+        }
+        return (false, value);
+    }
+
+    // Takes the speed ranges and the focus position range from an info.cgi answer, each the spec's when
+    // it reports none usable, and returns the line to log when they differ from those last logged, else
+    // null. Called with _lock held.
     private string? TakeRangesLocked(string info)
     {
-        var zoom = SpeedRange(info, "c.1.zoom.speed");
-        var focus = SpeedRange(info, "c.1.focus.speed");
+        var zoom = ReportedRange(info, "c.1.zoom.speed");
+        var focus = ReportedRange(info, "c.1.focus.speed");
+        var focusPositions = ReportedRange(info, FocusPositionItem);
         _zoomRange = zoom ?? (ZoomSpeedMin, ZoomSpeedMax);
         _focusRange = focus ?? (FocusSpeedMin, FocusSpeedMax);
+        _focusPositionRange = focusPositions ?? (FocusPositionMin, FocusPositionMax);
         const string Spec = " (Canon's spec; the camera reported no usable range)";
         var ranges = string.Create(CultureInfo.InvariantCulture,
-            $"zoom speeds {_zoomRange.Min}..{_zoomRange.Max}{(zoom != null ? " (from the camera)" : Spec)}, focus speeds {_focusRange.Min}..{_focusRange.Max}{(focus != null ? " (from the camera)" : Spec)}");
+            $"zoom speeds {_zoomRange.Min}..{_zoomRange.Max}{(zoom != null ? " (from the camera)" : Spec)}, focus speeds {_focusRange.Min}..{_focusRange.Max}{(focus != null ? " (from the camera)" : Spec)}, focus positions {_focusPositionRange.Min}..{_focusPositionRange.Max}{(focusPositions != null ? " (from the camera)" : Spec)}");
         if (ranges == _rangesLogged)
             return null;
         _rangesLogged = ranges;
@@ -923,25 +1128,25 @@ public class XcCamera : XcCameraBase, IDisposable
         if (response.StatusCode != HttpStatusCode.OK)
             return $"HTTP {(int)response.StatusCode}";
 
-        if (!response.Headers.TryGetValues(LivescopeStatusHeader, out var values))
-            return "no livescope-status header";
-
-        var status = values.FirstOrDefault()?.Trim();
-        return status switch
+        return LivescopeStatus(response) switch
         {
+            null => "no livescope-status header",
             "0" => null,
             "301" => "no camera control right: another client may hold control",
-            _ => $"livescope-status {status}",
+            var status => $"livescope-status {status}",
         };
     }
 
     // Settles the stops the request sent or took the place of (SettleStopsLocked), keeps the camera's
-    // challenge, updates Connected, and gives up the failed stops past their bound
-    // (GiveUpFailedStopsLocked). Logs a failure when a run of failures starts or its reason changes (a
-    // login failure instead at most once per LoginFailureLogInterval), the first success after one,
-    // each Connected change, and the stops a failed request gives up, in one ERROR; never once per
-    // request.
-    private void OnCompleted(Request request, string? failure, bool loginFailure, Challenge? challenge, string? body)
+    // challenge, updates Connected, takes the focus position a focus request's answer gives, and gives
+    // up the failed stops past their bound (GiveUpFailedStopsLocked). A failed request of any kind
+    // drops the focus steps not yet sent. Logs a failure when a run of failures starts or its reason
+    // changes (a login failure instead at most once per LoginFailureLogInterval), the first success
+    // after one, each Connected change, and the stops a failed request gives up, in one ERROR; never
+    // once per request. A focus request whose answer says the camera has no focus position in its
+    // current mode is neither a success nor a failure: it drops the focus steps not yet sent and logs
+    // one INFO at most once per UnsupportedLogInterval.
+    private void OnCompleted(Request request, string? failure, bool loginFailure, Challenge? challenge, string? body, string? livescope)
     {
         string? warning = null;
         string? information = null;
@@ -979,7 +1184,22 @@ public class XcCamera : XcCameraBase, IDisposable
                     ranges = TakeRangesLocked(body);
             }
 
-            if (failure == null)
+            // Only a focus request's HTTP 200 answer has a body here (BodyAsync).
+            var focusAnswer = request.IsFocus && body != null ? FocusPositionAnswer(body) : default;
+            if (request.IsFocus && body != null
+                && (focusAnswer.Unavailable || failure == null && request.ReadsFocus && focusAnswer.Value == null))
+            {
+                // No focus position in the camera's current mode (such as auto focus), whatever the
+                // livescope-status: not a failed request, so Connected and FailureReason stay.
+                DropFocusStepsLocked();
+                MarkFocusStaleLocked();
+                if (now - _focusUnavailableLoggedAt >= StopwatchTicks(UnsupportedLogInterval))
+                {
+                    _focusUnavailableLoggedAt = now;
+                    information = $"Camera {Name}: the focus position of the XC camera at {Address}:{Port} is not available in its current mode, such as auto focus; focus steps not sent ({(livescope != null ? $"livescope-status {livescope}" : "no livescope-status header")})";
+                }
+            }
+            else if (failure == null)
             {
                 _lastSuccessAt = now;
                 connectedChanged = !_connected;
@@ -991,9 +1211,17 @@ public class XcCamera : XcCameraBase, IDisposable
                     information = $"Camera {Name}: the XC camera at {Address}:{Port} is connected";
                 failureChanged = _failure != null;
                 _failure = null;
+                // The position the camera reports, else the one a write sent, at the address and port the
+                // request went to; unless it turned stale since the request was built.
+                if (request.IsFocus && request.FocusVersion == _focusVersion && (focusAnswer.Value ?? request.WritesFocus) is { } position)
+                    _focusPosition = (position, request.Uri.Authority);
             }
             else
             {
+                // Focus steps held behind a failing request never go out late; the next one reads the
+                // position first.
+                DropFocusStepsLocked();
+                MarkFocusStaleLocked();
                 if (loginFailure ? LoginFailureLogDueLocked(now) : failure != _failure)
                     warning = $"Camera {Name}: request to the XC camera at {Address}:{Port} failed: {failure}";
                 failureChanged = failure != _failure;

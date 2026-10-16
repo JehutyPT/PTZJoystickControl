@@ -353,6 +353,7 @@ public class DrivenCamerasTests
         public void Zoom(double zoomSpeed, ZoomDir zoomDir) => this.zoomDir = zoomDir;
         public void Focus(double focusSpeed, FocusDir focusDir) => this.focusDir = focusDir;
         public void Power(Power power) { }
+        public void FocusStep(double focusShare, FocusDir focusDir) { }
         public void FocusMode(FocusMode focusMode) { }
         public void FocusLock(FocusLock focusLock) { }
         public void Preset(Preset preset, byte presetNumber) { }

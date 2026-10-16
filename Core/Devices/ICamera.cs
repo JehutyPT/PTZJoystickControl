@@ -42,6 +42,14 @@ public interface ICamera : INotifyPropertyChanged
     /// </summary>
     void Stop();
 
+    /// <summary>
+    /// Nudges the focus position toward far or near by <paramref name="focusShare"/> (0..1) of the
+    /// camera's focus position range: one step of the *Focus step* command. Not a move: it does not
+    /// count for <see cref="IsMoving"/>, and no stop follows it. A share of 0, or
+    /// <see cref="FocusDir.Stop"/>, does nothing; a share outside 0..1, or NaN, is clamped. Never throws.
+    /// </summary>
+    void FocusStep(double focusShare, FocusDir focusDir);
+
     void FocusMode(FocusMode focusMode);
     void FocusLock(FocusLock focusLock);
     void Power(Power power);

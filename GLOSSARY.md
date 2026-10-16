@@ -16,6 +16,10 @@ _Avoid_: active camera, preview camera
 A position stored in the camera and recalled by number, with its own recall speed.
 _Avoid_: preset (alone, when a speed profile could be meant)
 
+**Focus step**:
+A nudge of the selected camera's focus position toward far or near, by a share of its focus position range set in the mapping; one per detent or press.
+_Avoid_: focus speed, focus move (those are *Manual focus*)
+
 ## Speed
 
 **Speed fraction**:

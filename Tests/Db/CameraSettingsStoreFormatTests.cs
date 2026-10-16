@@ -285,6 +285,7 @@ public sealed class CameraSettingsStoreFormatTests : IDisposable
         public void Zoom(double zoomSpeed, ZoomDir zoomDir) { }
         public void Focus(double focusSpeed, FocusDir focusDir) { }
         public void Stop() { }
+        public void FocusStep(double focusShare, FocusDir focusDir) { }
         public void FocusMode(FocusMode focusMode) { }
         public void FocusLock(FocusLock focusLock) { }
         public void Power(Power power) { }
