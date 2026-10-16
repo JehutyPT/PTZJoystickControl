@@ -6,6 +6,20 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #62: Focus step
+
+A new command, **Focus step**, nudges the selected camera's focus position toward far or near by a share of its focus range (Far or Near 0.05 %, 0.1 %, 0.25 %, 0.5 %, 1 %, 2 % or 5 %), once per button press (or per knob detent, once the SKAARHOJ Focus knob lands). On an XC camera the app reads the focus position (`info.cgi?item=c.1.focus.value`) when the one it knows may be stale, such as after 500 ms with no step, then writes the new one (`control.cgi?c.1.focus.value=<n>`); fast presses add up into a few writes. It is not a move: nothing is sent on release, and no stop follows it. A VISCA camera sends nothing for it and logs one `INFO`. No input gets it by default, so nothing changes for a show until an input is mapped to it. Each XC camera's ranges `INFO` line now also gives its focus positions (Canon's spec: 0..2048, where 0.5 % is about 10). **Do every check off air: they move the cameras' focus.** Keep the log open (tray menu → **Show log**). Setup: map a USB joystick button to **Focus step** Far 0.5 % and another to Near 0.5 %, and select an XC camera.
+
+- [ ] **Far's direction.** Open `http://<camera>/-wvhttp-01-/info.cgi?item=c.1.focus.value` in a browser, press Far once and reload. The value went up by about 10 (0.5 % of the focus positions in the `INFO` line), and the picture focused farther away. If the value went down, note it here: the far constant is wrong.
+- [ ] **Sizes.** Map the two buttons to each size in turn, and press Far and Near a few times each. Each press moves focus once, by about that size, and nothing moves on release.
+- [ ] **Fast presses.** Press Far quickly 10 times. Focus ends 10 steps on (the `info.cgi` value went up by about 100 at 0.5 %), with no `WARN` or `ERROR` in the log.
+- [ ] **Fresh read.** Change focus on the camera's own web page, wait 1 s, then press Far once. Focus moves one step from the new position, not back toward the old one.
+- [ ] **After Manual focus.** Hold a button mapped to **Manual focus** Far, then release it. Then press **Focus step** Far: focus moves one step from where it stopped.
+- [ ] **Large steps.** Map a button to Far 5 %. Press it five times quickly, wait about 0.6 s, then press Near 0.5 % once. Focus does not jump back toward where it started.
+- [ ] **VISCA.** If a camera is also added as VISCA, select its VISCA row and press: nothing moves, and one `INFO` is logged.
+- [ ] **Restart.** Quit and restart the app: the buttons keep their **Focus step** mappings.
+- [ ] **Auto focus (optional).** Only off air, and only if you will set the camera back afterwards. On the camera's own web page, set the camera to auto focus, then press **Focus step**: one `INFO` says the focus position is not available, focus does not move, and the camera stays connected. Note the `livescope-status` that `INFO` gives. Set the camera back to manual focus and check it on its web page.
+
 ### Companion surface plugin #22: a four-way button's centre press is one press
 
 This change is in the SKAARHOJ surface plugin (JehutyPT/companion-surface-skaarhoj-rawpanel), not in this app; it is listed here because it is checked on the same panel. A press near a four-way button's centre could let go of every edge for a moment and then close another edge, which Companion got as two presses. Key up now waits out a release debounce, the surface setting **Four-way button release debounce (ms)** (default 30, 0 to 500, 0 turns it off); an edge pressed again within it continues the same press. Key down is never delayed, and plain buttons are not debounced. The cost: Companion gets a four-way button's key up that much later. Install the plugin build with the change, then in Companion's **Surfaces** tab open the panel's settings. Give a four-way button a test page action that shows each press, for example a counter variable incremented on press.

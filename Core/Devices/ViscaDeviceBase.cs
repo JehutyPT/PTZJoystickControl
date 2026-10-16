@@ -156,6 +156,12 @@ public abstract class ViscaDeviceBase : ICamera
     public abstract void Stop();
 
     /// <summary>
+    /// A focus step (<see cref="ICamera.FocusStep"/>): VISCA has no focus position the app nudges, so
+    /// it sends nothing.
+    /// </summary>
+    public abstract void FocusStep(double focusShare, FocusDir focusDir);
+
+    /// <summary>
     /// True when the last pan/tilt, zoom or focus command the app sent was a move rather than a
     /// stop, i.e. the app believes it is driving the camera. Preset recalls are not app-driven
     /// motion and do not count.

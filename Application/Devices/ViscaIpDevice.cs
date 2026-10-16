@@ -26,6 +26,9 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
     private static readonly TimeSpan PendingPollInterval = TimeSpan.FromMilliseconds(5);
     private static readonly TimeSpan MaxPendingWait = TimeSpan.FromSeconds(1);
 
+    // A focus step, which sends nothing, is logged at most once per this long.
+    private static readonly TimeSpan FocusStepLogInterval = TimeSpan.FromMinutes(1);
+
     // Guarded by commandsToSend. Once disposed, the camera ignores commands and never opens a
     // socket. busy counts the send loops (AddCommand) and stop repeats still running: the last of
     // them to end on a disposed camera releases it, or Dispose does if none is running. Released,
@@ -33,6 +36,8 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
     private bool disposed;
     private bool released;
     private int busy;
+    // Stopwatch timestamp of the last focus step logged; long ago until the first.
+    private long focusStepLoggedAt = long.MinValue / 4;
 
     // The endpoint this camera receives UDP replies from, as registered: ViscaIpEndpont changes in
     // place when the address or port is set, before EndSocket runs. Null when not registered.
@@ -312,6 +317,25 @@ public class ViscaIpDevice : ViscaIPDeviceBase, IDisposable
             else
                 AddCommand(AddFocusCommand);
         }
+    }
+
+    // VISCA has no focus position the app nudges (#62): a focus step sends nothing and is logged, at
+    // most once per FocusStepLogInterval, since a controller may run it on every detent. A step of
+    // share 0 (or NaN, or a negative share, clamped to 0) or with no direction does nothing.
+    public override void FocusStep(double focusShare, FocusDir focusDir)
+    {
+        if (double.IsNaN(focusShare) || focusShare <= 0 || focusDir is not (FocusDir.Far or FocusDir.Near))
+            return;
+        lock (commandsToSend)
+        {
+            if (disposed)
+                return;
+            var now = Stopwatch.GetTimestamp();
+            if (now - focusStepLoggedAt < (long)(FocusStepLogInterval.TotalSeconds * Stopwatch.Frequency))
+                return;
+            focusStepLoggedAt = now;
+        }
+        Trace.TraceInformation($"Camera {name}: a focus step is not supported on a VISCA camera; nothing sent");
     }
 
     public override void FocusMode(FocusMode focusMode)

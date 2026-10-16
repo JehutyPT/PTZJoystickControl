@@ -13,10 +13,10 @@ internal static class XcTestCameras
     private const int MinStopSends = 3;
 
     // A camera addressed to the fake, which releases it when the fake is disposed (FakeXcCamera.Serves).
-    internal static XcCamera CameraFor(FakeXcCamera fake, string? name = null, TimeSpan? requestTimeout = null, TimeSpan? probeInterval = null, string username = "", string password = "", TimeSpan? stopGiveUpAfter = null)
+    internal static XcCamera CameraFor(FakeXcCamera fake, string? name = null, TimeSpan? requestTimeout = null, TimeSpan? probeInterval = null, string username = "", string password = "", TimeSpan? stopGiveUpAfter = null, TimeSpan? focusStepPause = null)
     {
         var camera = new XcCamera(name ?? UniqueName(), requestTimeout ?? XcCamera.DefaultRequestTimeout, probeInterval ?? XcCamera.DefaultProbeInterval,
-            stopGiveUpAfter ?? XcCamera.DefaultStopGiveUpAfter);
+            stopGiveUpAfter ?? XcCamera.DefaultStopGiveUpAfter, focusStepPause ?? XcCamera.DefaultFocusStepPause);
         fake.Serves(camera);
         // The login and port first: setting the address starts the camera's requests.
         camera.Username = username;

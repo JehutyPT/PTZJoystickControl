@@ -24,6 +24,7 @@ public class CommandsService : ICommandsService
             new TiltCommand(gamepad, _bitfocusCompanionService, _speedProfiles),
             new ZoomCommand(gamepad, _bitfocusCompanionService, _speedProfiles),
             new FocusMoveCommand(gamepad, _bitfocusCompanionService, _speedProfiles),
+            new FocusStepCommand(gamepad, _bitfocusCompanionService),
             new FocusModeCommand(gamepad, _bitfocusCompanionService),
             new FocusLockCommand(gamepad, _bitfocusCompanionService),
             new PresetCommand(gamepad, _bitfocusCompanionService),

@@ -207,6 +207,7 @@ public abstract class XcCameraBase : ICamera
     public abstract void Zoom(double zoomSpeed, ZoomDir zoomDir);
     public abstract void Focus(double focusSpeed, FocusDir focusDir);
     public abstract void Stop();
+    public abstract void FocusStep(double focusShare, FocusDir focusDir);
     public abstract void FocusMode(FocusMode focusMode);
     public abstract void FocusLock(FocusLock focusLock);
     public abstract void Power(Power power);

@@ -73,6 +73,8 @@ internal sealed class FakeXcCamera : IDisposable
 
     public IReadOnlyList<XcRequest> Probes => Requests.Where(r => r.IsProbe).ToList();
 
+    public IReadOnlyList<XcRequest> FocusRequests => Requests.Where(r => r.IsFocus).ToList();
+
     /// <summary>
     /// Registers a camera addressed to the fake, so that disposing the fake disposes the camera and waits
     /// until it is released (<see cref="Dispose"/>). Does nothing once the fake is disposed.
@@ -238,6 +240,9 @@ internal sealed class FakeXcCamera : IDisposable
                     Authorization = authorization,
                     Challenged = challenged,
                 };
+                // Taken before the request shows in Requests, so a Release that follows a test seeing it
+                // answers it.
+                var release = Volatile.Read(ref _release).Task;
                 lock (_requests)
                     _requests.Add(request);
 
@@ -261,7 +266,7 @@ internal sealed class FakeXcCamera : IDisposable
                             }
                             return;
                         case XcReplyKind.Held:
-                            await UntilDrainingAsync(Volatile.Read(ref _release).Task);
+                            await UntilDrainingAsync(release);
                             break;
                         case XcReplyKind.Delayed:
                             await UntilDrainingAsync(Task.Delay(reply.Delay, _draining.Token));
@@ -279,9 +284,11 @@ internal sealed class FakeXcCamera : IDisposable
                     var response = new StringBuilder($"HTTP/1.1 {status} {(status == 200 ? "OK" : "Error")}\r\n");
                     if (!challenged && reply.Livescope != null)
                         response.Append($"livescope-status: {reply.Livescope}\r\n");
+                    if (!challenged && reply.ContentType != null)
+                        response.Append($"Content-Type: {reply.ContentType}\r\n");
                     foreach (var challenge in challenged ? login!.Challenges(stale && login.Stale) : reply.Challenges)
                         response.Append($"WWW-Authenticate: {challenge}\r\n");
-                    var body = challenged ? Array.Empty<byte>() : Encoding.ASCII.GetBytes(reply.Body);
+                    var body = challenged ? Array.Empty<byte>() : Encoding.UTF8.GetBytes(reply.Body);
                     response.Append($"Content-Length: {body.Length}\r\n\r\n");
                     await stream.WriteAsync(Encoding.ASCII.GetBytes(response.ToString()).Concat(body).ToArray(), _stopping.Token);
                 }
@@ -326,9 +333,21 @@ internal sealed record XcRequest(string Path, string Query, long ArrivedAt)
     /// <summary>The request target as on the request line: the path and, when there is one, the query.</summary>
     public string Target => Query.Length == 0 ? Path : $"{Path}?{Query}";
 
-    public bool IsControl => Path == FakeXcCamera.ControlPath;
+    // A control request other than a focus step's write: moves, stops and recalls.
+    public bool IsControl => Path == FakeXcCamera.ControlPath && !IsFocusWrite;
 
-    public bool IsProbe => Path == FakeXcCamera.InfoPath;
+    // A probe, not a focus step's read.
+    public bool IsProbe => Path == FakeXcCamera.InfoPath && !IsFocusRead;
+
+    // A focus step's read of the camera's focus position: that item only.
+    public bool IsFocusRead => Path == FakeXcCamera.InfoPath && Query == "item=c.1.focus.value";
+
+    // A focus step's write of a focus position, whatever else the request carries.
+    public bool IsFocusWrite => Path == FakeXcCamera.ControlPath && FocusValue != null;
+
+    public bool IsFocus => IsFocusRead || IsFocusWrite;
+
+    public string? FocusValue => Parameter("c.1.focus.value");
 
     // A probe reading the camera's whole info.cgi, which carries its speed ranges.
     public bool IsFullInfo => IsProbe && Query.Length == 0;
@@ -368,8 +387,11 @@ internal sealed record XcReply(XcReplyKind Kind, int Status = 200, string? Lives
     /// <summary>The <c>WWW-Authenticate</c> challenges the answer carries, one header each.</summary>
     public IReadOnlyList<string> Challenges { get; init; } = Array.Empty<string>();
 
-    /// <summary>The answer's body; empty by default.</summary>
+    /// <summary>The answer's body, sent as UTF-8; empty by default.</summary>
     public string Body { get; init; } = "";
+
+    /// <summary>The answer's <c>Content-Type</c> header value; null (the default) for no such header.</summary>
+    public string? ContentType { get; init; }
 
     /// <summary>How long a <see cref="XcReplyKind.Delayed"/> reply waits before it is answered.</summary>
     public TimeSpan Delay { get; init; }

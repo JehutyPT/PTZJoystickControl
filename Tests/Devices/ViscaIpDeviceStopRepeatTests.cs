@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using PtzJoystickControl.Application.Commands;
@@ -73,6 +74,39 @@ public class ViscaIpDeviceStopRepeatTests : ViscaLoopbackTests
         Assert.Empty(LogFor(trace, name));
     }
 
+    // A VISCA camera has no focus position to nudge (#62): a focus step sends nothing and logs one
+    // INFO naming the camera, at most once a minute per camera. A step of share 0 or with no
+    // direction does nothing at all, and no share throws.
+    [Fact]
+    public async Task AFocusStep_SendsNothing_AndLogsOneInfoAMinutePerCamera()
+    {
+        using var trace = new TraceRecorder();
+        var name = UniqueName();
+        var otherName = UniqueName();
+        using var camera = new LoopbackCamera(name);
+        using var other = new LoopbackCamera(otherName);
+
+        camera.Device.FocusStep(0.0, FocusDir.Far);
+        camera.Device.FocusStep(0.005, FocusDir.Stop);
+        camera.Device.FocusStep(double.NaN, FocusDir.Near);
+        Assert.Empty(LogFor(trace, name));
+        camera.Device.FocusStep(0.005, FocusDir.Far);
+        camera.Device.FocusStep(0.005, FocusDir.Near);
+        camera.Device.FocusStep(1.5, FocusDir.Far);
+        camera.Device.FocusStep(-0.5, FocusDir.Near);
+        other.Device.FocusStep(0.05, FocusDir.Near);
+        var packets = await camera.CollectAsync();
+        var otherPackets = await other.CollectAsync(TimeSpan.Zero);
+
+        Assert.Empty(packets);
+        Assert.Empty(otherPackets);
+        Assert.False(camera.Device.IsMoving);
+        var line = Assert.Single(LogFor(trace, name));
+        Assert.Equal(TraceEventType.Information, line.Type);
+        Assert.Contains("focus step", line.Message);
+        Assert.Single(LogFor(trace, otherName));
+    }
+
     [Fact]
     public async Task CommandsAfterDispose_AreIgnored_AndThePendingStopsStillCarryStop()
     {
@@ -86,6 +120,7 @@ public class ViscaIpDeviceStopRepeatTests : ViscaLoopbackTests
         camera.Device.Tilt(0.5, TiltDir.Up);
         camera.Device.Zoom(0.5, ZoomDir.Tele);
         camera.Device.Focus(0.5, FocusDir.Far);
+        camera.Device.FocusStep(0.5, FocusDir.Far);
         camera.Device.FocusMode(FocusMode.Auto);
         camera.Device.FocusLock(FocusLock.Lock);
         camera.Device.Power(Power.On);
