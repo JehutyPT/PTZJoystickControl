@@ -42,6 +42,15 @@ The switch is matched exactly, and its folder is the next argument. Single-dash 
 
 A macOS or Linux terminal shows the line. `Gui.exe` has no console, so on Windows the line shows only when standard error is redirected, as with PowerShell's `Start-Process .\Gui.exe -ArgumentList ... -RedirectStandardError err.txt -Wait -PassThru` (the returned process's `ExitCode` is 2); otherwise the only signs are exit code 2 and no tray icon.
 
+### Shows
+
+Shows on the vMix PC do not run a release. `startup.bat`, in the separate JehutyPT/IEV_StreamConfigs repo (`StartupSequence\startup.bat`), runs `dotnet run`, a Debug build, in `C:\Users\iev\Documents\Repos\PTZJoystickControl\Gui`, the `Gui` folder of a git clone of this repo. `startup.bat` starts `dotnet run` in a console window of its own, with no arguments (so the app runs on the default settings folder), and nothing checks that it worked. The clone tracks `main`; `startup.bat` does not `git pull`, and the clone is updated separately. So whatever is on `main`, as last pulled, goes live at the next show start. The `C:\Users\iev\PTZJoystickControl\v0.0.6x\` zip folders on that PC are only test copies.
+
+- Merging to `main` is effectively deploying to production at the next show.
+- The checks in [on-site-checklist.md](on-site-checklist.md) are the only gate: CI's tests gate the release, not the show.
+- A failed build means no camera control at show start, and nothing else reports it: the build error shows only in that window, which closes as soon as `dotnet run` exits (`startup.bat` runs it with `cmd /c`), so the error can be gone before anyone sees it.
+- A Debug build also sends `Debug.WriteLine` output to the log, the per-packet VISCA reply dumps included (see [Logs](#logs)).
+
 ## Windows package
 
 Windows releases are a zip per architecture (`PTZJoystickControl_v<version>_win_x86.zip` / `_win_x64.zip`), not an installer. Build one locally, on any OS, the way the CI Windows job does:
@@ -52,7 +61,7 @@ dotnet publish Gui/Gui.csproj -c PublishRelease -r win-x64 --self-contained -p:P
 
 `publish/` then holds `Gui.exe` (single file: the .NET runtime and every managed assembly), the native DLLs it loads (`av_libglesv2.dll`, `SDL2.dll`, `libSkiaSharp.dll`, `libHarfBuzzSharp.dll`), the managed pdbs (line numbers in logged stack traces; `Gui.csproj` leaves out the native SkiaSharp/HarfBuzz pdbs, about 105 MB) and `SdlGamepads.dll.config`. CI zips that folder as is. The native DLLs stay beside the exe on purpose: `IncludeNativeLibrariesForSelfExtract` would unpack them to `%TEMP%` on first run, which can fail on the show PC (antivirus, temp clean-up), while beside the exe they load from the app folder as they did from the old MSI's install folder.
 
-Installing is unzipping to a permanent folder and running `Gui.exe`; settings and logs live in `%APPDATA%\PTZJoystickControl` (unless [`--settings-dir`](#another-settings-folder) names another folder), so replacing the folder with a newer zip keeps them. There are no shortcuts, Apps entry or uninstaller. The zip and exe are unsigned (so was the old MSI), so Windows SmartScreen may ask on first run.
+Installing is unzipping to a permanent folder and running `Gui.exe`; settings and logs live in `%APPDATA%\PTZJoystickControl` (unless [`--settings-dir`](#another-settings-folder) names another folder), so replacing the folder with a newer zip keeps them. There are no shortcuts, Apps entry or uninstaller. The zip and exe are unsigned (so was the old MSI), so Windows SmartScreen may ask on first run. Shows on the vMix PC do not run the zip: see [Shows](#shows).
 
 Use `-r win-x86` for the 32-bit zip.
 

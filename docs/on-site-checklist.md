@@ -1,6 +1,6 @@
 # On-site checklist
 
-Hardware checks for merged changes that could not be verified off-site. Work through them on the vMix PC with both CR-N500s, the joystick and Companion connected, before the build replaces the frozen production version. Tick each box, and delete an entry once all its boxes are ticked.
+Hardware checks for merged changes that could not be verified off-site. Work through them on the vMix PC with both CR-N500s, the joystick and Companion connected, before the next show: shows run `main`, so these checks are the only gate between a merge and a live show (see [development.md](development.md#shows)). Tick each box, and delete an entry once all its boxes are ticked.
 
 After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-checklist-target-state).
 
