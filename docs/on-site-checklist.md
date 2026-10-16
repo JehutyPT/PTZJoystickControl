@@ -16,16 +16,6 @@ This change is in the SKAARHOJ surface plugin (JehutyPT/companion-surface-skaarh
 - [ ] Hold a four-way button and pull the panel's Ethernet cable: the button's release action runs when the link drops, and no press is left stuck once the link is back.
 - [ ] Restore the button's show action.
 
-### #59: `--settings-dir` runs the app on another settings folder
-
-The app takes one switch, `--settings-dir <folder>`: every settings file and the log are then read from and written to that folder, created if missing, and nothing in `%APPDATA%\PTZJoystickControl` is read or written. Without it, nothing changes, except that the log's start line now names the settings folder in use. A folder that cannot be used, a `--settings-dir` with no folder, or any other argument that starts with `--` stops the app before it starts, with one line on standard error and exit code 2. The cost: `Gui.exe` has no console, so that line shows only when standard error is redirected; otherwise the only signs are exit code 2 and no tray icon. Run these from PowerShell in the app's folder, with the app quit (tray menu → **Quit**). First note the modified times of the files in `%APPDATA%\PTZJoystickControl`, with `Get-ChildItem "$env:APPDATA\PTZJoystickControl"`, and pick a new folder: `$base = Join-Path $env:TEMP "ptz59-$(Get-Random)"`.
-
-- [ ] Run `.\Gui.exe --settings-dir "$base\settings"`. The app starts with an empty camera list and does not connect to the SKAARHOJ panel. `$base\settings` holds `PTZJoystickControl.log`, whose start line names that folder "(from --settings-dir)", and `SkaarhojPanel.json`. A camera selection from Companion meanwhile logs a `WARN` there, since it has no cameras: expected. Quit it: the files in `%APPDATA%\PTZJoystickControl` keep their modified times.
-- [ ] Create a file, then start the app on a folder inside it, with standard error redirected: `New-Item -ItemType File -Force "$base\file"`, then `$p = Start-Process .\Gui.exe -ArgumentList "--settings-dir ""$base\file\settings""" -RedirectStandardError "$base\err.txt" -Wait -PassThru` (the doubled quotes keep a path with spaces in one argument). `$p.ExitCode` is 2, no tray icon appears, `Get-Content "$base\err.txt"` shows one "PTZJoystickControl: cannot start: settings folder … cannot be used" line, and `%APPDATA%\PTZJoystickControl\PTZJoystickControl.log` gets no new line.
-- [ ] The same with `--settings-folder`: `$p = Start-Process .\Gui.exe -ArgumentList "--settings-folder ""$base\other""" -RedirectStandardError "$base\err2.txt" -Wait -PassThru`. `$p.ExitCode` is 2, and `Get-Content "$base\err2.txt"` shows one line naming the unknown argument `--settings-folder`.
-- [ ] Start the app as the show starts it, with no switch. Both cameras and the controller mappings are as before, and the start line names `%APPDATA%\PTZJoystickControl`, with no "(from --settings-dir)".
-- [ ] Delete what the checks created: `Remove-Item -Recurse "$base"`.
-
 ### #40: SKAARHOJ dead-man rides out an app freeze
 
 Needs the panel at 192.168.1.163 set up as in the #35 entry, with no other Raw Panel client connected. The link now counts any line from the panel as hearing from it, sends `ping` only after 500 ms of quiet and drops after 1 s of silence; a freeze of the app itself restarts that count instead of dropping the link. These checks change no panel setting.
