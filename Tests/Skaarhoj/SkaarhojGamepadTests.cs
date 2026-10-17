@@ -27,15 +27,38 @@ public class SkaarhojGamepadTests
     private static void Map<T>(SkaarhojGamepad gamepad, string inputName) where T : ICommand =>
         Input(gamepad, inputName).SelectedCommand = gamepad.Commands.OfType<T>().Single();
 
+    // Every axis to pan and the Focus knob to Focus step, so any input that fires shows in the camera's calls.
+    private static void MapEveryInput(SkaarhojGamepad gamepad)
+    {
+        foreach (var axis in gamepad.Inputs.Where(i => i.InputType == InputType.Axis))
+            axis.SelectedCommand = gamepad.Commands.OfType<PanCommand>().Single();
+        FocusKnob.MapToFocusStep(gamepad);
+    }
+
     [Fact]
-    public void ExposesTheFourAxes_WithStableIdsAndReadableNames()
+    public void ExposesTheFourAxesThenTheFocusKnob_WithStableIdsAndReadableNames()
     {
         var gamepad = NewGamepad();
 
         Assert.Equal(
-            new[] { ("HWC60", "LR"), ("HWC61", "UD"), ("HWC62", "Rotate"), ("HWC58", "Zoom") },
-            gamepad.Inputs.Select(i => (i.Id, i.Name)).ToArray());
-        Assert.All(gamepad.Inputs, i => Assert.Equal(InputType.Axis, i.InputType));
+            new[]
+            {
+                ("HWC60", "LR", InputType.Axis),
+                ("HWC61", "UD", InputType.Axis),
+                ("HWC62", "Rotate", InputType.Axis),
+                ("HWC58", "Zoom", InputType.Axis),
+                ("HWC59", "Focus", InputType.Relative),
+            },
+            gamepad.Inputs.Select(i => (i.Id, i.Name, i.InputType)).ToArray());
+    }
+
+    [Fact]
+    public void FocusKnob_StartsUnmapped()
+    {
+        var focus = Input(NewGamepad(), "Focus");
+
+        Assert.Null(focus.SelectedCommand);
+        Assert.Null(focus.SecondInput!.SelectedCommand);
     }
 
     [Fact]
@@ -101,6 +124,7 @@ public class SkaarhojGamepadTests
     }
 
     [Theory]
+    [InlineData(59)] // the Focus knob: not an axis
     [InlineData(63)]
     [InlineData(57)]
     [InlineData(1)]
@@ -109,13 +133,53 @@ public class SkaarhojGamepadTests
     public void Speed_ForAnyOtherHwc_IsIgnored(int hwc)
     {
         var gamepad = NewGamepad();
-        foreach (var input in gamepad.Inputs)
-            input.SelectedCommand = gamepad.Commands.OfType<PanCommand>().Single();
+        MapEveryInput(gamepad);
 
         gamepad.OnSpeed(hwc, 500);
 
         Assert.All(gamepad.Inputs, i => Assert.Equal(0f, i.RawInputValue));
         Assert.Empty(_camera.Calls);
+    }
+
+    [Theory]
+    [InlineData(46)] // Knob A
+    [InlineData(53)] // Knob H
+    [InlineData(57)] // Iris
+    [InlineData(58)] // the axes
+    [InlineData(60)]
+    [InlineData(61)]
+    [InlineData(62)]
+    [InlineData(63)]
+    [InlineData(0)]
+    [InlineData(-59)]
+    public void Encoder_ForAnyOtherHwc_IsIgnored(int hwc)
+    {
+        var gamepad = NewGamepad();
+        MapEveryInput(gamepad);
+
+        gamepad.OnEncoder(hwc, 1);
+        gamepad.OnEncoder(hwc, -2);
+
+        Assert.All(gamepad.Inputs, i => Assert.Equal(0f, i.RawInputValue));
+        Assert.Empty(_camera.Calls);
+    }
+
+    // The panel can send several steps in one line: a capture of it has Enc:±2 and Enc:3.
+    [Theory]
+    [InlineData(1, 1, FocusKnob.Far)]
+    [InlineData(-1, 1, FocusKnob.Near)]
+    [InlineData(2, 2, FocusKnob.Far)]
+    [InlineData(-2, 2, FocusKnob.Near)]
+    [InlineData(3, 3, FocusKnob.Far)]
+    [InlineData(0, 0, FocusKnob.Far)]
+    public void Encoder_OnTheFocusKnob_RunsItsCommandOncePerStep(int steps, int expectedCount, string expectedStep)
+    {
+        var gamepad = NewGamepad();
+        FocusKnob.MapToFocusStep(gamepad);
+
+        gamepad.OnEncoder(59, steps);
+
+        Assert.Equal(Enumerable.Repeat(expectedStep, expectedCount), _camera.Calls);
     }
 
     [Fact]
@@ -151,8 +215,7 @@ public class SkaarhojGamepadTests
     public void FreshGamepad_HasEveryAxisAtZero_AndSendsNothing()
     {
         var gamepad = NewGamepad();
-        foreach (var input in gamepad.Inputs)
-            input.SelectedCommand = gamepad.Commands.OfType<PanCommand>().Single();
+        MapEveryInput(gamepad);
 
         Assert.All(gamepad.Inputs, i => Assert.Equal(0f, i.InputValue));
         Assert.Empty(_camera.Calls);
@@ -166,6 +229,18 @@ public class SkaarhojGamepadTests
 
         gamepad.Unacquire();
         gamepad.OnSpeed(60, 500);
+
+        Assert.Empty(_camera.Calls);
+    }
+
+    [Fact]
+    public void AfterUnacquire_EncoderIsIgnored()
+    {
+        var gamepad = NewGamepad();
+        FocusKnob.MapToFocusStep(gamepad);
+
+        gamepad.Unacquire();
+        gamepad.OnEncoder(59, 1);
 
         Assert.Empty(_camera.Calls);
     }

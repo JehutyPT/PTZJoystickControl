@@ -12,8 +12,9 @@ namespace PtzJoystickControl.Application.Devices;
 public class Input : IInput
 {
     /// <summary>
-    /// Most steps a relative input runs for one event. An encoder sends ±1 per step, so this is
-    /// only reached by a faulty device; it keeps one event from tying up the input loop.
+    /// Most steps a relative input runs for one event. One event can carry a few steps (a capture
+    /// of the SKAARHOJ panel has <c>Enc:±2</c> and <c>Enc:3</c>), so this is only reached by a
+    /// faulty device; it keeps one event from tying up the input loop.
     /// </summary>
     public const int MaxStepsPerEvent = 100;
 
@@ -275,7 +276,9 @@ public class Input : IInput
                 secondInput.CommandDirection = CommandDirection?.Direction == Direction.High 
                     ? staticDirections.First(d => d.Direction == Direction.Low)
                     : staticDirections.First(d => d.Direction == Direction.High);
-                secondInput.PersistentPropertyChanged += PersistentPropertyChanged;
+                // Raised as this input's change, so the controller saves the second command too. A
+                // lambda: the event has no subscribers yet when this runs.
+                secondInput.PersistentPropertyChanged += (_, e) => PersistentPropertyChanged?.Invoke(this, e);
             }
         }
     }

@@ -109,6 +109,20 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
     }
 
     [Fact]
+    public async Task FocusKnobTurnFromTheLink_StepsOncePerStep_WhenTheInputLoopRuns()
+    {
+        FocusKnob.MapToFocusStep(await ConnectAndMap());
+
+        _panel.Send("HWC#59=Enc:2");
+        // The service enqueues before the test's own handler records the line.
+        Assert.True(await WaitUntil(() => Received("Encoder { Hwc = 59, Steps = 2 }"), Within));
+        Assert.Empty(_camA.Calls);
+
+        _queue.RunPending();
+        Assert.Equal(new[] { FocusKnob.Far, FocusKnob.Far }, _camA.Calls);
+    }
+
+    [Fact]
     public async Task LinkDown_StopsEveryDrivenCamera_AndShowsDisconnected()
     {
         var gamepad = await ConnectAndMap();
@@ -194,9 +208,10 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
     public async Task TheAppSendsThePanelNothingBeyondTheLinksOwnLines()
     {
         // Every path this issue adds: input, Companion selection, sleep, wake, deactivate,
-        // reactivate, link loss and reconnect.
-        await ConnectAndMap();
-        _panel.Send("HWC#60=Speed:500", "HWC#58=Speed:-500", "HWC#63=Down", "HWC#63=Up", "HWC#57=Enc:1", "HWC#1.2=Down");
+        // reactivate, link loss and reconnect. Then the Focus knob: its turn and its press.
+        FocusKnob.MapToFocusStep(await ConnectAndMap());
+        _panel.Send("HWC#60=Speed:500", "HWC#58=Speed:-500", "HWC#63=Down", "HWC#63=Up", "HWC#57=Enc:1",
+            "HWC#59=Enc:2", "HWC#59=Press", "HWC#1.2=Down");
         Assert.True(await WaitUntil(() => Received("Down { Hwc = 1"), Within));
         _queue.RunPending();
         _companion.Select(_camB);

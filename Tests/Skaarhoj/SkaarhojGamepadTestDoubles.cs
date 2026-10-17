@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using PtzJoystickControl.Application.Commands;
+using PtzJoystickControl.Core.Commands;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.Core.Model;
 using PtzJoystickControl.Core.Services;
@@ -33,7 +35,10 @@ internal sealed class MotionRecordingCamera : ICamera
     public bool IsMoving =>
         panDir != PanDir.Stop || tiltDir != TiltDir.Stop || zoomDir != ZoomDir.Stop || focusDir != FocusDir.Stop;
 
-    /// <summary>Motion commands in order, with speed fractions, e.g. <c>Pan 1 Right</c>, <c>Zoom 0.5 Tele</c>.</summary>
+    /// <summary>
+    /// Motion commands and focus steps in order, with speed fractions or focus range shares, e.g.
+    /// <c>Pan 1 Right</c>, <c>Zoom 0.5 Tele</c>, <c>FocusStep 0.005 Far</c>.
+    /// </summary>
     public IReadOnlyList<string> Calls => _calls.ToArray();
 
     public int StopCalls => Volatile.Read(ref _stopCalls);
@@ -75,7 +80,11 @@ internal sealed class MotionRecordingCamera : ICamera
     }
 
     public void Power(Power power) { }
-    public void FocusStep(double focusShare, FocusDir focusDir) { }
+
+    // A step is not a move (as on XcCamera): it leaves IsMoving alone.
+    public void FocusStep(double focusShare, FocusDir focusDir) =>
+        _calls.Enqueue($"FocusStep {F(focusShare)} {focusDir}");
+
     public void FocusMode(FocusMode focusMode) { }
     public void FocusLock(FocusLock focusLock) { }
     public void Preset(Preset preset, byte presetNumber) { }
@@ -104,4 +113,26 @@ internal sealed class RaisingCompanionService : IBitfocusCompanionService
     public void SetCustomVariable(string variableName, string value) { }
     public string? InboundListenerError => null;
     public event EventHandler? InboundListenerErrorChanged { add { } remove { } }
+}
+
+/// <summary>The panel's Focus knob mapped to Focus step, as a show would map it.</summary>
+internal static class FocusKnob
+{
+    /// <summary>What <see cref="MotionRecordingCamera"/> records for one clockwise detent.</summary>
+    public const string Far = "FocusStep 0.005 Far";
+
+    /// <summary>What <see cref="MotionRecordingCamera"/> records for one anticlockwise detent.</summary>
+    public const string Near = "FocusStep 0.005 Near";
+
+    /// <summary>Focus step Far 0.5 % per clockwise detent, and Near 0.5 % (the second command) per anticlockwise one.</summary>
+    public static void MapToFocusStep(IGamepad gamepad)
+    {
+        var focus = gamepad.Inputs.Single(i => i.Name == "Focus");
+        var focusStep = gamepad.Commands.OfType<FocusStepCommand>().Single();
+        focus.SelectedCommand = focusStep;
+        focus.CommandDirection = focus.Directions!.Single(d => d.Direction == Direction.High);
+        focus.CommandValue = focus.Values!.Single(v => v.Value == 50);
+        focus.SecondInput!.SelectedCommand = focusStep;
+        focus.SecondInput.CommandValue = focus.SecondInput.Values!.Single(v => v.Value == -50);
+    }
 }

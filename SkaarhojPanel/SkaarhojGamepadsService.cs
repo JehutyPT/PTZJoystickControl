@@ -152,13 +152,17 @@ public sealed class SkaarhojGamepadsService : IGamepadsService, IDisposable
             case RawPanelMessage.Speed speed:
                 _inputQueue.Enqueue(() => ApplySpeed(speed.Hwc, speed.Value));
                 break;
+            case RawPanelMessage.Encoder encoder:
+                _inputQueue.Enqueue(() => ApplyEncoder(encoder.Hwc, encoder.Steps));
+                break;
             case RawPanelMessage.Reply { Key: "isSleeping", Value: "1" }:
                 _inputQueue.Enqueue(() => UpdateSleep(asleep: true));
                 break;
             case RawPanelMessage.Reply { Key: "isSleeping", Value: "0" }:
                 _inputQueue.Enqueue(() => UpdateSleep(asleep: false));
                 break;
-            // Buttons, encoders and everything else belong to the Companion surface plugin.
+            // Buttons (the Focus knob's press included) and everything else belong to the Companion
+            // surface plugin. The gamepad ignores every encoder but the Focus knob.
         }
     }
 
@@ -185,6 +189,12 @@ public sealed class SkaarhojGamepadsService : IGamepadsService, IDisposable
     {
         lock (_sync)
             _gamepad?.OnSpeed(hwc, speed);
+    }
+
+    private void ApplyEncoder(int hwc, int steps)
+    {
+        lock (_sync)
+            _gamepad?.OnEncoder(hwc, steps);
     }
 
     private void UpdateSleep(bool asleep)

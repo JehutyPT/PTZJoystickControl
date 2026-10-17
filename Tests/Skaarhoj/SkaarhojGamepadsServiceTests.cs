@@ -2,6 +2,7 @@ using PtzJoystickControl.Application.Commands;
 using PtzJoystickControl.Application.Db;
 using PtzJoystickControl.Application.Devices;
 using PtzJoystickControl.Application.Services;
+using PtzJoystickControl.Core.Commands;
 using PtzJoystickControl.Core.Devices;
 using PtzJoystickControl.SkaarhojPanel;
 using PtzJoystickControl.Tests.Services;
@@ -53,6 +54,9 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
 
     private static void Speed(SkaarhojGamepadsService service, int hwc, int value) =>
         service.OnMessage(new RawPanelMessage.Speed(hwc, value));
+
+    private static void Encoder(SkaarhojGamepadsService service, int hwc, int steps) =>
+        service.OnMessage(new RawPanelMessage.Encoder(hwc, steps));
 
     private static void Sleeping(SkaarhojGamepadsService service, bool asleep) =>
         service.OnMessage(new RawPanelMessage.Reply("isSleeping", asleep ? "1" : "0"));
@@ -145,6 +149,107 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
 
         _queue.RunPending();
         Assert.Equal(new[] { "Pan 1 Right" }, _camA.Calls);
+    }
+
+    [Fact]
+    public void FocusKnobTurn_IsAppliedOnlyByTheInputLoop_OncePerStep()
+    {
+        var service = NewService();
+        service.ActivateGamepad(Info(service));
+        service.OnLinkUp();
+        _queue.RunPending();
+        var gamepad = Active(service);
+        FocusKnob.MapToFocusStep(gamepad);
+        gamepad.SelectedCamera = _camA;
+
+        Encoder(service, 59, 2);
+        Encoder(service, 59, -3);
+        Assert.Empty(_camA.Calls);
+
+        _queue.RunPending();
+        Assert.Equal(
+            new[] { FocusKnob.Far, FocusKnob.Far, FocusKnob.Near, FocusKnob.Near, FocusKnob.Near },
+            _camA.Calls);
+    }
+
+    [Fact]
+    public void FocusKnobSteps_KeepTheirOrder_WithTheJoysticksLines()
+    {
+        var service = NewService();
+        var gamepad = ActivePanning(service);
+        FocusKnob.MapToFocusStep(gamepad);
+        var before = _camA.Calls.Count;
+
+        Encoder(service, 59, 1);
+        Speed(service, 60, 0);
+        Encoder(service, 59, -1);
+        Speed(service, 60, -500);
+        _queue.RunPending();
+
+        Assert.Equal(new[] { FocusKnob.Far, "Pan 0 Stop", FocusKnob.Near, "Pan 1 Left" }, _camA.Calls.Skip(before));
+    }
+
+    [Fact]
+    public void FocusKnobTurn_AfterLinkDown_StepsNothing()
+    {
+        var service = NewService();
+        FocusKnob.MapToFocusStep(ActivePanning(service));
+        var calls = _camA.Calls.Count;
+
+        service.OnLinkDown("no ack");
+        Encoder(service, 59, 1);
+        _queue.RunPending();
+
+        Assert.Equal(calls, _camA.Calls.Count);
+    }
+
+    [Fact]
+    public void FocusKnobTurn_WhileAsleep_StepsNothing()
+    {
+        var service = NewService();
+        FocusKnob.MapToFocusStep(ActivePanning(service));
+        var calls = _camA.Calls.Count;
+
+        Sleeping(service, true);
+        Encoder(service, 59, 1);
+        _queue.RunPending();
+
+        Assert.Equal(calls, _camA.Calls.Count);
+    }
+
+    [Fact]
+    public void FocusKnobTurnQueuedBeforeDeactivate_StepsNothing()
+    {
+        var service = NewService();
+        FocusKnob.MapToFocusStep(ActivePanning(service));
+        var calls = _camA.Calls.Count;
+
+        Encoder(service, 59, 1);
+        service.DeactivateGamepad(Info(service));
+        _queue.RunPending();
+
+        Assert.Equal(calls, _camA.Calls.Count);
+    }
+
+    [Fact]
+    public void Wake_FocusKnobKeepsItsMapping_AndStepsAgain()
+    {
+        var service = NewService();
+        var before = ActivePanning(service);
+        FocusKnob.MapToFocusStep(before);
+        Sleeping(service, true);
+        _queue.RunPending();
+
+        Sleeping(service, false);
+        _queue.RunPending();
+        var after = Active(service);
+        after.SelectedCamera = _camA;
+        var calls = _camA.Calls.Count;
+        Encoder(service, 59, -1);
+        _queue.RunPending();
+
+        Assert.NotSame(before, after);
+        Assert.Equal(new[] { FocusKnob.Near }, _camA.Calls.Skip(calls));
     }
 
     [Fact]
@@ -423,11 +528,22 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
     {
         var service = NewService();
         var gamepad = ActivePanning(service);
+        FocusKnob.MapToFocusStep(gamepad);
         var calls = _camA.Calls.Count;
         var stops = _camA.StopCalls;
+        var lines = _trace.Messages.Count(m => m.Contains(Address));
 
         service.OnMessage(new RawPanelMessage.Down(63, null));
         service.OnMessage(new RawPanelMessage.Encoder(57, 1));
+        // The Focus knob's press, and anything but a turn on 59: the press stays Companion's.
+        service.OnMessage(new RawPanelMessage.Press(59));
+        service.OnMessage(new RawPanelMessage.Down(59, null));
+        service.OnMessage(new RawPanelMessage.Up(59, null));
+        service.OnMessage(new RawPanelMessage.Speed(59, 500));
+        // Other encoders: Knob A, Knob H, and the joystick's own HWC.
+        service.OnMessage(new RawPanelMessage.Encoder(46, 1));
+        service.OnMessage(new RawPanelMessage.Encoder(53, -1));
+        service.OnMessage(new RawPanelMessage.Encoder(60, 1));
         service.OnMessage(new RawPanelMessage.Reply("isSleeping", "maybe"));
         service.OnMessage(new RawPanelMessage.Unknown("HWC#60=Speed:x"));
         _queue.RunPending();
@@ -435,6 +551,7 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
         Assert.Same(gamepad, Active(service));
         Assert.Equal(calls, _camA.Calls.Count);
         Assert.Equal(stops, _camA.StopCalls);
+        Assert.Equal(lines, _trace.Messages.Count(m => m.Contains(Address)));
     }
 
     [Fact]
@@ -474,6 +591,59 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
         second.OnLinkUp();
         _queue.RunPending();
         Assert.Equal(0.6f, Active(second).Inputs.Single(i => i.Name == "LR").Expo);
+    }
+
+    // The second command is mapped last, as in the controller page: it must be saved on its own.
+    [Fact]
+    public void FocusKnobMapping_SavesAndReloadsById_WithBothCommandsAndTheDirection()
+    {
+        var first = NewService();
+        first.ActivateGamepad(Info(first));
+        first.OnLinkUp();
+        _queue.RunPending();
+        FocusKnob.MapToFocusStep(Active(first));
+        // Low is not the default, so a direction lost on the way gives Far for a clockwise step.
+        var focus = Active(first).Inputs.Single(i => i.Name == "Focus");
+        focus.CommandDirection = focus.Directions!.Single(d => d.Direction == Direction.Low);
+
+        var saved = Assert.Single(new GamepadSettingsStore(SettingsPath).GetAllGamepadSettings());
+        Assert.Equal(Id, saved.Id);
+        Assert.Single(saved.Inputs!, i => i.Id == "HWC59");
+
+        var second = NewService();
+        second.OnLinkUp();
+        _queue.RunPending();
+        Active(second).SelectedCamera = _camA;
+        Encoder(second, 59, 1);
+        Encoder(second, 59, -1);
+        _queue.RunPending();
+
+        Assert.Equal(new[] { FocusKnob.Near, FocusKnob.Far }, _camA.Calls);
+    }
+
+    [Fact]
+    public void SavedMappingsWithoutTheFocusKnob_LoadItUnmapped_AndTheOthersAsSaved()
+    {
+        // A file saved before the panel had a Focus input.
+        var first = NewService();
+        first.ActivateGamepad(Info(first));
+        first.OnLinkUp();
+        _queue.RunPending();
+        MapLrToPan(Active(first));
+        var store = new GamepadSettingsStore(SettingsPath);
+        var saved = Assert.Single(store.GetAllGamepadSettings());
+        Assert.Equal(1, saved.Inputs!.RemoveAll(i => i.Id == "HWC59"));
+        Assert.True(store.SaveGamepadSettings(saved));
+
+        var second = NewService();
+        second.OnLinkUp();
+        _queue.RunPending();
+
+        var gamepad = Active(second);
+        Assert.IsType<PanCommand>(gamepad.Inputs.Single(i => i.Name == "LR").SelectedCommand);
+        var focus = gamepad.Inputs.Single(i => i.Name == "Focus");
+        Assert.Null(focus.SelectedCommand);
+        Assert.Null(focus.SecondInput!.SelectedCommand);
     }
 
     [Fact]
