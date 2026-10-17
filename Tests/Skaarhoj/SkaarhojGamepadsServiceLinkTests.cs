@@ -123,6 +123,21 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
     }
 
     [Fact]
+    public async Task IrisWheelScrollFromTheLink_StepsOncePerStep_WhenTheInputLoopRuns()
+    {
+        IrisWheel.MapToFocusStep(await ConnectAndMap());
+
+        // As captured live: one step scrolled up, then one scrolled down.
+        _panel.Send("HWC#57=Enc:1", "HWC#57=Enc:-1");
+        // The service enqueues before the test's own handler records the line.
+        Assert.True(await WaitUntil(() => Received("Encoder { Hwc = 57, Steps = -1 }"), Within));
+        Assert.Empty(_camA.Calls);
+
+        _queue.RunPending();
+        Assert.Equal(new[] { IrisWheel.Far, IrisWheel.Near }, _camA.Calls);
+    }
+
+    [Fact]
     public async Task LinkDown_StopsEveryDrivenCamera_AndShowsDisconnected()
     {
         var gamepad = await ConnectAndMap();
@@ -208,10 +223,12 @@ public sealed class SkaarhojGamepadsServiceLinkTests : IDisposable
     public async Task TheAppSendsThePanelNothingBeyondTheLinksOwnLines()
     {
         // Every path this issue adds: input, Companion selection, sleep, wake, deactivate,
-        // reactivate, link loss and reconnect. Then the Focus knob: its turn and its press.
-        FocusKnob.MapToFocusStep(await ConnectAndMap());
+        // reactivate, link loss and reconnect. Then the Focus and Iris wheels: their steps and presses.
+        var gamepad = await ConnectAndMap();
+        FocusKnob.MapToFocusStep(gamepad);
+        IrisWheel.MapToFocusStep(gamepad);
         _panel.Send("HWC#60=Speed:500", "HWC#58=Speed:-500", "HWC#63=Down", "HWC#63=Up", "HWC#57=Enc:1",
-            "HWC#59=Enc:2", "HWC#59=Press", "HWC#1.2=Down");
+            "HWC#57=Press", "HWC#59=Enc:2", "HWC#59=Press", "HWC#1.2=Down");
         Assert.True(await WaitUntil(() => Received("Down { Hwc = 1"), Within));
         _queue.RunPending();
         _companion.Select(_camB);

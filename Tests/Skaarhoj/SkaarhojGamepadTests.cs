@@ -27,16 +27,17 @@ public class SkaarhojGamepadTests
     private static void Map<T>(SkaarhojGamepad gamepad, string inputName) where T : ICommand =>
         Input(gamepad, inputName).SelectedCommand = gamepad.Commands.OfType<T>().Single();
 
-    // Every axis to pan and the Focus knob to Focus step, so any input that fires shows in the camera's calls.
+    // Every axis to pan and both wheels to Focus step, so any input that fires shows in the camera's calls.
     private static void MapEveryInput(SkaarhojGamepad gamepad)
     {
         foreach (var axis in gamepad.Inputs.Where(i => i.InputType == InputType.Axis))
             axis.SelectedCommand = gamepad.Commands.OfType<PanCommand>().Single();
         FocusKnob.MapToFocusStep(gamepad);
+        IrisWheel.MapToFocusStep(gamepad);
     }
 
     [Fact]
-    public void ExposesTheFourAxesThenTheFocusKnob_WithStableIdsAndReadableNames()
+    public void ExposesTheFourAxesThenTheFocusAndIrisWheels_WithStableIdsAndReadableNames()
     {
         var gamepad = NewGamepad();
 
@@ -48,6 +49,7 @@ public class SkaarhojGamepadTests
                 ("HWC62", "Rotate", InputType.Axis),
                 ("HWC58", "Zoom", InputType.Axis),
                 ("HWC59", "Focus", InputType.Relative),
+                ("HWC57", "Iris", InputType.Relative),
             },
             gamepad.Inputs.Select(i => (i.Id, i.Name, i.InputType)).ToArray());
     }
@@ -59,6 +61,15 @@ public class SkaarhojGamepadTests
 
         Assert.Null(focus.SelectedCommand);
         Assert.Null(focus.SecondInput!.SelectedCommand);
+    }
+
+    [Fact]
+    public void IrisWheel_StartsUnmapped()
+    {
+        var iris = Input(NewGamepad(), "Iris");
+
+        Assert.Null(iris.SelectedCommand);
+        Assert.Null(iris.SecondInput!.SelectedCommand);
     }
 
     [Fact]
@@ -126,7 +137,7 @@ public class SkaarhojGamepadTests
     [Theory]
     [InlineData(59)] // the Focus knob: not an axis
     [InlineData(63)]
-    [InlineData(57)]
+    [InlineData(57)] // the Iris wheel: not an axis either
     [InlineData(1)]
     [InlineData(0)]
     [InlineData(-60)]
@@ -144,7 +155,6 @@ public class SkaarhojGamepadTests
     [Theory]
     [InlineData(46)] // Knob A
     [InlineData(53)] // Knob H
-    [InlineData(57)] // Iris
     [InlineData(58)] // the axes
     [InlineData(60)]
     [InlineData(61)]
@@ -152,6 +162,7 @@ public class SkaarhojGamepadTests
     [InlineData(63)]
     [InlineData(0)]
     [InlineData(-59)]
+    [InlineData(-57)]
     public void Encoder_ForAnyOtherHwc_IsIgnored(int hwc)
     {
         var gamepad = NewGamepad();
@@ -180,6 +191,39 @@ public class SkaarhojGamepadTests
         gamepad.OnEncoder(59, steps);
 
         Assert.Equal(Enumerable.Repeat(expectedStep, expectedCount), _camera.Calls);
+    }
+
+    // A live capture of the Iris wheel (firmware v2.5.27) has Enc:1 scrolled up and Enc:-1 scrolled down.
+    [Theory]
+    [InlineData(1, 1, IrisWheel.Far)]
+    [InlineData(-1, 1, IrisWheel.Near)]
+    [InlineData(2, 2, IrisWheel.Far)]
+    [InlineData(-2, 2, IrisWheel.Near)]
+    [InlineData(3, 3, IrisWheel.Far)]
+    [InlineData(0, 0, IrisWheel.Far)]
+    public void Encoder_OnTheIrisWheel_RunsItsCommandOncePerStep(int steps, int expectedCount, string expectedStep)
+    {
+        var gamepad = NewGamepad();
+        IrisWheel.MapToFocusStep(gamepad);
+
+        gamepad.OnEncoder(57, steps);
+
+        Assert.Equal(Enumerable.Repeat(expectedStep, expectedCount), _camera.Calls);
+    }
+
+    [Fact]
+    public void Encoder_StepsOnlyTheWheelItCameFrom()
+    {
+        var gamepad = NewGamepad();
+        FocusKnob.MapToFocusStep(gamepad);
+        IrisWheel.MapToFocusStep(gamepad);
+
+        gamepad.OnEncoder(59, 1);
+        gamepad.OnEncoder(57, -1);
+        gamepad.OnEncoder(57, 1);
+        gamepad.OnEncoder(59, -1);
+
+        Assert.Equal(new[] { FocusKnob.Far, IrisWheel.Near, IrisWheel.Far, FocusKnob.Near }, _camera.Calls);
     }
 
     [Fact]
@@ -238,9 +282,11 @@ public class SkaarhojGamepadTests
     {
         var gamepad = NewGamepad();
         FocusKnob.MapToFocusStep(gamepad);
+        IrisWheel.MapToFocusStep(gamepad);
 
         gamepad.Unacquire();
         gamepad.OnEncoder(59, 1);
+        gamepad.OnEncoder(57, 1);
 
         Assert.Empty(_camera.Calls);
     }

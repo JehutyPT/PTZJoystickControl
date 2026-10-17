@@ -6,6 +6,14 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### SKAARHOJ Iris wheel is wired up, unmapped
+
+The SKAARHOJ panel controller has a sixth input, **Iris**: the Iris wheel's steps (HWC 57), a relative input like **Focus**. There is no iris command yet, so **Iris** starts unmapped and stays unmapped for shows. Its press is left alone. Needs the #62 entry done first. **Do every check off air: they move the cameras' focus.** Setup: activate the panel controller and select an XC camera.
+
+- [ ] **Unmapped.** **Iris** is listed after **Focus**, with no command. Scroll and press the wheel: focus does not change.
+- [ ] **One click acts once.** Map **Iris**: **Step direction** High (scroll up) to **Focus step** Far 0.5 %, and the second command to **Focus step** Near 0.5 %. Open `http://<camera>/-wvhttp-01-/info.cgi?item=c.1.focus.value` in a browser. Scroll up one click at a time, 5 times, and reload: the value went up by about 50. Scroll down 5 clicks and reload: it went back down by about 50.
+- [ ] **Restart.** Quit and restart the app: **Iris** keeps both commands. Then unmap it for the show: clear the second command (its ×) first, then the first. Clearing the first hides the second command but leaves it mapped. Scroll both ways: focus does not change.
+
 ### Tray icon is back
 
 Since the move to Avalonia 12 (#30), the tray icon never appeared: Avalonia 12.1.3 and later only add a tray icon to the tray once it is registered on the app, which the app did not do. Closing the main window then left the app running with no way back to it, or to **Quit**, short of killing `Gui.exe`. The app now registers the icon at startup. A new icon may first show under the taskbar's **^** (hidden icons) arrow; drag it onto the taskbar to keep it in view.
@@ -16,10 +24,10 @@ Since the move to Avalonia 12 (#30), the tray icon never appeared: Avalonia 12.1
 
 ### #63: SKAARHOJ Focus knob steps focus
 
-The SKAARHOJ panel controller has a new input, **Focus**: the Focus knob's turns (HWC 59), as a relative input that runs its mapped command once per step the panel reports. The knob's press is left alone. **Focus** starts unmapped, so nothing changes for a show until it is mapped. Any controller now saves a change to only an input's second command at once; before, it could be lost on restart. Needs the #62 entry done first. **Do every check off air: they move the cameras' focus.** Keep the log open (tray menu → **Show log**). Setup: activate the panel controller and map **Focus**: **Step direction** High (clockwise) to **Focus step** Far 0.5 %, and the second command to **Focus step** Near 0.5 %. Select an XC camera.
+The SKAARHOJ panel controller has a new input, **Focus**: the Focus knob's turns (HWC 59), as a relative input that runs its mapped command once per step the panel reports. The knob's press is left alone. **Focus** starts unmapped, so nothing changes for a show until it is mapped. Any controller now saves a change to only an input's second command at once; before, it could be lost on restart. Needs the #62 entry done first. **Do every check off air: they move the cameras' focus.** Keep the log open (tray menu → **Show log**). Setup: activate the panel controller and map **Focus**: **Step direction** High (scroll up) to **Focus step** Far 0.5 %, and the second command to **Focus step** Near 0.5 %. Select an XC camera.
 
-- [ ] **One detent acts once.** Open `http://<camera>/-wvhttp-01-/info.cgi?item=c.1.focus.value` in a browser. Turn the knob clockwise one detent at a time, 5 times, and reload: the value moved by about 50 in the Far direction found in the #62 entry, and focus moved farther away. If it moved by about 100, note it here: one detent sends two steps.
-- [ ] **Direction.** Anticlockwise moves focus near. Swap the two commands if the operator prefers the other way.
+- [ ] **One detent acts once.** Open `http://<camera>/-wvhttp-01-/info.cgi?item=c.1.focus.value` in a browser. Scroll the wheel up one detent at a time, 5 times, and reload: the value moved by about 50 in the Far direction found in the #62 entry, and focus moved farther away. If it moved by about 100, note it here: one detent sends two steps.
+- [ ] **Direction.** Scrolling down moves focus near. Swap the two commands if the operator prefers the other way.
 - [ ] **Fast spin.** Spin the knob quickly through about a full turn and stop. Focus ends where the spin ended, with no catch-up afterwards and no `WARN` in the log.
 - [ ] **While framing.** Move the joystick while turning the knob. Pan, tilt and zoom stay smooth, and focus keeps stepping.
 - [ ] **Press.** Press the Focus knob. Nothing happens in the app: no log line and no focus change.

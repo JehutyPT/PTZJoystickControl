@@ -68,4 +68,4 @@ Inbound transport stays HTTP on localhost (simple to trigger from Companion's HT
 
 ### Surfaces
 
-The SKAARHOJ panel's buttons, encoders, LEDs and displays reach Companion through a separate [Companion surface plugin](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel), not through this app. This app reads only the panel's joystick, zoom rocker and the Focus knob's turns. See [skaarhoj-integration.md](skaarhoj-integration.md#coexisting-with-the-companion-surface-plugin).
+The SKAARHOJ panel's buttons, encoders, LEDs and displays reach Companion through a separate [Companion surface plugin](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel), not through this app. This app reads only the panel's joystick, zoom rocker, and the Focus and Iris wheels' steps. See [skaarhoj-integration.md](skaarhoj-integration.md#coexisting-with-the-companion-surface-plugin).
