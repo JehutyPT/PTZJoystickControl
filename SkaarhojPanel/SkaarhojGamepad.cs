@@ -10,11 +10,12 @@ using System.Runtime.CompilerServices;
 namespace PtzJoystickControl.SkaarhojPanel;
 
 /// <summary>
-/// The SKAARHOJ panel's joystick, zoom rocker and Focus knob as a controller: four
-/// <see cref="InputType.Axis"/> inputs fed from <c>HWC#&lt;id&gt;=Speed:&lt;n&gt;</c> messages, and one
-/// <see cref="InputType.Relative"/> input fed from the Focus knob's turns, <c>HWC#59=Enc:&lt;±n&gt;</c>
-/// (docs/skaarhoj-integration.md, "HWC map"). Everything else is ignored, the Focus knob's press
-/// included: buttons, the other encoders and lights belong to the Companion surface plugin.
+/// The SKAARHOJ panel's joystick, zoom rocker, Focus wheel and Iris wheel as a controller: four
+/// <see cref="InputType.Axis"/> inputs fed from <c>HWC#&lt;id&gt;=Speed:&lt;n&gt;</c> messages, and two
+/// <see cref="InputType.Relative"/> inputs fed from the wheels' steps, <c>HWC#59=Enc:&lt;±n&gt;</c> (Focus)
+/// and <c>HWC#57=Enc:&lt;±n&gt;</c> (Iris) (docs/skaarhoj-integration.md, "HWC map"). Everything else is
+/// ignored, the wheels' presses included: buttons, the other encoders and lights belong to the
+/// Companion surface plugin.
 /// <para>
 /// One instance lives from activation (or link up, or wake) to deactivation (or link down, or sleep):
 /// <see cref="DrivenCameras"/> is terminal once stopped, so a new instance is made each time, with
@@ -37,10 +38,11 @@ public sealed class SkaarhojGamepad : IGamepad
         (58, "Zoom"),
     };
 
-    // Relative inputs, listed after the axes: the Focus knob.
+    // Relative inputs, listed after the axes: the Focus wheel, then the Iris wheel.
     private static readonly (int Hwc, string Name)[] Encoders =
     {
         (59, "Focus"),
+        (57, "Iris"),
     };
 
     private readonly List<ICommand> commands;
@@ -158,8 +160,8 @@ public sealed class SkaarhojGamepad : IGamepad
     }
 
     /// <summary>
-    /// Applies <c>HWC#<paramref name="hwc"/>=Enc:<paramref name="steps"/></c>: steps the Focus knob's
-    /// relative input. Any other HWC, and anything after <see cref="Unacquire"/>, is ignored. Input loop only.
+    /// Applies <c>HWC#<paramref name="hwc"/>=Enc:<paramref name="steps"/></c>: steps the Focus or Iris
+    /// wheel's relative input. Any other HWC, and anything after <see cref="Unacquire"/>, is ignored. Input loop only.
     /// </summary>
     internal void OnEncoder(int hwc, int steps)
     {

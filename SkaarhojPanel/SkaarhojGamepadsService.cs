@@ -161,8 +161,8 @@ public sealed class SkaarhojGamepadsService : IGamepadsService, IDisposable
             case RawPanelMessage.Reply { Key: "isSleeping", Value: "0" }:
                 _inputQueue.Enqueue(() => UpdateSleep(asleep: false));
                 break;
-            // Buttons (the Focus knob's press included) and everything else belong to the Companion
-            // surface plugin. The gamepad ignores every encoder but the Focus knob.
+            // Buttons (the Focus and Iris wheels' presses included) and everything else belong to the
+            // Companion surface plugin. The gamepad ignores every encoder but the two wheels.
         }
     }
 

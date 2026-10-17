@@ -136,3 +136,28 @@ internal static class FocusKnob
         focus.SecondInput.CommandValue = focus.SecondInput.Values!.Single(v => v.Value == -50);
     }
 }
+
+/// <summary>
+/// The panel's Iris wheel, which starts unmapped, mapped to Focus step for the tests: 1 %, not the
+/// Focus wheel's 0.5 %, so the calls show which wheel ran.
+/// </summary>
+internal static class IrisWheel
+{
+    /// <summary>What <see cref="MotionRecordingCamera"/> records for one step scrolled up.</summary>
+    public const string Far = "FocusStep 0.01 Far";
+
+    /// <summary>What <see cref="MotionRecordingCamera"/> records for one step scrolled down.</summary>
+    public const string Near = "FocusStep 0.01 Near";
+
+    /// <summary>Focus step Far 1 % per step scrolled up, and Near 1 % (the second command) per step scrolled down.</summary>
+    public static void MapToFocusStep(IGamepad gamepad)
+    {
+        var iris = gamepad.Inputs.Single(i => i.Name == "Iris");
+        var focusStep = gamepad.Commands.OfType<FocusStepCommand>().Single();
+        iris.SelectedCommand = focusStep;
+        iris.CommandDirection = iris.Directions!.Single(d => d.Direction == Direction.High);
+        iris.CommandValue = iris.Values!.Single(v => v.Value == 100);
+        iris.SecondInput!.SelectedCommand = focusStep;
+        iris.SecondInput.CommandValue = iris.SecondInput.Values!.Single(v => v.Value == -100);
+    }
+}

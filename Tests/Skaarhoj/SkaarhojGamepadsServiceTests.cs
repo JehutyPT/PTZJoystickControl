@@ -253,6 +253,111 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
     }
 
     [Fact]
+    public void IrisWheelScroll_IsAppliedOnlyByTheInputLoop_OncePerStep()
+    {
+        var service = NewService();
+        service.ActivateGamepad(Info(service));
+        service.OnLinkUp();
+        _queue.RunPending();
+        var gamepad = Active(service);
+        IrisWheel.MapToFocusStep(gamepad);
+        gamepad.SelectedCamera = _camA;
+
+        Encoder(service, 57, 2);
+        Encoder(service, 57, -3);
+        Assert.Empty(_camA.Calls);
+
+        _queue.RunPending();
+        Assert.Equal(
+            new[] { IrisWheel.Far, IrisWheel.Far, IrisWheel.Near, IrisWheel.Near, IrisWheel.Near },
+            _camA.Calls);
+    }
+
+    [Fact]
+    public void IrisWheelSteps_KeepTheirOrder_WithTheFocusWheelsAndTheJoysticksLines()
+    {
+        var service = NewService();
+        var gamepad = ActivePanning(service);
+        FocusKnob.MapToFocusStep(gamepad);
+        IrisWheel.MapToFocusStep(gamepad);
+        var before = _camA.Calls.Count;
+
+        Encoder(service, 57, 1);
+        Encoder(service, 59, 1);
+        Speed(service, 60, 0);
+        Encoder(service, 57, -1);
+        Speed(service, 60, -500);
+        _queue.RunPending();
+
+        Assert.Equal(
+            new[] { IrisWheel.Far, FocusKnob.Far, "Pan 0 Stop", IrisWheel.Near, "Pan 1 Left" },
+            _camA.Calls.Skip(before));
+    }
+
+    [Fact]
+    public void IrisWheelScroll_AfterLinkDown_StepsNothing()
+    {
+        var service = NewService();
+        IrisWheel.MapToFocusStep(ActivePanning(service));
+        var calls = _camA.Calls.Count;
+
+        service.OnLinkDown("no ack");
+        Encoder(service, 57, 1);
+        _queue.RunPending();
+
+        Assert.Equal(calls, _camA.Calls.Count);
+    }
+
+    [Fact]
+    public void IrisWheelScroll_WhileAsleep_StepsNothing()
+    {
+        var service = NewService();
+        IrisWheel.MapToFocusStep(ActivePanning(service));
+        var calls = _camA.Calls.Count;
+
+        Sleeping(service, true);
+        Encoder(service, 57, 1);
+        _queue.RunPending();
+
+        Assert.Equal(calls, _camA.Calls.Count);
+    }
+
+    [Fact]
+    public void IrisWheelScrollQueuedBeforeDeactivate_StepsNothing()
+    {
+        var service = NewService();
+        IrisWheel.MapToFocusStep(ActivePanning(service));
+        var calls = _camA.Calls.Count;
+
+        Encoder(service, 57, 1);
+        service.DeactivateGamepad(Info(service));
+        _queue.RunPending();
+
+        Assert.Equal(calls, _camA.Calls.Count);
+    }
+
+    [Fact]
+    public void Wake_IrisWheelKeepsItsMapping_AndStepsAgain()
+    {
+        var service = NewService();
+        var before = ActivePanning(service);
+        IrisWheel.MapToFocusStep(before);
+        Sleeping(service, true);
+        _queue.RunPending();
+
+        Sleeping(service, false);
+        _queue.RunPending();
+        var after = Active(service);
+        after.SelectedCamera = _camA;
+        var calls = _camA.Calls.Count;
+        Encoder(service, 57, -1);
+        _queue.RunPending();
+
+        Assert.NotSame(before, after);
+        Assert.Equal(new[] { IrisWheel.Near }, _camA.Calls.Skip(calls));
+    }
+
+    [Fact]
     public void LinkDown_StopsEveryCameraTheGamepadDrove_RemovesIt_AndShowsDisconnected()
     {
         var service = NewService();
@@ -529,17 +634,22 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
         var service = NewService();
         var gamepad = ActivePanning(service);
         FocusKnob.MapToFocusStep(gamepad);
+        IrisWheel.MapToFocusStep(gamepad);
         var calls = _camA.Calls.Count;
         var stops = _camA.StopCalls;
         var lines = _trace.Messages.Count(m => m.Contains(Address));
 
         service.OnMessage(new RawPanelMessage.Down(63, null));
-        service.OnMessage(new RawPanelMessage.Encoder(57, 1));
         // The Focus knob's press, and anything but a turn on 59: the press stays Companion's.
         service.OnMessage(new RawPanelMessage.Press(59));
         service.OnMessage(new RawPanelMessage.Down(59, null));
         service.OnMessage(new RawPanelMessage.Up(59, null));
         service.OnMessage(new RawPanelMessage.Speed(59, 500));
+        // The same for the Iris wheel on 57.
+        service.OnMessage(new RawPanelMessage.Press(57));
+        service.OnMessage(new RawPanelMessage.Down(57, null));
+        service.OnMessage(new RawPanelMessage.Up(57, null));
+        service.OnMessage(new RawPanelMessage.Speed(57, 500));
         // Other encoders: Knob A, Knob H, and the joystick's own HWC.
         service.OnMessage(new RawPanelMessage.Encoder(46, 1));
         service.OnMessage(new RawPanelMessage.Encoder(53, -1));
@@ -644,6 +754,63 @@ public sealed class SkaarhojGamepadsServiceTests : IDisposable
         var focus = gamepad.Inputs.Single(i => i.Name == "Focus");
         Assert.Null(focus.SelectedCommand);
         Assert.Null(focus.SecondInput!.SelectedCommand);
+    }
+
+    // As for the Focus knob: the second command is mapped last, so it must be saved on its own.
+    [Fact]
+    public void IrisWheelMapping_SavesAndReloadsById_WithBothCommandsAndTheDirection()
+    {
+        var first = NewService();
+        first.ActivateGamepad(Info(first));
+        first.OnLinkUp();
+        _queue.RunPending();
+        IrisWheel.MapToFocusStep(Active(first));
+        // Low is not the default, so a direction lost on the way gives Far for a step scrolled up.
+        var iris = Active(first).Inputs.Single(i => i.Name == "Iris");
+        iris.CommandDirection = iris.Directions!.Single(d => d.Direction == Direction.Low);
+
+        var saved = Assert.Single(new GamepadSettingsStore(SettingsPath).GetAllGamepadSettings());
+        Assert.Equal(Id, saved.Id);
+        Assert.Single(saved.Inputs!, i => i.Id == "HWC57");
+
+        var second = NewService();
+        second.OnLinkUp();
+        _queue.RunPending();
+        Active(second).SelectedCamera = _camA;
+        Encoder(second, 57, 1);
+        Encoder(second, 57, -1);
+        _queue.RunPending();
+
+        Assert.Equal(new[] { IrisWheel.Near, IrisWheel.Far }, _camA.Calls);
+    }
+
+    [Fact]
+    public void SavedMappingsWithoutTheIrisWheel_LoadItUnmapped_AndTheOthersAsSaved()
+    {
+        // A file saved before the panel had an Iris input, with the Focus knob mapped.
+        var first = NewService();
+        first.ActivateGamepad(Info(first));
+        first.OnLinkUp();
+        _queue.RunPending();
+        MapLrToPan(Active(first));
+        FocusKnob.MapToFocusStep(Active(first));
+        var store = new GamepadSettingsStore(SettingsPath);
+        var saved = Assert.Single(store.GetAllGamepadSettings());
+        Assert.Equal(1, saved.Inputs!.RemoveAll(i => i.Id == "HWC57"));
+        Assert.True(store.SaveGamepadSettings(saved));
+
+        var second = NewService();
+        second.OnLinkUp();
+        _queue.RunPending();
+
+        var gamepad = Active(second);
+        Assert.IsType<PanCommand>(gamepad.Inputs.Single(i => i.Name == "LR").SelectedCommand);
+        var focus = gamepad.Inputs.Single(i => i.Name == "Focus");
+        Assert.IsType<FocusStepCommand>(focus.SelectedCommand);
+        Assert.IsType<FocusStepCommand>(focus.SecondInput!.SelectedCommand);
+        var iris = gamepad.Inputs.Single(i => i.Name == "Iris");
+        Assert.Null(iris.SelectedCommand);
+        Assert.Null(iris.SecondInput!.SelectedCommand);
     }
 
     [Fact]
