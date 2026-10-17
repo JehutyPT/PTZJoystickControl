@@ -6,6 +6,14 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### Tray icon is back
+
+Since the move to Avalonia 12 (#30), the tray icon never appeared: Avalonia 12.1.3 and later only add a tray icon to the tray once it is registered on the app, which the app did not do. Closing the main window then left the app running with no way back to it, or to **Quit**, short of killing `Gui.exe`. The app now registers the icon at startup. A new icon may first show under the taskbar's **^** (hidden icons) arrow; drag it onto the taskbar to keep it in view.
+
+- [ ] Start the app: the tray icon shows the selected camera's number. Select another camera from Companion and with a joystick button: the number follows.
+- [ ] Right-click the icon: the menu shows **PTZ Joystick Control**, **Check for updates**, **Show log** and **Quit**. **PTZ Joystick Control** shows the main window, **Check for updates** opens the Update Checker window and **Show log** the Log window. **Quit** ends the app: the icon goes, and no `Gui.exe` is left in Task Manager.
+- [ ] Start the app again and close the main window: the app keeps running and the icon stays. Click the icon: the main window comes back.
+
 ### #62: Focus step
 
 A new command, **Focus step**, nudges the selected camera's focus position toward far or near by a share of its focus range (Far or Near 0.05 %, 0.1 %, 0.25 %, 0.5 %, 1 %, 2 % or 5 %), once per button press (or per knob detent, once the SKAARHOJ Focus knob lands). On an XC camera the app reads the focus position (`info.cgi?item=c.1.focus.value`) when the one it knows may be stale, such as after 500 ms with no step, then writes the new one (`control.cgi?c.1.focus.value=<n>`); fast presses add up into a few writes. It is not a move: nothing is sent on release, and no stop follows it. A VISCA camera sends nothing for it and logs one `INFO`. No input gets it by default, so nothing changes for a show until an input is mapped to it. Each XC camera's ranges `INFO` line now also gives its focus positions (Canon's spec: 0..2048, where 0.5 % is about 10). **Do every check off air: they move the cameras' focus.** Keep the log open (tray menu → **Show log**). Setup: map a USB joystick button to **Focus step** Far 0.5 % and another to Near 0.5 %, and select an XC camera.
