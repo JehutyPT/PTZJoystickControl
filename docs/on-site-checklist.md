@@ -6,6 +6,14 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### Tray icon is back
+
+Since the move to Avalonia 12 (#30), the tray icon never appeared: Avalonia 12.1.3 and later only add a tray icon to the tray once it is registered on the app, which the app did not do. Closing the main window then left the app running with no way back to it, or to **Quit**, short of killing `Gui.exe`. The app now registers the icon at startup. A new icon may first show under the taskbar's **^** (hidden icons) arrow; drag it onto the taskbar to keep it in view.
+
+- [ ] Start the app: the tray icon shows the selected camera's number. Select another camera from Companion and with a joystick button: the number follows.
+- [ ] Right-click the icon: the menu shows **PTZ Joystick Control**, **Check for updates**, **Show log** and **Quit**. **PTZ Joystick Control** shows the main window, **Check for updates** opens the Update Checker window and **Show log** the Log window. **Quit** ends the app: the icon goes, and no `Gui.exe` is left in Task Manager.
+- [ ] Start the app again and close the main window: the app keeps running and the icon stays. Click the icon: the main window comes back.
+
 ### #63: SKAARHOJ Focus knob steps focus
 
 The SKAARHOJ panel controller has a new input, **Focus**: the Focus knob's turns (HWC 59), as a relative input that runs its mapped command once per step the panel reports. The knob's press is left alone. **Focus** starts unmapped, so nothing changes for a show until it is mapped. Any controller now saves a change to only an input's second command at once; before, it could be lost on restart. Needs the #62 entry done first. **Do every check off air: they move the cameras' focus.** Keep the log open (tray menu → **Show log**). Setup: activate the panel controller and map **Focus**: **Step direction** High (clockwise) to **Focus step** Far 0.5 %, and the second command to **Focus step** Near 0.5 %. Select an XC camera.

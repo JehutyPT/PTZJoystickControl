@@ -32,6 +32,18 @@ namespace PtzJoystickControl.Gui.TrayIcon
             _trayIcon.Clicked += (object? s , EventArgs e) => OnShowClicked?.Invoke(s, e);
 
             UpdateIcon(0);
+
+            // Since Avalonia 12.1.3, a tray icon only reaches the tray once it is registered on the
+            // application; until then, setting its icon or visibility does nothing. A failure here
+            // must leave the app running without the icon, as in UpdateIcon.
+            try
+            {
+                Avalonia.Controls.TrayIcon.SetIcons(Avalonia.Application.Current!, new TrayIcons { _trayIcon });
+            }
+            catch (Exception e)
+            {
+                Trace.TraceWarning($"Tray icon: failed to add the icon to the tray: {e}");
+            }
         }
 
         public void UpdateIcon(int number)
