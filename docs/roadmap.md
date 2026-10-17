@@ -13,6 +13,7 @@ No open items. Moving the app's outbound calls to Companion's current HTTP API (
 ## Phase 3: SKAARHOJ PTZ Extreme
 
 - `SkaarhojGamepad` (Raw Panel joystick as an `IGamepad`) with dead-man timeout.
+- The Focus knob as a relative input that steps the selected camera's focus (#61, #63).
 
 The panel's buttons, LED colours and display text are not on this roadmap: they are a Companion surface plugin in [its own repository](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel), tracked in [its issue #1](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel/issues/1).
 

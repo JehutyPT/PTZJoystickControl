@@ -6,6 +6,21 @@ After the pending entries, run the [pre-show checklist](live-safety.md#pre-show-
 
 ## Pending
 
+### #63: SKAARHOJ Focus knob steps focus
+
+The SKAARHOJ panel controller has a new input, **Focus**: the Focus knob's turns (HWC 59), as a relative input that runs its mapped command once per step the panel reports. The knob's press is left alone. **Focus** starts unmapped, so nothing changes for a show until it is mapped. Any controller now saves a change to only an input's second command at once; before, it could be lost on restart. Needs the #62 entry done first. **Do every check off air: they move the cameras' focus.** Keep the log open (tray menu → **Show log**). Setup: activate the panel controller and map **Focus**: **Step direction** High (clockwise) to **Focus step** Far 0.5 %, and the second command to **Focus step** Near 0.5 %. Select an XC camera.
+
+- [ ] **One detent acts once.** Open `http://<camera>/-wvhttp-01-/info.cgi?item=c.1.focus.value` in a browser. Turn the knob clockwise one detent at a time, 5 times, and reload: the value moved by about 50 in the Far direction found in the #62 entry, and focus moved farther away. If it moved by about 100, note it here: one detent sends two steps.
+- [ ] **Direction.** Anticlockwise moves focus near. Swap the two commands if the operator prefers the other way.
+- [ ] **Fast spin.** Spin the knob quickly through about a full turn and stop. Focus ends where the spin ended, with no catch-up afterwards and no `WARN` in the log.
+- [ ] **While framing.** Move the joystick while turning the knob. Pan, tilt and zoom stay smooth, and focus keeps stepping.
+- [ ] **Press.** Press the Focus knob. Nothing happens in the app: no log line and no focus change.
+- [ ] **Camera switch.** Select the other camera, then turn: only the newly selected camera's focus moves.
+- [ ] **Link loss.** While spinning, pull the panel's Ethernet cable: focus stops changing at once. Plug it back in: focus does not move until the knob is turned again.
+- [ ] **Sleep.** Let the panel fall asleep (with a short sleep timer, as for the #39 checks), wake it with a panel button, then turn the knob: focus steps again.
+- [ ] **Restart.** Quit and restart the app: **Focus** keeps its mapping.
+- [ ] **USB joystick's second command.** Open the USB joystick's inputs, map an axis to a static command such as *Preset* and set its second command. Quit and restart the app: the axis keeps both commands. Put the axis back afterwards.
+
 ### #62: Focus step
 
 A new command, **Focus step**, nudges the selected camera's focus position toward far or near by a share of its focus range (Far or Near 0.05 %, 0.1 %, 0.25 %, 0.5 %, 1 %, 2 % or 5 %), once per button press (or per knob detent, once the SKAARHOJ Focus knob lands). On an XC camera the app reads the focus position (`info.cgi?item=c.1.focus.value`) when the one it knows may be stale, such as after 500 ms with no step, then writes the new one (`control.cgi?c.1.focus.value=<n>`); fast presses add up into a few writes. It is not a move: nothing is sent on release, and no stop follows it. A VISCA camera sends nothing for it and logs one `INFO`. No input gets it by default, so nothing changes for a show until an input is mapped to it. Each XC camera's ranges `INFO` line now also gives its focus positions (Canon's spec: 0..2048, where 0.5 % is about 10). **Do every check off air: they move the cameras' focus.** Keep the log open (tray menu → **Show log**). Setup: map a USB joystick button to **Focus step** Far 0.5 % and another to Near 0.5 %, and select an XC camera.
@@ -194,7 +209,7 @@ The Companion listener port moved from code to an optional `Companion.json` next
 
 ### #36: Relative input type (controller page regression)
 
-Nothing produces a relative input yet, so it has no checks of its own. This change touched how an axis's second command and the command settings are shown, so check that axes and buttons are unchanged.
+The first relative input is the SKAARHOJ Focus knob, checked in the #63 entry. This change touched how an axis's second command and the command settings are shown, so check that axes and buttons are unchanged.
 
 - [ ] Open the joystick's inputs. An axis mapped to a static command (e.g. *Preset* or *Select camera*) still shows its second command row, the second row's direction is greyed out, and deflecting the axis each way runs the matching command once.
 - [ ] Axes mapped to pan, tilt, zoom and focus still show their max-speed setting and drive the cameras; each camera stops on release.

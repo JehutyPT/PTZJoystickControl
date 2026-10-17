@@ -10,13 +10,15 @@ using System.Runtime.CompilerServices;
 namespace PtzJoystickControl.SkaarhojPanel;
 
 /// <summary>
-/// The SKAARHOJ panel's joystick and zoom rocker as a controller: four <see cref="InputType.Axis"/>
-/// inputs fed from <c>HWC#&lt;id&gt;=Speed:&lt;n&gt;</c> messages (docs/skaarhoj-integration.md, "HWC map").
-/// Every other HWC is ignored: buttons, encoders and lights belong to the Companion surface plugin.
+/// The SKAARHOJ panel's joystick, zoom rocker and Focus knob as a controller: four
+/// <see cref="InputType.Axis"/> inputs fed from <c>HWC#&lt;id&gt;=Speed:&lt;n&gt;</c> messages, and one
+/// <see cref="InputType.Relative"/> input fed from the Focus knob's turns, <c>HWC#59=Enc:&lt;±n&gt;</c>
+/// (docs/skaarhoj-integration.md, "HWC map"). Everything else is ignored, the Focus knob's press
+/// included: buttons, the other encoders and lights belong to the Companion surface plugin.
 /// <para>
 /// One instance lives from activation (or link up, or wake) to deactivation (or link down, or sleep):
 /// <see cref="DrivenCameras"/> is terminal once stopped, so a new instance is made each time, with
-/// every axis at 0. <see cref="OnSpeed"/> runs on the input loop only.
+/// every axis at 0. <see cref="OnSpeed"/> and <see cref="OnEncoder"/> run on the input loop only.
 /// </para>
 /// </summary>
 public sealed class SkaarhojGamepad : IGamepad
@@ -35,8 +37,15 @@ public sealed class SkaarhojGamepad : IGamepad
         (58, "Zoom"),
     };
 
+    // Relative inputs, listed after the axes: the Focus knob.
+    private static readonly (int Hwc, string Name)[] Encoders =
+    {
+        (59, "Focus"),
+    };
+
     private readonly List<ICommand> commands;
-    private readonly Dictionary<int, IInput> inputsByHwc = new();
+    private readonly Dictionary<int, IInput> axesByHwc = new();
+    private readonly Dictionary<int, IInput> encodersByHwc = new();
     private readonly List<IInput> inputs = new();
     private bool isActivated;
     private bool isConnected = true;
@@ -56,7 +65,15 @@ public sealed class SkaarhojGamepad : IGamepad
         {
             IInput input = new Input($"HWC{hwc}", axisName, InputType.Axis, commands.AsReadOnly());
             input.PersistentPropertyChanged += (_, _) => NotifyPersistentPropertyChanged("");
-            inputsByHwc.Add(hwc, input);
+            axesByHwc.Add(hwc, input);
+            inputs.Add(input);
+        }
+
+        foreach (var (hwc, encoderName) in Encoders)
+        {
+            IInput input = new Input($"HWC{hwc}", encoderName, InputType.Relative, commands.AsReadOnly());
+            input.PersistentPropertyChanged += (_, _) => NotifyPersistentPropertyChanged("");
+            encodersByHwc.Add(hwc, input);
             inputs.Add(input);
         }
     }
@@ -136,8 +153,20 @@ public sealed class SkaarhojGamepad : IGamepad
     {
         if (unacquired)
             return;
-        if (inputsByHwc.TryGetValue(hwc, out var input))
+        if (axesByHwc.TryGetValue(hwc, out var input))
             input.InputValue = Scale(speed);
+    }
+
+    /// <summary>
+    /// Applies <c>HWC#<paramref name="hwc"/>=Enc:<paramref name="steps"/></c>: steps the Focus knob's
+    /// relative input. Any other HWC, and anything after <see cref="Unacquire"/>, is ignored. Input loop only.
+    /// </summary>
+    internal void OnEncoder(int hwc, int steps)
+    {
+        if (unacquired)
+            return;
+        if (encodersByHwc.TryGetValue(hwc, out var input))
+            input.Step(steps);
     }
 
     public void Acquire()

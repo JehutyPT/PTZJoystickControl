@@ -1,8 +1,8 @@
-# SKAARHOJ PTZ Extreme integration (joystick axes built; buttons and displays in the Companion surface plugin)
+# SKAARHOJ PTZ Extreme integration (joystick axes and Focus knob turns built; buttons and displays in the Companion surface plugin)
 
-Hardware: SKAARHOJ PTZ Extreme running UniSketch firmware (pre-Blue Pill). This app uses its joystick and zoom rocker to drive the cameras. Its buttons, encoders, LEDs and displays are a Bitfocus Companion surface, served by a separate [Companion surface plugin](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel) (tracked in [its issue #1](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel/issues/1)), not by this app.
+Hardware: SKAARHOJ PTZ Extreme running UniSketch firmware (pre-Blue Pill). This app uses its joystick, zoom rocker and Focus knob's turns to drive the cameras. Its buttons, other encoders, LEDs and displays, and the Focus knob's press, are a Bitfocus Companion surface, served by a separate [Companion surface plugin](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel) (tracked in [its issue #1](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel/issues/1)), not by this app.
 
-> **Status: joystick drives cameras.** The [Raw Panel protocol](#raw-panel-verified-on-hardware) (input, LED/display output, sleep, reconnect) was checked against a real panel on 2026-10-13. The app's [panel link](#the-panel-link-in-this-app) (#35) connects, parses the panel's messages, detects loss and reconnects. The [panel controller](#the-panel-as-a-controller) (#37) drives the selected camera from the joystick and zoom rocker, shows the panel asleep and survives the wake stall (#39); neither is yet checked on hardware. Buttons, encoders, LEDs and displays belong to the Companion surface plugin (see [Coexisting with the Companion surface plugin](#coexisting-with-the-companion-surface-plugin)).
+> **Status: joystick and Focus knob drive cameras.** The [Raw Panel protocol](#raw-panel-verified-on-hardware) (input, LED/display output, sleep, reconnect) was checked against a real panel on 2026-10-13. The app's [panel link](#the-panel-link-in-this-app) (#35) connects, parses the panel's messages, detects loss and reconnects. The [panel controller](#the-panel-as-a-controller) (#37) drives the selected camera from the joystick and zoom rocker, steps it from the Focus knob (#63), shows the panel asleep and survives the wake stall (#39); neither is yet checked on hardware. Buttons, the other encoders, the Focus knob's press, LEDs and displays belong to the Companion surface plugin (see [Coexisting with the Companion surface plugin](#coexisting-with-the-companion-surface-plugin)).
 
 ## Vendor references
 
@@ -14,15 +14,16 @@ Hardware: SKAARHOJ PTZ Extreme running UniSketch firmware (pre-Blue Pill). This 
 
 ```
            ┌─ Raw Panel (TCP 9923) ⇄ SkaarhojPanel module (this app) → SkaarhojGamepad (IGamepad) → cameras
-SKAARHOJ ──┤                           reads HWC 58, 60, 61, 62 only
+SKAARHOJ ──┤                           reads HWC 58, 60, 61, 62 and the Focus knob's turns (59) only
            └─ Raw Panel (TCP 9923) ⇄ Companion surface plugin ⇄ Companion
-                                      buttons, encoders, LEDs, displays, sleep timer
+                                      buttons, other encoders, Focus knob press, LEDs, displays, sleep timer
 ```
 
 The panel takes several Raw Panel clients at once (see [Connection](#connection)), and this app is one of them:
 
 - **Joystick and zoom rocker** (HWC 60, 61, 62 and 58) become inputs on a `SkaarhojGamepad : IGamepad`. Mapping, deadzone/saturation, camera selection, and safety logic are then shared with the USB joystick for free.
-- **Everything else** (buttons, encoders, LEDs, displays, the sleep timer) belongs to the [Companion surface plugin](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel), a TypeScript module for Companion in its own repository. This app is a read-only client: it never writes to the panel.
+- **Focus knob turns** (HWC 59) become a relative input on the same gamepad: each step the panel reports runs its mapped command once, such as *Focus step*. Its press is left alone.
+- **Everything else** (buttons, the other encoders, the Focus knob's press, LEDs, displays, the sleep timer) belongs to the [Companion surface plugin](https://github.com/JehutyPT/companion-surface-skaarhoj-rawpanel), a TypeScript module for Companion in its own repository. This app is a read-only client: it never writes to the panel.
 
 New code lives in its own project, `SkaarhojPanel/`, mirroring `SdlGamepads/`.
 
@@ -60,13 +61,13 @@ With `Address` empty or missing, the app makes no connection and logs nothing ab
 
 `SkaarhojPanel/SkaarhojGamepadsService.cs` turns the link into one entry in the controller list (#37). The entry is named `SKAARHOJ panel (<address>)`, and its id is `skaarhoj:<address>`, so keep the panel's address fixed with a DHCP reservation. It is shown connected while the link is up, and `(Asleep: press a panel button)` while the panel is asleep. As with the USB joystick, select it in the list to activate it. Selecting it deactivates the USB joystick, and the reverse, so the two are never active together (`CompositeGamepadsService`). A controller saved as active that comes back (the panel reconnecting or waking, a USB joystick plugged in) is activated only if no other controller is; otherwise the active one keeps control, the returning one is left off and saved as off, and a `WARN` names both.
 
-- **Inputs.** `SkaarhojGamepad` has four axes with the usual deadzone, saturation, inversion and command mapping: `LR` (HWC 60), `UD` (61), `Rotate` (62) and `Zoom` (58, the rocker). `Speed:<n>` becomes `n / 500`, clamped to −1…1. The default saturation (5 %) absorbs the 498–500 jitter at full deflection. Every other HWC is ignored, the top button (63) included. What each axis drives is the app's mapping; the current operator uses the twist (62) for zoom, clockwise in.
+- **Inputs.** `SkaarhojGamepad` has four axes with the usual deadzone, saturation, inversion and command mapping: `LR` (HWC 60), `UD` (61), `Rotate` (62) and `Zoom` (58, the rocker). `Speed:<n>` becomes `n / 500`, clamped to −1…1. The default saturation (5 %) absorbs the 498–500 jitter at full deflection. After them comes `Focus` (59, the Focus knob), a relative input, unmapped by default: each `Enc:<±n>` line is `n` steps, clockwise +, run like any relative input's (see [architecture.md](architecture.md#from-stick-movement-to-camera-movement), **Relative inputs**). Every other HWC is ignored, the top button (63) and the Focus knob's press included. What each axis drives is the app's mapping; the current operator uses the twist (62) for zoom, clockwise in.
 - **Mappings** are saved by gamepad id in `SkaarhojGamepads.json`, next to `Gamepads.json`.
 - **Camera selection** follows Companion: a Companion camera select reaches the panel like any other active controller.
 - **Read-only.** The app never writes to the panel: no LEDs, display text, `SleepTimer=` or other settings. It sends only the link's own `list`, `Connections?` and `ping`. Without the Companion surface plugin connected, the panel stays dark.
-- **Threading.** Link events are only queued on the shared `InputQueue`. Axis input, link up/down and sleep/wake run on the input loop, in the order received.
+- **Threading.** Link events are only queued on the shared `InputQueue`. Axis input, Focus knob steps, link up/down and sleep/wake run on the input loop, in the order received.
 - **Link down** (panel silent for 1 s, panel closed, read or send failed) and **`_isSleeping=1`** both stop every camera the panel's gamepad has driven (`DrivenCameras.StopAll()`) and remove it from the active controllers. Link down shows the entry `(Disconnected)`; sleep shows it `(Asleep: press a panel button)`, still selectable, so an operator knows to press a button before using the stick. A held-still stick sends nothing, so without the stop on sleep a camera could keep moving with no release ever arriving. An `INFO` line logs each sleep and wake, once each.
-- **Link up** and **`_isSleeping=0`** activate a fresh `SkaarhojGamepad` (if the panel is the selected controller). Every axis starts at 0, and nothing moves until the next `Speed` message. The panel does not report its sleep state on connect, so a new connection counts as awake: an asleep joystick sends nothing anyway.
+- **Link up** and **`_isSleeping=0`** activate a fresh `SkaarhojGamepad` (if the panel is the selected controller). Every axis starts at 0, and nothing moves until the next `Speed` message or Focus knob turn. The panel does not report its sleep state on connect, so a new connection counts as awake: an asleep joystick sends nothing anyway.
 - **UI thread.** The entry's connected and asleep changes are made on the input loop and raised on the UI thread (`UiThread.Post`, passed in by `Program.cs`).
 
 ## Raw Panel (verified on hardware)
@@ -163,7 +164,7 @@ The manual warns that the OLED displays burn in and that burn-in is not covered 
 | 46–53 | `Knob A`–`Knob H` | 18 encoder with push, RGB, 112×32 display | `pb` | `HWC#<id>=Enc:±1`, `HWC#<id>=Press` |
 | 57 | `Iris` | 16 encoder with push (smooth, no detents) | `pb` | `HWC#57=Enc:±1`, `HWC#57=Press` |
 | 58 | `Zoom` | 104 elastomer zoom rocker | `iv` | `HWC#58=Speed:<-500…500>` |
-| 59 | `Focus` | 16 encoder with push | `pb` | `HWC#59=Enc:±1` (press not tested) |
+| 59 | `Focus` | 16 encoder with push | `pb` | `HWC#59=Enc:±n` (press not tested) |
 | 60 | `LR` | 96 joystick left/right | `ih` | `HWC#60=Speed:<-500…500>` |
 | 61 | `UD` | 97 joystick up/down | `iv` | `HWC#61=Speed:<-500…500>` |
 | 62 | `Rotate` | 98 joystick rotate | `ir` | `HWC#62=Speed:<-500…500>` |
@@ -186,7 +187,7 @@ Tested: HWC 1, 46, 57–63. The rest are taken from the topology.
 
 **Four-way buttons (types 133/134):** `HWC#<id>.<edge>=Down` / `Up`, with edge 1 = top, 2 = left, 4 = bottom, 8 = right (one clean pass on `Cam1`). There is **no separate centre event**: pressing the centre reports whichever edge closes first (`.1` once, `.2` once). Treat each button as one key, or the four edges as four keys; not five.
 
-**Encoders:** `HWC#<id>=Enc:1` or `Enc:-1` per step, clockwise +. One message per step, never aggregated: ~3–4 steps/s turned slowly, steps as close as ~17 ms when spun fast. Push sends a single `HWC#<id>=Press`, with no `Down`/`Up` pair.
+**Encoders:** `HWC#<id>=Enc:1` or `Enc:-1` per step, clockwise +. One line can carry several steps: in a Raw Panel capture of this panel on 2026-10-14 (firmware v2.5.27), HWC 59 sent `Enc:±2` 28 times and `Enc:3` once among 93 lines. ~3–4 steps/s turned slowly, steps as close as ~17 ms when spun fast. Push sends a single `HWC#<id>=Press`, with no `Down`/`Up` pair.
 
 ### Output
 
@@ -218,7 +219,7 @@ The [Companion surface plugin](https://github.com/JehutyPT/companion-surface-ska
 - **Rate-limit its writes.** Heavy traffic from one client delayed another client's `ack`s past 300 ms. A delay that leaves this app hearing nothing from the panel for 1 s trips its dead-man timeout and stops the cameras.
 - **Own the sleep timer.** This app never sends `SleepTimer=`, `WakeUp!` or any other setting; the plugin decides how long the panel stays awake.
 
-This app ignores the panel's encoders. `InputType.Relative` exists in [InputType.cs](../Core/Devices/InputType.cs) (fed through `IInput.Step`), but nothing produces relative input yet.
+This app reads HWC 59's encoder turns (the Focus knob) and leaves its press alone.
 
 ## Failure behavior
 

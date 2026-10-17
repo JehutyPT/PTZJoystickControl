@@ -211,6 +211,26 @@ public sealed class RelativeInputTests : IDisposable
         Assert.Null(button.SecondInput);
     }
 
+    // The controller saves its mappings when an input raises PersistentPropertyChanged: a change to
+    // the second command alone must raise it too, or it is lost on restart.
+    [Theory]
+    [InlineData(InputType.Relative)]
+    [InlineData(InputType.Axis)]
+    public void ChangingTheSecondCommand_IsAPersistentChangeOfTheInput(InputType inputType)
+    {
+        var input = new Input("in-1", "Input 1", inputType, _gamepad.Commands);
+        input.SelectedCommand = _first;
+        var changed = new List<string?>();
+        input.PersistentPropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        input.SecondInput!.SelectedCommand = _second;
+        Assert.Contains(nameof(Input.SelectedCommand), changed);
+
+        changed.Clear();
+        input.SecondInput.CommandValue = input.SecondInput.Values!.Single(v => v.Value == 1);
+        Assert.Contains(nameof(Input.CommandValue), changed);
+    }
+
     [Fact]
     public void ExistingInputTypeValues_AreUnchanged()
     {
